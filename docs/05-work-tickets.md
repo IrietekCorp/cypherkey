@@ -105,7 +105,9 @@ Settings PATCH requires a fresh step-up flag on the token for `biometricEnabled=
 Token bucket per IP (100/min) and per account (10 logins/min) in DB; `audit_log` writes for auth events; IPs stored as salted hash.
 
 ### M1-15 · Docker + compose + CI · M · deps: all M1
-`Dockerfile` (bun, non-root), `docker-compose.yml` (server + volume; optional Postgres profile), GitHub Actions: test on SQLite and Postgres service, typecheck, lint, `bun audit`. **Exit test for M1:** `scripts/e2e.ts` runs the full sequence from file 04, including the Phantom Keys acceptance cases from M1-17b.
+`Dockerfile` (bun, non-root), `docker-compose.yml` (server + volume; optional Postgres profile), GitHub Actions: typecheck, lint, `bun audit`, and **two test jobs** — one on SQLite with `DATABASE_URL` unset, one with a `postgres:16` **service container** and `DATABASE_URL` set to it.
+
+**Postgres posture (decided):** Postgres is never installed in dev and never goes in our image. Local `bun test` runs SQLite only; every Postgres suite skips cleanly via `server/src/testing/postgres.ts` and prints one line saying so. CI is the only place both drivers run. Production reaches a managed Postgres over the network through `DATABASE_URL`. The compose Postgres profile is a self-host convenience, not our runtime. **Exit test for M1:** `scripts/e2e.ts` runs the full sequence from file 04, including the Phantom Keys acceptance cases from M1-17b.
 
 ### M1-16 · Phantom Keys: token capture and script canonicalization · M · deps: M0-02, M0-04 · refs A-14.1
 **Files:** create `core/biometrics/script.ts`, `core/biometrics/script.test.ts`; modify `core/biometrics/features.ts` (+test), `core/biometrics/capture.ts` (+test). DO NOT TOUCH: server, site, crypto.

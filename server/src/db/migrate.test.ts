@@ -1,6 +1,7 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
 import { loadConfig } from '../config';
+import { noPostgres, postgresUrl } from '../testing/postgres';
 import type { Db } from './client';
 import { createDb } from './client';
 import { migrateDb } from './migrate';
@@ -9,15 +10,6 @@ import * as sqliteSchema from './schema/sqlite';
 
 const SECRET_32 = 'x'.repeat(32);
 type NewUser = typeof sqliteSchema.users.$inferInsert;
-
-const pgUrl = Bun.env.DATABASE_URL?.startsWith('postgres') ? Bun.env.DATABASE_URL : undefined;
-const drivers: Array<{ dialect: 'sqlite' | 'postgres'; url: string }> = [
-  {
-    dialect: 'sqlite',
-    url: `sqlite://${Bun.env.TMPDIR ?? '/tmp'}/ck-migrate-${Bun.nanoseconds()}.db`,
-  },
-  ...(pgUrl ? [{ dialect: 'postgres' as const, url: pgUrl }] : []),
-];
 
 const open: Db[] = [];
 afterAll(async () => {
@@ -56,9 +48,13 @@ function sampleUser(username: string): NewUser {
   };
 }
 
-describe.each(drivers)('migrations on a fresh $dialect database', ({ dialect, url }) => {
-  const db = createDb(loadConfig({ JWT_SECRET: SECRET_32, DATABASE_URL: url }).db);
-  open.push(db);
+/** The same four assertions run against whichever driver the caller supplies. */
+function migrationSuite(dialect: Db['dialect'], url: () => string) {
+  let db: Db;
+  beforeAll(() => {
+    db = createDb(loadConfig({ JWT_SECRET: SECRET_32, DATABASE_URL: url() }).db);
+    open.push(db);
+  });
 
   test('migrate brings an empty database up and is idempotent', async () => {
     await migrateDb(db);
@@ -93,4 +89,15 @@ describe.each(drivers)('migrations on a fresh $dialect database', ({ dialect, ur
     await insertUser(db, sampleUser(username));
     await expect(insertUser(db, sampleUser(username))).rejects.toThrow();
   });
+}
+
+describe('migrations on a fresh sqlite database', () => {
+  migrationSuite(
+    'sqlite',
+    () => `sqlite://${Bun.env.TMPDIR ?? '/tmp'}/ck-migrate-${Bun.nanoseconds()}.db`,
+  );
+});
+
+describe.skipIf(noPostgres)('migrations on a fresh postgres database', () => {
+  migrationSuite('postgres', () => postgresUrl ?? '');
 });

@@ -164,6 +164,8 @@ Responses padded to ≥ 500 ms on all paths.
 
 Self-host: `docker compose up` gives server + SQLite in one container, volumes for DB. That single command is a marketing feature.
 
+**Postgres is never in the image.** The server image ships Bun and the binary; hosted deployments reach a *managed* Postgres over the network via `DATABASE_URL`. Development and local `bun test` run on SQLite alone — no Postgres is installed — and the Postgres suites skip with a printed reason. Both drivers are exercised only in CI, against a `postgres:16` service container.
+
 ## A-9. Schema (Drizzle)
 
 | Table | Key columns |
