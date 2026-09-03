@@ -78,6 +78,8 @@ Security people respect a product that names its own limits. That respect conver
 
 ## Messaging pillars
 
+0. **"Your password is passw0rd. Your login is passsss⌫⌫w0rd."** Phantom Keys: extra keystrokes you delete become part of your secret. A password leaked from anywhere else doesn't contain them.
+
 1. **"Type it like you mean it."** Your rhythm is the second factor. Nothing to carry.
 2. **"The dark-web email stops being scary."** A leaked password is not a leaked login.
 3. **"We can't read your vault. Nobody can."** Zero-knowledge, open source, self-host in one command.

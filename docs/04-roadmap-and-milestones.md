@@ -2,7 +2,9 @@
 
 Solo founder, >10 hrs/week, AI-assisted. Dates assume ~15 hrs/week; the model does most typing, you do review and testing. Every milestone has an **exit criterion** you can verify in 10 minutes. Ship nothing that fails its exit criterion.
 
-## M0 — Demo Day (Sept 3 → Sept 14, 2026) · ~25 hours
+## M0 — Demo Day (Sept 3 → Sept 14, 2026) · ~25 hours · **code complete**
+
+> Build work is done (`core/biometrics/`, `site/`); the Sept 14 demo itself is still ahead — see `09-demo-script-sept14.md`.
 
 **Goal:** a live website at cypherkey.io that demonstrates the party trick in the browser, plus a credible README and one-pager. The extension is *not* required for the demo; if it works, it's a bonus.
 
@@ -24,10 +26,12 @@ Solo founder, >10 hrs/week, AI-assisted. Dates assume ~15 hrs/week; the model do
 - `core/biometrics`: capture (light-enforced), features, local scoring, serialization
 - Server on Hono + Drizzle, SQLite and Postgres, all `/auth`, `/enroll`, `/vault`, `/user` routes from A-10
 - Refresh tokens in DB, nonce log, rate limiting, lockouts, 500 ms floor
+- **Phantom Keys** (A-14): full token set, HMAC commitments, server edit-distance check with alignment-aware rhythm scoring, Strictness setting (A-16), demo update
+- Single-binary build, distroless image, size budgets in CI (A-15)
 - `docker compose up` self-host path
 - CI: `bun test`, typecheck, lint, `bun audit`
 
-**Exit criterion:** an integration test script does signup → enroll (8 samples) → login with a good sample (pass) → login with a bad sample (fail) → vault write → vault read on a second "device" → refresh → logout, against both SQLite and Postgres, in CI.
+**Exit criterion:** an integration test script does signup (with a script containing two phantom keys; a second attempt using the resolved passphrase must fail) → enroll (8 samples) → login with a good sample (pass) → login with a bad sample (fail) → vault write → vault read on a second "device" → refresh → logout, against both SQLite and Postgres, in CI.
 
 ## M2 — Extension and Private Beta (Oct 21 → Dec 5) · ~70 hours
 

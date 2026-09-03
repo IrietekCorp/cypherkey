@@ -5,7 +5,7 @@
 | Layer | Choice | Monthly cost at launch | Why |
 |---|---|---|---|
 | Edge / DNS / DDoS / static site | Cloudflare (free) + Cloudflare Pages | $0 | Free DDoS absorption is the single best cost decision for a security product likely to be poked |
-| API | Cloud Run (min instances 0 → 1 at launch), 1 vCPU / 512 MB, region us-west1 | $0–15 | Scale-to-zero before launch; set min=1 at launch to kill cold starts |
+| API | Cloud Run (min instances 0 → 1 at launch), 1 vCPU / 512 MB, region us-west1; single `bun --compile` binary in a distroless image | $0–15 | Scale-to-zero before launch; Bun cold start is tens of ms so min=0 is viable longer than usual |
 | Database | Cloud SQL Postgres, `db-f1-micro` (shared core) with automated backups + PITR | ~$10–15 | Same schema as self-host SQLite via Drizzle |
 | Secrets | Secret Manager | ~$0 | `JWT_SECRET`, Resend, Stripe |
 | Email | Resend free tier (3k/mo) | $0 | "Not your rhythm" + recovery emails |
@@ -15,6 +15,8 @@
 | CI | GitHub Actions free for public repos | $0 | |
 
 **Launch-month total: roughly $15–40.** First serious cost step is Redis at M5.
+
+**Why not Firestore?** No Drizzle support means two data layers (one for SQLite self-host, one for hosted) — double the bug surface for a cheaper model; per-read/write billing spikes on login-heavy, sync-polling, nonce-churning traffic; hot-document contention for rate-limit counters. Pre-launch, Neon's free Postgres tier gives scale-to-zero pricing with zero code change. Decision recorded in docs/02 A-15.
 
 Why not Cloud Run + SQLite (Litestream)? Multiple instances can't share a SQLite file; the moment you set `max-instances > 1` you need Postgres. Drizzle makes that free, so start there for hosted and keep SQLite for self-host.
 

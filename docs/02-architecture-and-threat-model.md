@@ -1,4 +1,4 @@
-# 02 — Architecture and Threat Model (v1.0)
+# 02 — Architecture and Threat Model (v1.2)
 
 This replaces sections 2, 3, and 7 of the original PROJECT.MD. The building model should treat this document as the source of truth; tickets reference section numbers here (e.g., "see A-2.3").
 
@@ -18,22 +18,28 @@ All of this runs in the client (extension, CLI, SDK). The server never sees any 
 ```
 passphrase (user memory)
    │
-   ▼  Argon2id(passphrase, salt=userSalt, m=64MiB, t=3, p=1)   ← userSalt is random 16B, stored server-side, fetched by username pre-auth
+   ▼  Argon2id(kdfInput, salt=userSalt, m=64MiB, t=3, p=1)     ← userSalt is random 16B, stored server-side, fetched by username pre-auth
+      kdfInput = resolved passphrase (Medium/Relaxed), or resolved ‖ U+0000 ‖ script (Strict). See A-14.2.
 masterKey (32B, memory only, never leaves client)
    │
    ├── HKDF(masterKey, info="cypherkey/auth/v1")  → authKey (32B)
    │        └── sent to server at login as authHash; server stores Argon2id(authHash)
    │
-   └── HKDF(masterKey, info="cypherkey/wrap/v1")  → wrapKey (32B)
-            └── AES-256-GCM unwrap → vaultKey (32B, random at signup)
+   ├── HKDF(masterKey, info="cypherkey/wrap/v1")  → wrapKey (32B)
+   │        └── AES-256-GCM unwrap → vaultShare (32B, random at signup)
+   │                 vaultKey = vaultShare XOR serverShare      ← serverShare comes from the server (A-5)
+   │
+   └── HKDF(masterKey, info="cypherkey/phantom/v1") → phantomKey (32B)   ← A-14.2
 
 vaultKey encrypts every vault item:  AES-256-GCM(item, vaultKey, nonce=random 12B, aad=itemId)
-recoveryKey (32B random, shown once as Recovery Kit) → also wraps vaultKey (second wrapped copy)
+recoveryKey (32B random, shown once as Recovery Kit) → wraps the FULL vaultKey, not the share
 ```
 
 Rationale for Argon2id over PBKDF2: memory-hard, resists GPU cracking, and the salt is random rather than the username. In the extension use `argon2-browser` (WASM) or the WebCrypto-free `@noble/hashes` Argon2 implementation; in Bun use the built-in `Bun.password` for server-side hashing and `@noble/hashes` for parity in `core/`.
 
 **Why authHash is hashed again on the server:** if the DB leaks, an attacker gets `Argon2id(authHash)`, which cannot be replayed as `authHash`.
+
+**Why the vault key is split but the Recovery Kit is not (decided, v1.2).** What the client wraps under `wrapKey` is a random `vaultShare`, never `vaultKey` itself; the server generates `serverShare` at signup and returns it in the 201 and on every later successful login. That is what makes the rhythm *enforcing*: passphrase alone reconstructs nothing. The **Recovery Kit is the deliberate exception** — the client computes `vaultKey` the moment it holds the 201, wraps the full `vaultKey` under `recoveryKey`, and registers that blob in a second call before enrollment may proceed. Consequence, stated plainly: the Recovery Kit plus the server ciphertext opens the vault **without the server agreeing to release the share**, so an encrypted export can carry the full vault key and a user can leave hosted CypherKey and still open their data. That is the AGPL promise and X-5 in concrete form. Yes, this bypasses the biometric: the Kit is 160 random bits held offline, not an online guessing target, and an attacker holding both a DB dump and your printed Kit has already won by other means. Every other path — passphrase-only, device-only — still needs the server to release the share after the rhythm passes.
 
 ## A-3. Device identity and request signing
 
@@ -42,8 +48,11 @@ Each device generates an **Ed25519 keypair** at first unlock (WebCrypto `Ed25519
 Every authenticated request is signed:
 
 ```
-signature = Ed25519.sign(devicePriv, nonce || timestamp || method || path || SHA256(body))
+msg = "cypherkey-sig-v1" \n hex(nonce) \n ts \n METHOD \n path-with-query \n hex(sha256(body))
+signature = Ed25519.sign(devicePriv, UTF8(msg))
 ```
+
+Fields are newline-delimited and version-prefixed so no two different requests can produce the same signing string. An empty body hashes the empty byte string. `path-with-query` never includes scheme or host.
 
 Server verifies against the registered device public key, checks nonce uniqueness (60s window) and timestamp skew (±30s). This replaces the HMAC-with-passphrase-key design; the server holds no symmetric secret that could forge a client.
 
@@ -55,12 +64,18 @@ Server verifies against the registered device public key, checks nonce uniquenes
 - Raw events are discarded after feature extraction. They are never persisted or transmitted.
 
 ### A-4.2 Features (client, `core/biometrics/features.ts`)
-For a passphrase of length *n*:
-- Dwell: `n` values (keyup − keydown per key)
+
+*n* is the **script token count** (A-14.1), not the resolved passphrase length. The resolved length is never sent to the server, never stored, and is not derivable from anything the server holds.
+
+- Dwell: `n` values (keyup − keydown per token)
 - Flight: `n−1` values (next keydown − keyup)
 - Digraph: `n−1` values (next keydown − keydown)
-- Globals: total time, mean/std of dwell, mean/std of flight, backspace count (a correction is a strong signal — a sample with >0 backspaces is rejected from enrollment but allowed at verify with a small penalty)
-- Vector is length `3n + 5`, fixed order, float32. Serialized as JSON array for MVP.
+- Globals: exactly seven, in this order — `totalTime, meanDwell, stdDwell, meanFlight, stdFlight, meanDigraph, stdDigraph`. All seven carry weight 0.5.
+- Vector is length **`3n + 7`**, fixed order, float32. Serialized as JSON array for MVP.
+
+**Rule (v1.2): no count-based or token-class globals, ever.** A backspace count would tell the server how many Backspace tokens are in the script, which breaks A-14's guarantee that the server learns the script *length* and nothing else about its contents. Backspace is an ordinary token with ordinary timing features and no special treatment anywhere in the pipeline. Samples containing Backspace are **never** rejected.
+
+`core/biometrics/features.ts` is the single definition of this layout. Nothing else — server scoring, alignment, tests, the demo — re-derives the ordering or the length; they import it.
 
 ### A-4.3 Profile (server, `biometric_profiles`)
 Per feature: mean, standard deviation (floored at a minimum of 8 ms to avoid division blowups), and weight. Built from **enrollment samples** (default 8, min 5, max 20; `ENROLLMENT_SAMPLES` env). Samples are deleted after profile build.
@@ -91,10 +106,13 @@ After a **pass** with score ≥ 0.70, update profile via EMA (`α = 0.1`) toward
 The biometric factor protects two things: the session, and the **server-held share** of the vault key. This is what makes the biometric *enforcing* for vault access, not just advisory.
 
 ```
-vaultKey = wrapKeyUnwrap(wrappedVaultKey)  XOR  serverShare
+vaultShare = wrapKeyUnwrap(wrappedVaultKey)
+vaultKey   = vaultShare XOR serverShare
 ```
 
-- `wrappedVaultKey` lives on the server (ciphertext, wrapped by client `wrapKey`).
+**Signup handshake (v1.2).** The client generates a random `vaultShare`, wraps it under `wrapKey`, and posts it. The server generates `serverShare` (32B random) and returns it in the **201**. The client XORs to get `vaultKey`, wraps that full key under `recoveryKey`, and registers `recoveryWrappedVaultKey` in a second call. **Enrollment cannot begin until that blob is registered** — otherwise a user could get a vault they can never recover.
+
+- `wrappedVaultKey` lives on the server (ciphertext, wrapped by client `wrapKey`); its plaintext is `vaultShare`, never `vaultKey`.
 - `serverShare` (32B random) is stored server-side in plaintext but **released only after passphrase + rhythm (or step-up) succeed**.
 - An attacker with the passphrase alone gets neither the wrapped key (needs auth) nor the share.
 - An attacker with a full DB dump gets `serverShare` and `wrappedVaultKey` but not `wrapKey` (needs passphrase + Argon2id). Still zero-knowledge.
@@ -150,9 +168,9 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 
 | Table | Key columns |
 |---|---|
-| `users` | id, username(unique), email, user_salt, auth_hash (argon2), wrapped_vault_key, recovery_wrapped_vault_key, server_share, biometric_enabled, biometric_paused_until, thresholds_json, created_at |
+| `users` | id, username(unique), email, user_salt, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
 | `devices` | id, user_id, public_key, name, platform, trusted_at, last_seen_at, revoked_at |
-| `biometric_profiles` | user_id, passphrase_len, means[], stds[], weights[], sample_count, version, updated_at |
+| `biometric_profiles` | user_id, script_len, means[], stds[], weights[], script_commitments, sample_count, version, updated_at |
 | `enrollment_samples` | id, user_id, feature_vector (deleted on build), created_at |
 | `auth_score_history` | id, user_id, device_id, score, band, created_at |
 | `vault_items` | id, user_id, version, ciphertext, nonce, updated_at, deleted_at |
@@ -228,3 +246,94 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 | `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | none | hosted only |
 
 `ENCRYPTION_KEY` is **removed**. The server no longer participates in credential encryption. Insecure defaults are removed; the server exits with a clear message if a required secret is missing.
+
+## A-14. Phantom Keys (the keystroke script as a second, fuzzy-verified secret)
+
+**Definition.** The *script* is the ordered sequence of key tokens physically typed into the passphrase field, corrections included. The *resolved passphrase* is the text a normal form would receive. Phantom Keys are the tokens in the script that don't survive into the resolved text (an extra letter and the Backspace that removes it, a lone Escape, a tap of Ctrl).
+
+**Token rules (A-14.1).** A keydown produces a token when all three hold: (1) it has an ASCII code, (2) it does not move focus, (3) it is not a chord.
+| Token class | Encoding | Notes |
+|---|---|---|
+| Printable ASCII 0x20–0x7E | the character | Shift held to produce a capital yields the uppercase character; Shift is not a separate token in that case |
+| Backspace | U+0008 | |
+| Delete | U+007F | |
+| Escape | U+001B | Capture must `preventDefault` so it doesn't close a popup |
+| Lone modifier tap (down/up with no other key while held) | U+E000 Shift, U+E001 Ctrl, U+E002 Alt, U+E003 Meta, U+E004 CapsLock | Private-use code points; Alt alone can steal focus on some platforms — the blur rule below handles it |
+| Ctrl/Alt/Meta + key chords | — | **Cancel the sample** (`unsupported_combo`), reserved for a future feature |
+| Tab, Enter (terminator), arrows, Home/End/PageUp/PageDown, F-keys, Insert, paste/drop, IME composition | — | Cancel the sample (`unsupported_key`) |
+| Any `blur` on the field during capture | — | Cancel the sample (`focus_lost`). This is how "does not remove focus" is enforced without a per-OS key list |
+
+**Caret model (A-14.1, v1.2).** Every key that could move the caret cancels the sample, so **the caret is always at the end of the resolved text**. Therefore: Backspace removes the last resolved character, and is a no-op on resolved text when the field is empty (still a token either way); Delete at end-of-text is always a no-op, so **Delete is always a pure phantom**; Escape and lone modifier taps are likewise always pure phantoms. Resolution needs no caret tracking — it is a left-to-right fold over the token sequence.
+
+**Secrets (A-14.2).**
+- `masterKey = Argon2id(kdfInput, salt)` where `kdfInput = resolvedPassphrase` in Medium/Relaxed, and `kdfInput = resolvedPassphrase || U+0000 || script` in Strict. A wrong resolved passphrase therefore always fails, in every mode.
+- `phantomKey = HKDF(masterKey, "cypherkey/phantom/v1")`.
+- Script commitments: `c_i = HMAC-SHA256(phantomKey, token_i)` truncated to 16 bytes, for each token in order. The client sends `[c_1..c_n]` at enrollment (canonical) and at every login.
+- The server stores the canonical commitment sequence and compares at login (A-14.3). It cannot recover tokens (needs `phantomKey` → `masterKey` → passphrase). It can see the *equality pattern* of tokens (repeated characters hash identically). This is the disclosed leak; it reveals no token identities and no positions of phantoms relative to the resolved text.
+- **Commitments are static across sessions** — the same script always produces the same `[c_1..c_n]`. They therefore contribute *no* replay resistance of their own and rely entirely on the A-3 nonce and device signature for freshness. Do not mistake a matching commitment sequence for proof of a live typist.
+
+**Verification (A-14.3).**
+1. Server verifies `authHash` (fails hard on wrong passphrase).
+2. Server aligns canonical against login commitments (edit distance with path), counting `ins` (extra login tokens), `del` (canonical tokens absent) and `sub` separately — **not** as one symmetric number. See A-16 for why.
+3. Budget from the user's Strictness (A-16): `ins ≤ t` **and** `del + sub ≤ m`. Exceeding either → **fail** (counts toward lockout; never grey).
+4. Within budget, the alignment path drives rhythm scoring, per op:
+   - `match` — dwell, flight and digraph used as-is.
+   - `ins` — **bridge across it.** Drop the inserted token's dwell entirely (no feature, no weight), and recompute the flight and digraph that span it from the retained neighbours: `flight = next.down − prev.up`, `digraph = next.down − prev.down`. Nothing is neutralized, so a lone extra keystroke perturbs two values, not four.
+   - `del` — the missing dwell and **both** touching flight/digraph pairs are neutralized: feature score 0.5 at half weight.
+   - `sub` — timing features kept, position flagged.
+   Globals are recomputed from the **aligned** token set (post-bridge), so both sides of the comparison are `3·canonLen + 7`. Rhythm scoring then proceeds per A-4.4 on the aligned vector.
+5. Only if both script and rhythm pass is `serverShare` released.
+
+Errors that change the resolved text (a forgotten Backspace) are not "phantom errors": they fail at step 1. Tolerance therefore only ever forgives resolved-text-preserving slips, which is the intended behavior.
+
+**Enrollment.** The script is typed twice; both must be token-identical (client-side, constant-time compare) → canonical. Rhythm samples must match canonical exactly during enrollment (tolerance applies to login only, so the profile is clean). The client shows "12 keystrokes · 8 characters".
+
+**Display.** The field masks the *resolved* length. An observer sees 8 dots for a 12-keystroke script.
+
+**Switching Strictness** to or from Strict changes `kdfInput` and therefore `masterKey`: the client re-derives, re-wraps `vaultKey` (cheap, per A-1 principle 4), re-registers `authHash`, and re-sends commitments. Requires a step-up. Medium ↔ Relaxed changes only server-side tolerance.
+
+**Threat model deltas.**
+| Threat | Effect of Phantom Keys |
+|---|---|
+| Password leaked from another site / dark web, used online | Attacker must also guess the phantoms within `t`, under rate limiting → strong improvement in all modes |
+| Shoulder surfing | Sees resolved length only → improvement |
+| DB dump + leaked resolved passphrase | Medium/Relaxed: attacker can derive `phantomKey` and brute-force each commitment (~100 candidates per position) → phantoms add nothing here, but the vault was already lost in this scenario. Strict: `masterKey` needs the exact script → vault still protected. Say this on the Strictness screen |
+| Keylogger | Captures the script → unchanged, out of scope |
+
+## A-15. Build, size, and speed budget
+
+| Target | Budget | How |
+|---|---|---|
+| Server binary | single file via `bun build --compile --minify --target=bun`, < 60 MB incl. runtime | No `node_modules` shipped; Hono (~15 KB), Drizzle, `postgres`, Zod, `@noble/*` only |
+| Server container | `gcr.io/distroless/cc` or `oven/bun:alpine` runtime stage, < 100 MB, non-root | Multi-stage Dockerfile; binary copied in |
+| Cold start (Cloud Run) | < 300 ms to first response | Bun startup + lazy DB connect; no schema sync at boot (migrations run in CI/deploy job, not on start) |
+| Extension popup JS | < 250 KB gzipped, first paint < 100 ms | WXT/Vite code-splitting; Argon2 WASM (~50 KB) lazy-loaded on unlock screen only; no moment/lodash/heavy UI kits; Tailwind purged |
+| Site (cypherkey.io) | < 120 KB total, Lighthouse ≥ 95 | Vanilla TS demo, no framework |
+| Argon2id in browser | < 700 ms on a 2020 laptop | m=64 MiB, t=3; WASM with SIMD when available; show a progress affordance |
+| Login round trip | 500 ms floor (timing defense) + network; target p95 < 900 ms | Single DB transaction per login; score-history insert batched into it |
+
+Enforce with `scripts/size-check.ts` in CI (fails the build on regression). Add `bun build --analyze` output to PR summaries. Never add a dependency without stating its gzipped size in the PR.
+
+**Database decision (recorded):** Postgres for hosted, SQLite for self-host, one Drizzle schema. Firestore was evaluated and rejected: no Drizzle support (two data layers), per-operation pricing that spikes under login/sync/nonce churn, hot-document contention for counters. For pre-launch scale-to-zero, Neon's Postgres free tier is acceptable from Cloud Run with no code change; move to Cloud SQL when there is revenue or a residency requirement.
+
+## A-16. Strictness setting (one control for phantoms and rhythm)
+
+Stored in `users.thresholds_json`; changed via `PATCH /user/settings` with a fresh step-up flag. Three positions; **Medium is the default**.
+
+**Why the budget is asymmetric (v1.2).** A symmetric edit distance cannot express what we actually want. The benign slip — you fumble a key and correct it — is an *insertion* of two tokens (`x` then `⌫`). The attack — someone holds your leaked resolved passphrase and types only that — is a *deletion* of your phantoms. With two phantoms, both are distance 2. Any symmetric threshold that forgives your typo also admits the attacker. So insertions and deletions are budgeted separately: extra keystrokes are cheap, missing ones are not.
+
+The rule in one sentence: **everything you enrolled must still be there, in order; you are allowed up to `t` extra keystrokes on top.**
+
+| Level | Extra tokens `t` (n = canonical script length) | Missing/changed `m` | Rhythm pass / grey | KDF input | Who it's for |
+|---|---|---|---|---|---|
+| **Strict** | 0 | 0 | 0.70 / 0.55 | resolved ‖ script | Power users, Precision Mode keyboards, people who want phantoms to protect the vault even in a breach |
+| **Medium** (default) | `max(2, floor(n/6))` | **0** | 0.62 / 0.45 | resolved | Everyone |
+| **Relaxed** | `max(4, floor(n/3))` | **1** | 0.55 / 0.40 | resolved | Accessibility, people with variable typing, new keyboards |
+
+Worked examples: n=10 → Medium `t`=2, Relaxed `t`=4. n=12 → 2 / 4. n=25 → 4 / 8.
+
+At **Medium**, one typo-and-correct (`x⌫`, two insertions) is forgiven, a lone stray Escape or Ctrl tap is forgiven, and *no* missing or altered token ever is. At **Relaxed** one missing Phantom Key is also forgiven — so a Relaxed user with fewer than two phantoms gets no phantom protection against a leaked resolved passphrase. Say that on the Strictness screen.
+
+**Minimum phantoms.** Because Relaxed forgives one deletion, phantom protection is only meaningful from **two phantoms up**. Enrollment warns below two and blocks at zero. The passphrase floor is unchanged and lives in `03` X-2 (≥ 12 resolved characters, zxcvbn ≥ 3/4); phantoms only ever add tokens, so the script is always at least that long.
+
+UI: a three-position slider labeled Strict · Medium · Relaxed with one sentence under each. Changing to Strict shows the "this changes your master key; keep your Recovery Kit handy" warning and requires step-up. Rhythm and phantom thresholds may be split into two sliders later if beta data says users want them independent; keep one control until then.

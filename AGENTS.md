@@ -69,4 +69,12 @@ scripts/     e2e, migrations, release
 
 ## Words
 
-Product name is **CypherKey** (spelled with y, never i). Env vars are `CYPHERKEY_*`. The biometric profile is "your Rhythm." The capture indicator is "the Rhythm Light." Passive enrollment is "Progressive Enrollment" (never "silent").
+Product name is **CypherKey** (never CipherKey). Env vars are `CYPHERKEY_*`. The biometric profile is "your Rhythm." The capture indicator is "the Rhythm Light." Passive enrollment is "Progressive Enrollment" (never "silent").
+
+## Phantom Keys (read before touching passphrase input, KDF, enrollment, login, or scoring)
+
+The **resolved passphrase** is the KDF input (plus the exact script in Strict mode). The **script** (all tokens per docs/02 A-14.1, including Backspace, Delete, Escape, and lone modifier taps) is verified separately through per-token HMAC commitments compared server-side with edit-distance tolerance from the user's Strictness (A-16). Never send tokens, the script, or the resolved passphrase to the server; only `authHash` and commitments. Never reject Backspace from samples. Chords (Ctrl/Alt/Meta+key), Tab, Enter, arrows, paste, and any `blur` cancel a sample — they are user-facing retries, not errors. Rhythm scoring on a login whose script length differs from the profile must use the alignment path from the commitment comparison (A-14.3); never truncate or pad vectors.
+
+## Size discipline
+
+Every PR states the gzipped size delta. CI fails on budget regression (docs/02 A-15). Prefer `@noble/*`, Hono, and hand-written code over general-purpose libraries. Lazy-load Argon2 WASM. No dependency additions without the ticket naming them.

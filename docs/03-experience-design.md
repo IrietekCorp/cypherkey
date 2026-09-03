@@ -17,9 +17,9 @@ Sections are numbered X-n; tickets reference them.
 ## X-2. Enrollment and first run (target: under 3 minutes)
 
 1. Install extension → welcome screen with the one-liner and the 2010 story in one sentence.
-2. Choose a passphrase. Show zxcvbn strength, require ≥ 3/4 and ≥ 12 chars. Suggest a 4-word passphrase generator ("correct-horse" style) — long passphrases give the rhythm model more features and are easier to type consistently.
+2. Choose a passphrase, typed twice exactly the same way — including any Phantom Keys (an extra letter you delete, a lone Escape, a tap of Ctrl). Show "12 keystrokes · 8 characters" so the user sees the phantoms counted. Strictness defaults to Medium; mention it exists, don't make them choose now. Show zxcvbn strength, require ≥ 3/4 and ≥ 12 chars. Suggest a 4-word passphrase generator ("correct-horse" style) — long passphrases give the rhythm model more features and are easier to type consistently.
 3. **Recovery Kit** generated and shown *once*: a 32-character code plus a printable PDF (M2). The user must confirm "I saved it" and re-enter 4 characters of it to continue. This is the only way back without the passphrase.
-4. **Teach the rhythm:** type the passphrase 8 times. The light pulses; a progress ring fills. Copy: "Type it the way you normally would — don't try to be perfect. Consistency beats speed." Samples with backspaces are silently discarded and the count doesn't advance (show "Let's try that one again").
+4. **Teach the rhythm:** type the script 8 times — the whole thing, Phantom Keys included. The light pulses; a progress ring fills. Copy: "Type it the way you normally would — don't try to be perfect. Consistency beats speed." Backspaces are legitimate keystrokes and are never discarded. The retry condition is a **script mismatch**: if a sample's tokens don't match the canonical script exactly, the count doesn't advance (show "That one came out different — let's try again"). Tolerance is a login-time affordance only, so the profile is built from clean samples.
 5. **The party trick:** "Want to see it work? Have a friend type your passphrase." A one-time demo screen that scores a sample against the fresh profile and shows the score without granting access. This is the moment people screenshot.
 6. Done. Vault is empty; offer import from Bitwarden/1Password/Chrome CSV (M2).
 
@@ -68,6 +68,7 @@ The rule: **the user should never be locked out by their own body.** A bad day, 
 
 | Feature | Milestone | Why it matters |
 |---|---|---|
+| **Phantom Keys** — corrections and extra keys are part of the secret; field shows only the resolved length | M1 | Unique; a leaked password from elsewhere is missing your phantoms |
 | **Rhythm Light** with per-key pulse | M0 | Consent as delight; the thing people notice first |
 | **Party Trick** (friend types your passphrase, fails) | M0 (web demo), M2 (in-app) | The viral loop; screenshots and short video |
 | **Rhythm Signature** — a private waveform of your dwell/flight pattern in settings | M3 | "Show me my fingerprint." Private only; never shareable (it's biometric data) |
@@ -89,3 +90,12 @@ Plain, warm, a little playful, never smug. Explain limits in one sentence, never
 - Rhythm requires typing; users who use dictation or on-screen keyboards can turn it off permanently (not just Pause) with a step-up factor as their second factor. Say this in onboarding.
 - Light has an ARIA live region announcing "listening" / "matched" / "different today."
 - Reduced-motion: the pulse becomes a color change.
+
+## X-10. Strictness slider
+
+Settings → Security → "How strict should CypherKey be?" Three stops:
+- **Strict** — "Every keystroke must match, including Phantom Keys, and they become part of your master key. Best protection, least forgiving." (Changing to this shows: "This rotates your master key. Keep your Recovery Kit nearby.")
+- **Medium** (default) — "A small slip in your Phantom Keys is forgiven — about one per ten keystrokes. A wrong passphrase never is."
+- **Relaxed** — "More forgiving on both rhythm and Phantom Keys. Good while you're on a new keyboard or recovering."
+
+Any change requires a step-up. The Rhythm Light tooltip reflects the level ("Medium strictness").
