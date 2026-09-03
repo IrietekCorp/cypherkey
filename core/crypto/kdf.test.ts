@@ -1,7 +1,8 @@
 import { describe, expect, spyOn, test } from 'bun:test';
-import { argon2id } from '@noble/hashes/argon2';
+import { argon2id as nobleArgon2id } from '@noble/hashes/argon2';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
+import { argon2id } from 'hash-wasm';
 import { ARGON_PARAMS, deriveMasterKey, deriveSubkey, randomBytes } from './kdf';
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
@@ -11,10 +12,13 @@ const FAST = { m: 256, t: 1, p: 1 } as const;
 const SALT = new Uint8Array(16).fill(7);
 
 describe('known-answer vectors for the primitives underneath', () => {
-  // RFC 9106 §5.3 Argon2id test vector. Proves @noble/hashes computes real Argon2id,
-  // which is the part a wrapper cannot self-verify.
-  test('Argon2id matches RFC 9106', () => {
-    const out = argon2id(new Uint8Array(32).fill(1), new Uint8Array(16).fill(2), {
+  // RFC 9106 §5.3. This vector uses a secret AND associated data; hash-wasm exposes
+  // `secret` but has no `ad` parameter, so the vector cannot be computed by our
+  // production implementation. It is verified against @noble instead, which anchors
+  // the algorithm; the two tests below then tie hash-wasm to that anchor for the
+  // no-secret, no-ad shape we actually use. See the M1-03 notes.
+  test('Argon2id matches RFC 9106 §5.3 (via @noble — hash-wasm has no `ad`)', () => {
+    const out = nobleArgon2id(new Uint8Array(32).fill(1), new Uint8Array(16).fill(2), {
       t: 3,
       m: 32,
       p: 4,
@@ -24,6 +28,37 @@ describe('known-answer vectors for the primitives underneath', () => {
       personalization: new Uint8Array(12).fill(4),
     });
     expect(hex(out)).toBe('0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659');
+  });
+
+  // A direct known-answer test for the implementation we actually ship: the
+  // phc-winner-argon2 reference CLI vector, `-id -t 2 -m 16 -p 1`, no secret, no ad.
+  test('hash-wasm Argon2id matches the phc-winner-argon2 reference vector', async () => {
+    const out = await argon2id({
+      password: bytes('password'),
+      salt: bytes('somesalt'),
+      iterations: 2,
+      parallelism: 1,
+      memorySize: 65536,
+      hashLength: 32,
+      outputType: 'binary',
+    });
+    expect(hex(out)).toBe('09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7');
+  });
+
+  // Ties the shipped implementation to the RFC-anchored one on our own parameter shape.
+  test('hash-wasm and @noble agree on Argon2id at our parameters', async () => {
+    const input = bytes('correct horse battery staple');
+    const fromWasm = await argon2id({
+      password: input,
+      salt: SALT,
+      iterations: FAST.t,
+      parallelism: FAST.p,
+      memorySize: FAST.m,
+      hashLength: 32,
+      outputType: 'binary',
+    });
+    const fromNoble = nobleArgon2id(input, SALT, { ...FAST, dkLen: 32, version: 0x13 });
+    expect(hex(fromWasm)).toBe(hex(fromNoble));
   });
 
   // RFC 5869 Test Case 1, HKDF-SHA256.
@@ -67,7 +102,17 @@ describe('frozen vectors for our own wrappers', () => {
   test('deriveMasterKey is Argon2id over the documented parameters', async () => {
     const input = bytes('correct horse battery staple');
     expect(hex(await deriveMasterKey(input, SALT, FAST))).toBe(
-      hex(argon2id(input, SALT, { ...FAST, dkLen: 32, version: 0x13 })),
+      hex(
+        await argon2id({
+          password: input,
+          salt: SALT,
+          iterations: FAST.t,
+          parallelism: FAST.p,
+          memorySize: FAST.m,
+          hashLength: 32,
+          outputType: 'binary',
+        }),
+      ),
     );
   });
 

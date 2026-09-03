@@ -35,7 +35,13 @@ vaultKey encrypts every vault item:  AES-256-GCM(item, vaultKey, nonce=random 12
 recoveryKey (32B random, shown once as Recovery Kit) → wraps the FULL vaultKey, not the share
 ```
 
-Rationale for Argon2id over PBKDF2: memory-hard, resists GPU cracking, and the salt is random rather than the username. In the extension use `argon2-browser` (WASM) or the WebCrypto-free `@noble/hashes` Argon2 implementation; in Bun use the built-in `Bun.password` for server-side hashing and `@noble/hashes` for parity in `core/`.
+Rationale for Argon2id over PBKDF2: memory-hard, resists GPU cracking, and the salt is random rather than the username.
+
+**One Argon2 implementation, everywhere (decided, v1.2).** `core/` uses **`hash-wasm`** (`argon2id`) in the browser, in the extension and under Bun. Tests therefore exercise the same compiled code the extension ships, so a green test is evidence about production rather than about a second implementation that merely agrees today. `argon2-browser` and the pure-JS `@noble/hashes` Argon2 path are both withdrawn. `@noble/hashes` stays, and is the only source of HKDF, HMAC and SHA-256. The server still hashes `authHash` with `Bun.password`; that is a server-side verifier, not part of the client key hierarchy.
+
+Measured on the reference machine: `hash-wasm` at m=64 MiB, t=3, p=1 takes **~175 ms**, against **~1,010 ms** for the pure-JS path it replaces. The A-15 budget is 700 ms on a 2020 laptop.
+
+**Argon2 parameters are per account.** `m`, `t` and `p` are recorded alongside `userSalt` and returned by `GET /auth/salt`, so an account keeps the parameters it was created with and a global default change never locks anyone out. Raising them for an existing user changes `masterKey` and is therefore a **re-key**, not a settings edit: it runs the same flow as switching to Strict (M1-17c) — re-derive, re-wrap `vaultKey`, re-register `authHash`, re-send commitments, bump `key_version` — and requires a step-up.
 
 **Why authHash is hashed again on the server:** if the DB leaks, an attacker gets `Argon2id(authHash)`, which cannot be replayed as `authHash`.
 
@@ -309,9 +315,9 @@ Errors that change the resolved text (a forgotten Backspace) are not "phantom er
 | Server binary | single file via `bun build --compile --minify --target=bun`, < 60 MB incl. runtime | No `node_modules` shipped; Hono (~15 KB), Drizzle, `postgres`, Zod, `@noble/*` only |
 | Server container | `gcr.io/distroless/cc` or `oven/bun:alpine` runtime stage, < 100 MB, non-root | Multi-stage Dockerfile; binary copied in |
 | Cold start (Cloud Run) | < 300 ms to first response | Bun startup + lazy DB connect; no schema sync at boot (migrations run in CI/deploy job, not on start) |
-| Extension popup JS | < 250 KB gzipped, first paint < 100 ms | WXT/Vite code-splitting; Argon2 WASM (~50 KB) lazy-loaded on unlock screen only; no moment/lodash/heavy UI kits; Tailwind purged |
+| Extension popup JS | < 250 KB gzipped, first paint < 100 ms | WXT/Vite code-splitting; `hash-wasm` Argon2 module (11.6 KB gzipped, measured) fetched and compiled when the popup opens, in parallel with passphrase entry; no moment/lodash/heavy UI kits; Tailwind purged |
 | Site (cypherkey.io) | < 120 KB total, Lighthouse ≥ 95 | Vanilla TS demo, no framework |
-| Argon2id in browser | < 700 ms on a 2020 laptop | m=64 MiB, t=3; WASM with SIMD when available; show a progress affordance |
+| Argon2id in browser | < 700 ms on a 2020 laptop | `hash-wasm` at m=64 MiB, t=3, p=1 — measured ~175 ms under Bun on the reference machine. Runs in a Web Worker, never on the popup main thread; module compiled during passphrase entry so the cost at submit is the hash alone; show a progress affordance |
 | Login round trip | 500 ms floor (timing defense) + network; target p95 < 900 ms | Single DB transaction per login; score-history insert batched into it |
 
 Enforce with `scripts/size-check.ts` in CI (fails the build on regression). Add `bun build --analyze` output to PR summaries. Never add a dependency without stating its gzipped size in the PR.

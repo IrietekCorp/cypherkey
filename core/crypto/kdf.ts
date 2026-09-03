@@ -1,11 +1,16 @@
-import { argon2id } from '@noble/hashes/argon2';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha256 } from '@noble/hashes/sha2';
+import { argon2id } from 'hash-wasm';
 
 /** Argon2id cost parameters. `m` is memory in KiB. */
 export type ArgonParams = { m: number; t: number; p: number };
 
-/** docs/02 A-2: m=64 MiB, t=3, p=1. Overridden only by tests that are not measuring strength. */
+/**
+ * docs/02 A-2 defaults: m=64 MiB, t=3, p=1. These are recorded per account alongside
+ * the salt, so an existing account keeps the parameters it was created with; changing
+ * them for a user is a re-key, not an edit (A-2, M1-17c). Overridden here only by tests
+ * that are not measuring strength.
+ */
 export const ARGON_PARAMS: ArgonParams = { m: 65536, t: 3, p: 1 };
 
 /** Every key in the hierarchy is 32 bytes. */
@@ -17,14 +22,16 @@ export const SALT_BYTES = 16;
 /** The HKDF labels of A-2 and A-14.2. One master key, three separated children. */
 export type SubkeyInfo = 'cypherkey/auth/v1' | 'cypherkey/wrap/v1' | 'cypherkey/phantom/v1';
 
-const ARGON_VERSION = 0x13;
-
 /**
  * Derives the 32-byte master key from KDF input bytes and the user's salt.
  *
  * Takes bytes rather than a string because Strict mode feeds it
  * `resolved ‖ 0x00 ‖ script` (A-14.2), which is not a valid string boundary.
  * Rejections name the offending argument and never its contents.
+ *
+ * Argon2id comes from `hash-wasm`, the one WASM implementation used everywhere:
+ * Bun, the browser and the extension run identical code, so a test that passes
+ * here is evidence about production (A-2, A-15).
  */
 export async function deriveMasterKey(
   kdfInput: Uint8Array,
@@ -41,12 +48,14 @@ export async function deriveMasterKey(
     throw new Error('deriveMasterKey: Argon2id parameters are out of range');
   }
 
-  return argon2id(kdfInput, salt, {
-    m: params.m,
-    t: params.t,
-    p: params.p,
-    dkLen: KEY_BYTES,
-    version: ARGON_VERSION,
+  return argon2id({
+    password: kdfInput,
+    salt,
+    iterations: params.t,
+    parallelism: params.p,
+    memorySize: params.m,
+    hashLength: KEY_BYTES,
+    outputType: 'binary',
   });
 }
 

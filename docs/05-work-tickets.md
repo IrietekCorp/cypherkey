@@ -165,7 +165,12 @@ Use **WXT** (MV3, Chrome + Firefox, React + TypeScript). One ticket per screen o
 
 | ID | Title | Size | Notes |
 |---|---|---|---|
-| M2-01 | WXT scaffold, popup/options/background/content scripts, Tailwind, storage abstraction implementing `core/client` storage interface | M | |
+| M2-01 | WXT scaffold, popup/options/background/content scripts, Tailwind, storage abstraction implementing `core/client` storage interface | M | Argon2/WASM requirements below |
+
+**M2-01 additional spec (Argon2 via `hash-wasm`, decided in M1-03):**
+1. The manifest's `content_security_policy.extension_pages` must include `'wasm-unsafe-eval'`, or the WASM module will not instantiate under MV3.
+2. The KDF runs in a **Web Worker**, never on the popup main thread — a ~175 ms hash on the main thread janks the unlock screen and blocks the Rhythm Light's per-keystroke pulse.
+3. Fetch and compile the Argon2 module **when the popup opens**, in parallel with passphrase entry, not lazily on submit. The module is 11.6 KB gzipped; compiling it during typing makes the cost at submit the hash alone.
 | M2-02 | `<RhythmLight/>` React component wrapping `startCapture`; pulse, bands, tooltip, ARIA | M | X-1 |
 | M2-03 | Onboarding: passphrase + zxcvbn + generator | M | X-2 |
 | M2-04 | Recovery Kit screen with "type 4 chars back" confirmation; printable view | M | X-2, M1-06 |
