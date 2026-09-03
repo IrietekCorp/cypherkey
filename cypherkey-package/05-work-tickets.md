@@ -33,11 +33,11 @@ Read AGENTS.md first and follow it exactly. Work only on the ticket below. Do no
 # M0 — Demo Day (Sept 14)
 
 ### M0-01 · Repo hygiene and naming · S · deps: none
-**Files:** modify README.md, package.json, all files containing `CipherKey`/`CIPHERKEY`; create `docs/02-architecture-and-threat-model.md`, `docs/03-experience-design.md` (copied from this package), `AGENTS.md`, `SECURITY.md`, `LICENSE-SERVER` (AGPL), `LICENSE-CLIENT` (MIT).
-**Acceptance:** `grep -ri cipherkey .` returns nothing outside `CHANGELOG.md`. README first screen: one-liner, origin story (3 sentences), "How it's safe" (5 bullets from A-11), architecture ASCII diagram, license table, roadmap table.
+**Files:** modify README.md, package.json, all files containing `legacy names with an i`; create `docs/02-architecture-and-threat-model.md`, `docs/03-experience-design.md` (copied from this package), `AGENTS.md`, `SECURITY.md`, `LICENSE-SERVER` (AGPL), `LICENSE-CLIENT` (MIT).
+**Acceptance:** `grep -ri <legacy-name-with-i> .` returns nothing outside `CHANGELOG.md`. README first screen: one-liner, origin story (3 sentences), "How it's safe" (5 bullets from A-11), architecture ASCII diagram, license table, roadmap table.
 **Prompt:**
 ```
-Ticket M0-01. Rename every occurrence of CipherKey/CIPHERKEY/cipherkey to CypherKey/CYPHERKEY/cypherkey across the repo (case-preserving). Rewrite README.md using the structure in docs/00-README-structure.txt [paste the Acceptance bullets here]. Add SECURITY.md with a responsible-disclosure policy (email security@cypherkey.io, 90-day disclosure, no bounty yet). Add AGENTS.md from the provided text. Do not change any TypeScript logic.
+Ticket M0-01. Rename every occurrence of legacy names with an i to CypherKey/CYPHERKEY/cypherkey to CypherKey/CYPHERKEY/cypherkey across the repo (case-preserving). Rewrite README.md using the structure in docs/00-README-structure.txt [paste the Acceptance bullets here]. Add SECURITY.md with a responsible-disclosure policy (email security@cypherkey.io, 90-day disclosure, no bounty yet). Add AGENTS.md from the provided text. Do not change any TypeScript logic.
 ```
 
 ### M0-02 · Extract pure feature extraction into `core/biometrics/features.ts` · M · deps: M0-01 · refs A-4.2

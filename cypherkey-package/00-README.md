@@ -20,7 +20,7 @@
 
 ## The five decisions this package locks in
 
-1. **Name: CypherKey** (matches the domain). All code, env vars, and copy use `cypherkey` / `CYPHERKEY_*`. The `CIPHERKEY_*` variants are removed in ticket M1-01.
+1. **Name: CypherKey** (matches the domain). All code, env vars, and copy use `cypherkey` / `CYPHERKEY_*`. The legacy legacy spelling (with an i) variants are removed in ticket M1-01.
 2. **Zero-knowledge vault.** The server can never decrypt a vault. No email password reset. Recovery via a user-held Recovery Kit.
 3. **The Rhythm Light.** No keystroke timing is ever captured without a visible indicator. Consent is explicit, disclosed, and a selling point. "Silent pre-collection" is renamed **Progressive Enrollment** everywhere.
 4. **Honest claim.** Typing rhythm is a *frictionless second signal* that makes stolen passwords useless on their own. It complements passkeys; it does not replace phishing-resistant auth. We never say "unhackable."

@@ -69,4 +69,4 @@ scripts/     e2e, migrations, release
 
 ## Words
 
-Product name is **CypherKey** (never CipherKey). Env vars are `CYPHERKEY_*`. The biometric profile is "your Rhythm." The capture indicator is "the Rhythm Light." Passive enrollment is "Progressive Enrollment" (never "silent").
+Product name is **CypherKey** (spelled with y, never i). Env vars are `CYPHERKEY_*`. The biometric profile is "your Rhythm." The capture indicator is "the Rhythm Light." Passive enrollment is "Progressive Enrollment" (never "silent").
