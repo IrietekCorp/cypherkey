@@ -8,8 +8,10 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
+    "dev": "vite site",
     "dev:site": "vite site",
-    "build:site": "vite build"
+    "build:site": "vite build",
+    "preview:site": "vite preview"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",
