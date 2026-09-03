@@ -10,8 +10,8 @@
     "lint:fix": "biome check --write .",
     "dev": "vite site",
     "dev:site": "vite site",
-    "build:site": "vite build",
-    "preview:site": "vite preview"
+    "build:site": "vite build site",
+    "preview:site": "vite preview site"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",
