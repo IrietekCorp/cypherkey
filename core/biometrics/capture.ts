@@ -10,6 +10,9 @@ const MODIFIER_KEYS = new Set([
   'CapsLock',
   'NumLock',
   'ScrollLock',
+  'Enter',
+  'Tab',
+  'Escape',
 ]);
 
 /**

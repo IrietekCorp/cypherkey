@@ -1,3 +1,5 @@
+import './styles.css';
+
 import { startCapture } from '../core/biometrics/capture';
 import { extractFeatures } from '../core/biometrics/features';
 import { band, buildProfile, score } from '../core/biometrics/score';
@@ -47,8 +49,10 @@ const setupError = document.getElementById('setup-error') as HTMLElement;
 const enrollCurrentStep = document.getElementById('enroll-current-step') as HTMLElement;
 const enrollTargetPhrase = document.getElementById('enroll-target-phrase') as HTMLElement;
 const enrollDotsContainer = document.getElementById('enroll-dots-container') as HTMLElement;
+const enrollKeyCounter = document.getElementById('enroll-key-counter') as HTMLElement;
 const inputEnroll = document.getElementById('input-enroll') as HTMLInputElement;
 const rhythmLight = document.getElementById('rhythm-light') as HTMLElement;
+const rhythmMiniBars = document.getElementById('rhythm-mini-bars') as HTMLElement;
 const enrollFeedback = document.getElementById('enroll-feedback') as HTMLElement;
 const btnSubmitEnrollSample = document.getElementById(
   'btn-submit-enroll-sample',
@@ -61,16 +65,20 @@ const btnGotoChallenge = document.getElementById('btn-goto-challenge') as HTMLBu
 
 // Step 4: Challenge Friend Elements
 const friendTargetPhrase = document.getElementById('friend-target-phrase') as HTMLElement;
+const friendKeyCounter = document.getElementById('friend-key-counter') as HTMLElement;
 const inputChallengeFriend = document.getElementById('input-challenge-friend') as HTMLInputElement;
 const rhythmLightFriend = document.getElementById('rhythm-light-friend') as HTMLElement;
+const friendMiniBars = document.getElementById('friend-mini-bars') as HTMLElement;
 const friendFeedback = document.getElementById('friend-feedback') as HTMLElement;
 const btnSubmitFriendChallenge = document.getElementById(
   'btn-submit-friend-challenge',
 ) as HTMLButtonElement;
 
 // Step 5: Challenge You Elements
+const youKeyCounter = document.getElementById('you-key-counter') as HTMLElement;
 const inputChallengeYou = document.getElementById('input-challenge-you') as HTMLInputElement;
 const rhythmLightYou = document.getElementById('rhythm-light-you') as HTMLElement;
+const youMiniBars = document.getElementById('you-mini-bars') as HTMLElement;
 const youFeedback = document.getElementById('you-feedback') as HTMLElement;
 const btnSubmitYouChallenge = document.getElementById(
   'btn-submit-you-challenge',
@@ -92,13 +100,23 @@ const emailForm = document.getElementById('email-form') as HTMLFormElement;
 const emailConfirmation = document.getElementById('email-confirmation') as HTMLElement;
 
 /**
- * Triggers a visual pulse animation on a Rhythm Light element.
+ * Triggers a visual pulse animation on a Rhythm Light element and companion wave bars.
  */
-function triggerPulse(lightEl: HTMLElement) {
-  lightEl.classList.remove('pulse-active');
-  // force reflow
-  void lightEl.offsetWidth;
-  lightEl.classList.add('pulse-active');
+function triggerPulse(lightEl: HTMLElement, barsEl?: HTMLElement) {
+  lightEl.classList.remove('rhythm-pulse-active');
+  void lightEl.offsetWidth; // force reflow
+  lightEl.classList.add('rhythm-pulse-active');
+
+  if (barsEl) {
+    const bars = barsEl.querySelectorAll('.rhythm-wave-bar');
+    for (const bar of bars) {
+      const scale = 0.5 + Math.random() * 1.3;
+      (bar as HTMLElement).style.transform = `scaleY(${scale})`;
+      setTimeout(() => {
+        (bar as HTMLElement).style.transform = 'scaleY(0.5)';
+      }, 150);
+    }
+  }
 }
 
 /**
@@ -162,22 +180,25 @@ function setState(newState: DemoState) {
 }
 
 /**
- * Renders the 8 progress indicator dots for enrollment.
+ * Renders the 8 progress indicator pills for enrollment.
  */
 function renderEnrollDots() {
   enrollDotsContainer.innerHTML = '';
   for (let i = 0; i < 8; i++) {
-    const dot = document.createElement('span');
-    const isPassed = i < enrollmentSamples.length;
+    const pill = document.createElement('span');
+    const isCompleted = i < enrollmentSamples.length;
     const isCurrent = i === enrollmentSamples.length;
-    let stateClasses = 'bg-transparent border-slate-700';
-    if (isPassed) {
-      stateClasses = 'bg-teal-400 border-teal-400 shadow-[0_0_6px_#14b8a6]';
+
+    let styles = 'bg-slate-100 border-slate-300 text-slate-400';
+    if (isCompleted) {
+      styles = 'bg-teal-600 border-teal-600 text-white font-bold shadow-xs';
     } else if (isCurrent) {
-      stateClasses = 'bg-transparent border-teal-400 animate-pulse scale-110';
+      styles = 'bg-white border-teal-600 text-teal-700 ring-2 ring-teal-500/20 font-bold';
     }
-    dot.className = `w-2.5 h-2.5 rounded-full border transition-all duration-300 ${stateClasses}`;
-    enrollDotsContainer.appendChild(dot);
+
+    pill.className = `w-6 h-6 rounded-full border text-[10px] flex items-center justify-center transition-all duration-200 ${styles}`;
+    pill.textContent = isCompleted ? '✓' : String(i + 1);
+    enrollDotsContainer.appendChild(pill);
   }
 }
 
@@ -191,7 +212,8 @@ function prepareEnrollSample() {
   }
 
   inputEnroll.value = '';
-  enrollFeedback.className = 'text-xs font-medium px-1 py-1 rounded hidden';
+  enrollKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
+  enrollFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
   enrollFeedback.textContent = '';
   enrollCurrentStep.textContent = String(enrollmentSamples.length + 1);
 
@@ -199,7 +221,10 @@ function prepareEnrollSample() {
 
   try {
     activeCapture = startCapture(inputEnroll, rhythmLight, {
-      onPulse: () => triggerPulse(rhythmLight),
+      onPulse: () => {
+        triggerPulse(rhythmLight, rhythmMiniBars);
+        enrollKeyCounter.textContent = `${inputEnroll.value.length} / ${targetPassphrase.length} keys`;
+      },
     });
   } catch (err) {
     console.error('Failed to start capture:', err);
@@ -215,13 +240,19 @@ function handleEnrollSampleSubmit() {
   if (!activeCapture) return;
 
   const typed = inputEnroll.value;
-  const events = activeCapture.stop();
+  const rawEvents = activeCapture.stop();
   activeCapture = null;
+
+  // Filter out any control keys (Enter, Tab, Escape)
+  const events = rawEvents.filter(
+    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+  );
 
   if (typed !== targetPassphrase) {
     enrollFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
-    enrollFeedback.textContent = 'Passphrase does not match target. Please type the exact phrase.';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
+    enrollFeedback.textContent =
+      'Passphrase characters do not match target. Please type the exact phrase.';
     enrollFeedback.classList.remove('hidden');
     prepareEnrollSample();
     return;
@@ -231,10 +262,10 @@ function handleEnrollSampleSubmit() {
 
   if ('error' in result) {
     enrollFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
     if (result.error === 'backspace') {
       enrollFeedback.textContent =
-        'Backspace detected — sample discarded. Consistency beats speed, try again!';
+        'Backspace detected — sample discarded. Consistency beats speed, try that one again!';
     } else if (result.error === 'length_mismatch') {
       enrollFeedback.textContent = 'Length mismatch. Please type the full phrase smoothly.';
     } else {
@@ -256,8 +287,8 @@ function handleEnrollSampleSubmit() {
     setTimeout(() => setState('built'), 400);
   } else {
     enrollFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-teal-500/10 text-teal-300 border border-teal-500/20';
-    enrollFeedback.textContent = `Sample ${enrollmentSamples.length} recorded! Next sample...`;
+      'text-xs font-medium px-3 py-2 rounded-lg bg-teal-50 text-teal-800 border border-teal-200';
+    enrollFeedback.textContent = `✓ Sample ${enrollmentSamples.length} recorded! Next sample...`;
     enrollFeedback.classList.remove('hidden');
     setTimeout(() => prepareEnrollSample(), 350);
   }
@@ -273,13 +304,17 @@ function prepareChallengeFriend() {
   }
 
   inputChallengeFriend.value = '';
-  friendFeedback.className = 'text-xs font-medium px-1 py-1 rounded hidden';
+  friendKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
+  friendFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
   friendFeedback.textContent = '';
   rhythmLightFriend.className = 'rhythm-light-dot listening';
 
   try {
     activeCapture = startCapture(inputChallengeFriend, rhythmLightFriend, {
-      onPulse: () => triggerPulse(rhythmLightFriend),
+      onPulse: () => {
+        triggerPulse(rhythmLightFriend, friendMiniBars);
+        friendKeyCounter.textContent = `${inputChallengeFriend.value.length} / ${targetPassphrase.length} keys`;
+      },
     });
   } catch (err) {
     console.error('Failed to start friend capture:', err);
@@ -295,13 +330,17 @@ function handleFriendSubmit() {
   if (!activeCapture || !userProfile) return;
 
   const typed = inputChallengeFriend.value;
-  const events = activeCapture.stop();
+  const rawEvents = activeCapture.stop();
   activeCapture = null;
+
+  const events = rawEvents.filter(
+    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+  );
 
   if (typed !== targetPassphrase) {
     friendFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
-    friendFeedback.textContent = 'Friend must type the exact target passphrase.';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
+    friendFeedback.textContent = 'Friend must type the exact target passphrase for evaluation.';
     friendFeedback.classList.remove('hidden');
     prepareChallengeFriend();
     return;
@@ -310,7 +349,7 @@ function handleFriendSubmit() {
   const result = extractFeatures(events, targetPassphrase.length);
   if ('error' in result) {
     friendFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
     friendFeedback.textContent =
       'Sample discarded (e.g. backspace/malformed). Please type once more.';
     friendFeedback.classList.remove('hidden');
@@ -338,13 +377,17 @@ function prepareChallengeYou() {
   }
 
   inputChallengeYou.value = '';
-  youFeedback.className = 'text-xs font-medium px-1 py-1 rounded hidden';
+  youKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
+  youFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
   youFeedback.textContent = '';
   rhythmLightYou.className = 'rhythm-light-dot listening';
 
   try {
     activeCapture = startCapture(inputChallengeYou, rhythmLightYou, {
-      onPulse: () => triggerPulse(rhythmLightYou),
+      onPulse: () => {
+        triggerPulse(rhythmLightYou, youMiniBars);
+        youKeyCounter.textContent = `${inputChallengeYou.value.length} / ${targetPassphrase.length} keys`;
+      },
     });
   } catch (err) {
     console.error('Failed to start you capture:', err);
@@ -360,12 +403,16 @@ function handleYouSubmit() {
   if (!activeCapture || !userProfile) return;
 
   const typed = inputChallengeYou.value;
-  const events = activeCapture.stop();
+  const rawEvents = activeCapture.stop();
   activeCapture = null;
+
+  const events = rawEvents.filter(
+    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+  );
 
   if (typed !== targetPassphrase) {
     youFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
     youFeedback.textContent = 'Please type the exact target passphrase.';
     youFeedback.classList.remove('hidden');
     prepareChallengeYou();
@@ -375,7 +422,7 @@ function handleYouSubmit() {
   const result = extractFeatures(events, targetPassphrase.length);
   if ('error' in result) {
     youFeedback.className =
-      'text-xs font-medium px-2 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20';
+      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
     youFeedback.textContent = 'Sample discarded (e.g. backspace/malformed). Please type once more.';
     youFeedback.classList.remove('hidden');
     prepareChallengeYou();
@@ -405,22 +452,22 @@ function renderResults() {
   if (fBand === 'pass') {
     friendBandBadge.textContent = 'PASS';
     friendBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-teal-500/20 text-teal-300 border border-teal-500/30';
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-teal-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-teal-100 text-teal-800 border border-teal-300';
+    friendScoreDisplay.className = 'text-5xl font-extrabold text-teal-700 font-mono';
     friendExplanation.textContent =
-      'Unusually high rhythm similarity detected. In rare cases where another typist mimics your cadence, additional step-up factors provide security.';
+      'Rhythm showed high similarity. In edge cases with close cadences, step-up factors guarantee defense.';
   } else if (fBand === 'grey') {
     friendBandBadge.textContent = 'GREY';
     friendBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30';
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-amber-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300';
+    friendScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
     friendExplanation.textContent =
-      'Rhythm fell in the ambiguous grey band (0.45 - 0.62). Server requires a secondary step-up confirmation before releasing keys.';
+      'Rhythm fell in the grey threshold (0.45 - 0.62). Server demands step-up verification before releasing keys.';
   } else {
     friendBandBadge.textContent = 'FAIL';
     friendBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-red-500/20 text-red-400 border border-red-500/30';
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-red-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-rose-200/80 text-rose-800 border border-rose-300';
+    friendScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
     friendExplanation.textContent =
       'Rhythm significantly diverged from your baseline profile. Server refuses to release the secret share; vault remains locked.';
   }
@@ -433,24 +480,24 @@ function renderResults() {
   if (yBand === 'pass') {
     youBandBadge.textContent = 'PASS';
     youBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-teal-500/20 text-teal-300 border border-teal-500/30';
-    youScoreDisplay.className = 'text-5xl font-extrabold text-teal-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-teal-200/80 text-teal-800 border border-teal-300';
+    youScoreDisplay.className = 'text-5xl font-extrabold text-teal-700 font-mono';
     youExplanation.textContent =
       'Rhythm verified seamlessly against your profile. Vault key unwrapped instantly with zero extra steps or dongles.';
   } else if (yBand === 'grey') {
     youBandBadge.textContent = 'GREY';
     youBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30';
-    youScoreDisplay.className = 'text-5xl font-extrabold text-amber-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300';
+    youScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
     youExplanation.textContent =
-      'Your rhythm looks a little different today (fatigue, posture, or speed variance). Prompting for a single re-type or step-up.';
+      'Your rhythm looks slightly different today (speed or posture variance). Step-up fallback allows graceful entry.';
   } else {
     youBandBadge.textContent = 'FAIL';
     youBandBadge.className =
-      'px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wide bg-red-500/20 text-red-400 border border-red-500/30';
-    youScoreDisplay.className = 'text-5xl font-extrabold text-red-400 font-mono';
+      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-rose-200/80 text-rose-800 border border-rose-300';
+    youScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
     youExplanation.textContent =
-      'Rhythm did not match baseline. Our graceful degradation ladder offers passkey or recovery code fallback to ensure you are never locked out.';
+      'Rhythm did not match baseline. Our graceful degradation ladder offers passkey fallback so you are never locked out.';
   }
 }
 
