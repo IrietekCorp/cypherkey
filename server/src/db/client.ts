@@ -3,21 +3,20 @@ import { type BunSQLiteDatabase, drizzle as drizzleSqlite } from 'drizzle-orm/bu
 import { type PostgresJsDatabase, drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import type { DbConfig } from '../config';
-import * as schema from './schema';
-
-type Schema = typeof schema;
+import * as pgSchema from './schema/pg';
+import * as sqliteSchema from './schema/sqlite';
 
 /** One open database, with the dialect it speaks. A-1.5: one schema, two drivers, no forks. */
 export type Db =
   | {
       dialect: 'sqlite';
-      drizzle: BunSQLiteDatabase<Schema>;
+      drizzle: BunSQLiteDatabase<typeof sqliteSchema>;
       ping(): Promise<void>;
       close(): Promise<void>;
     }
   | {
       dialect: 'postgres';
-      drizzle: PostgresJsDatabase<Schema>;
+      drizzle: PostgresJsDatabase<typeof pgSchema>;
       ping(): Promise<void>;
       close(): Promise<void>;
     };
@@ -30,7 +29,7 @@ export function createDb(config: DbConfig): Db {
     client.exec('PRAGMA foreign_keys = ON;');
     return {
       dialect: 'sqlite',
-      drizzle: drizzleSqlite(client, { schema }),
+      drizzle: drizzleSqlite(client, { schema: sqliteSchema }),
       ping: async () => {
         client.query('select 1').get();
       },
@@ -43,7 +42,7 @@ export function createDb(config: DbConfig): Db {
   const client = postgres(config.url, { max: 10, onnotice: () => {} });
   return {
     dialect: 'postgres',
-    drizzle: drizzlePostgres(client, { schema }),
+    drizzle: drizzlePostgres(client, { schema: pgSchema }),
     ping: async () => {
       await client`select 1`;
     },

@@ -34,10 +34,11 @@ const envSchema = z.object({
 });
 
 /**
- * Splits `DATABASE_URL` into a driver choice, without ever quoting the URL back
+ * Splits `DATABASE_URL` into a driver choice (also used by drizzle-kit, which has no
+ * business needing JWT_SECRET), without ever quoting the URL back
  * on failure — it carries a password.
  */
-function parseDatabaseUrl(url: string): DbConfig {
+export function parseDatabaseUrl(url: string): DbConfig {
   if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
     return { dialect: 'postgres', url };
   }

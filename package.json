@@ -11,7 +11,11 @@
     "dev": "vite site",
     "dev:site": "vite site",
     "build:site": "vite build site",
-    "preview:site": "vite preview site"
+    "preview:site": "vite preview site",
+    "db:generate": "bunx drizzle-kit generate --config=server/drizzle.config.ts",
+    "db:generate:sqlite": "DATABASE_URL=sqlite://./cypherkey.db bun run db:generate",
+    "db:generate:postgres": "DATABASE_URL=postgres://localhost/cypherkey bun run db:generate",
+    "db:migrate": "bun server/src/db/migrate-cli.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",

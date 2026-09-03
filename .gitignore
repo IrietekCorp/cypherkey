@@ -6,3 +6,8 @@ site/dist/
 .env
 .env.*
 !.env.example
+
+# SQLite databases created by `bun run db:migrate` and by tests
+*.db
+*.db-wal
+*.db-shm
