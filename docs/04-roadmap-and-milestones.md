@@ -38,7 +38,7 @@ Solo founder, >10 hrs/week, AI-assisted. Dates assume ~15 hrs/week; the model do
 **Goal:** a password manager you would use yourself every day. 25 private beta users (friends, HN volunteers from the M0 email list).
 
 - Extension (Chrome MV3, WXT framework): onboarding, Recovery Kit, enrollment, unlock with Rhythm Light, vault list/search, add/edit, autofill, generator, lock/idle
-- Grey-band retype + step-up (recovery codes first; passkey/TOTP in M3)
+- Grey-band retype + step-up (Backup Codes first; passkey/TOTP in M3)
 - "Not your rhythm" email
 - Import from Bitwarden/Chrome CSV
 - Offline cache and sync per A-6/A-7

@@ -249,6 +249,7 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 | Hosted DB dump | Zero-knowledge: Argon2id(authHash), wrapped keys, random salts | Offline brute-force of weak passphrases; mitigated by Argon2id params + zxcvbn strength meter at signup |
 | Server secrets (`JWT_SECRET`) leaked with DB | Vault still unreadable; sessions forgeable until rotated | Rotate secret; refresh tokens in DB allow mass revoke |
 | Malicious server (hosted operator) | Cannot read vault; cannot forge device sig; can deny service or lie about scores | Users who care self-host — that's the AGPL promise |
+| TOTP secrets in a DB dump | Encrypted under `stepUpKey = HKDF(authHash, …)`, which is derivable only from a value the user supplies at auth; the DB holds `Argon2id(authHash)` and ciphertext (A-17) | **A DB dump reveals no TOTP secrets without the user's passphrase.** A *live* malicious operator does see `authHash` at login and could derive the key then — the guarantee is about the dump, not the operator |
 | Profile inversion | Aggregates only; no vectors stored | Aggregates leak coarse typing speed; low value |
 | Biometric drift → lockout | Adaptation + grey-band step-up + Pause | User loses Recovery Kit and all step-ups: permanent loss (by design, disclosed) |
 | Timing side channel on auth | 500 ms floor on all responses | |
@@ -371,3 +372,30 @@ At **Medium**, one typo-and-correct (`x⌫`, two insertions) is forgiven, a lone
 **Minimum phantoms.** Because Relaxed forgives one deletion, phantom protection is only meaningful from **two phantoms up**. Enrollment warns below two and blocks at zero. The passphrase floor is unchanged and lives in `03` X-2 (≥ 12 resolved characters, zxcvbn ≥ 3/4); phantoms only ever add tokens, so the script is always at least that long.
 
 UI: a three-position slider labeled Strict · Medium · Relaxed with one sentence under each. Changing to Strict shows the "this changes your master key; keep your Recovery Kit handy" warning and requires step-up. Rhythm and phantom thresholds may be split into two sliders later if beta data says users want them independent; keep one control until then.
+
+## A-17. Step-up factor storage (decided; implemented with TOTP in M3)
+
+`step_up_factors.secret_enc` promised a reversible secret with no key to reverse it — A-13 removed `ENCRYPTION_KEY`. This is how each factor is actually stored.
+
+**Passkeys** store the credential public key and signature counter **in plaintext**. Nothing about a public key needs encrypting, and the counter is not a secret.
+
+**Backup Codes** (X-3's ten one-time codes) are not stored here at all. They live in `backup_codes` as `sha256` hashes — one-way, never decrypted, so they need no key. See M2-00e.
+
+**TOTP secrets** are AES-256-GCM encrypted under a key the server can only derive while the user is proving who they are:
+
+```
+stepUpKey = HKDF(authHash, info="cypherkey/stepup/v1")
+ciphertext = AES-256-GCM(totpSecret, stepUpKey, nonce = random 12B, aad = user_id || factor_id)
+```
+
+`authHash` arrives in the request; the server stores only `Argon2id(authHash)`. So `stepUpKey` exists for the scope of one request that presented the passphrase-derived value, and is never persisted, never cached and never logged. At rest the database holds ciphertext and a verifier, and neither yields the other.
+
+There is no `STEP_UP_KEK`, no KMS and no server-held key material. That is the point: adding one would put the thing back that A-13 took out.
+
+**Consequences, each of which is a requirement.**
+
+1. **Every flow that changes `authHash` must re-wrap every TOTP secret in the same transaction.** The client presents the old and the new `authHash` in one request; the server decrypts under the old `stepUpKey` and re-encrypts under the new one, or the whole change rolls back. This applies to the M1-17c Strict re-key and to any future passphrase change. The client must therefore still be able to derive the *old* `authHash` at that moment — for a Strictness change it can, since it holds the resolved text and the script and needs only the previous level.
+
+2. **Any settings change gated on step-up must present the passphrase in that same request**, not merely carry a step-up flag minted earlier: Pause, Strictness, Backup Code regeneration, TOTP enrolment. Without `authHash` in hand the server cannot derive `stepUpKey`, so a token flag alone is not enough for the factor-touching ones — and one rule for all of them is easier to reason about than a rule per setting. *This differs from what M1-13 shipped*, which accepts a `stepUpAt` claim up to five minutes old; see the correction in `05`.
+
+3. **Recovery Kit recovery destroys TOTP factors, by construction.** The Kit path exists precisely because the passphrase is gone, so the old `authHash` cannot be derived and the secrets cannot be re-wrapped. Recovery therefore **deletes every TOTP factor** and the user re-enrols; leaving them behind would hand the account an undecryptable second factor and lock it out permanently. Backup Codes survive untouched, being hashes. Say this on the recovery screen (`03` X-5).

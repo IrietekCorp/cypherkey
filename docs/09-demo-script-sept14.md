@@ -34,7 +34,7 @@ Open cypherkey.io. "This runs entirely in the browser — nothing leaves the lap
 ## Questions he'll ask and answers
 
 - **"Can't someone just copy my typing?"** "If they watch you type in person and are very good, maybe — that's why a new device always needs a second confirmation and why we tell users exactly that. It defeats the real attack: a password leaked from a breach, used from somewhere else."
-- **"What if I break my hand?"** "You confirm with your passkey or a recovery code, and we retrain on the next few logins. You can also pause it. You never lose your vault."
+- **"What if I break my hand?"** "You confirm with your passkey or a Backup Code, and we retrain on the next few logins. You can also pause it. You never lose your vault."
 - **"Biometric data — legal?"** "It's biometric data, so we treat it like the strictest law would: explicit consent, a visible indicator whenever we listen, only statistical aggregates stored, deleted with your account."
 - **"How is this different from Bitwarden?"** "Same zero-knowledge posture and price band. They don't have a second factor you don't have to carry."
 - **"Why would people pay?"** "Multiple devices, breach monitoring, emergency access — same levers as every password manager. And a B2B SDK later: any site can add this to its login form and their users are already enrolled when they flip it on."

@@ -31,26 +31,27 @@ The rule: **the user should never be locked out by their own body.** A bad day, 
 |---|---|---|
 | **Pass** | Light blooms, vault opens | Profile adapts (EMA) if score ≥ 0.70 |
 | **Grey** (0.45–0.62) | Amber light. "Your rhythm looks different today. Type it once more." | Second sample scored. If the average clears the pass band → in. If not → step-up |
-| **Step-up** | "Confirm it's you" with the user's configured factor: passkey (device biometric), TOTP, or one recovery code | On success: in, **and** the two samples are added to the profile (this is how the profile learns your new keyboard) |
+| **Step-up** | "Confirm it's you" with the user's configured factor: passkey (device biometric), TOTP, or one Backup Code | On success: in, **and** the two samples are added to the profile (this is how the profile learns your new keyboard) |
 | **Fail** (< 0.45) | Red light. "That didn't match your rhythm." Step-up offered after a 2s delay | Counts toward lockout (5 fails → 15 min, exponential). Email: "Someone typed your passphrase but didn't match your rhythm" — that email is a *feature*: it's the dark-web email inverted |
 | **New device** | "New device — confirm it's you" | Always requires step-up regardless of score; registers device key on success |
 
-**Step-up factors (user picks at least one at signup, default is passkey on the device if available, else recovery codes):**
+**Step-up factors (user picks at least one at signup, default is passkey on the device if available, else Backup Codes):**
 - Passkey / platform authenticator (Touch ID, Windows Hello) — best UX
 - TOTP (compatible with any authenticator)
-- 10 one-time recovery codes
+- 10 one-time **Backup Codes** — the word "recovery" belongs to the Recovery Kit, which opens the vault; a Backup Code only opens a session
 - Emergency contact (M5): trusted person can request access; 72-hour timer; user can veto
 
 ## X-4. Pause (your "turn it off temporarily" idea, made safe)
 
 - Settings → "Pause my Rhythm" with durations: 24h, 7d, until I turn it back on.
 - **Pausing requires a step-up** — otherwise an attacker with the passphrase just pauses it.
+- The step-up means **re-entering the passphrase in that same action**, not carrying a flag from one a few minutes ago. Per A-17 the server derives `stepUpKey` from the `authHash` presented in the request, and a settings screen that cannot produce one cannot touch a factor. The same rule covers Strictness, Backup Code regeneration and TOTP enrolment, so there is one rule rather than one per setting.
 - While paused: the Rhythm Light is replaced by a small red "paused" badge in every unlock screen. Email confirmation sent. Auto-resume at the chosen time; on resume, the next 3 logins are treated as *enrollment refresh* samples (adds to profile, never blocks) so a user coming back from an injury retrains painlessly.
 - The profile is never deleted by Pause.
 
 ## X-5. Recovery
 
-- **Forgot passphrase:** Recovery Kit code → derives a key that unwraps `recoveryWrappedVaultKey` → user sets a new passphrase → vault re-wrapped, new enrollment (8 samples). Old devices are revoked.
+- **Forgot passphrase:** Recovery Kit code → derives a key that unwraps `recoveryWrappedVaultKey` → user sets a new passphrase → vault re-wrapped, new enrollment (8 samples). Old devices are revoked. **Any TOTP factor is deleted and must be re-enrolled** — its secret was encrypted under a key derived from the passphrase that has just been lost, so it cannot be carried across (A-17). Backup Codes are unaffected; they are hashes, not ciphertext. Say both on the screen, so nobody discovers it at the next login.
 - **Lost Recovery Kit but know passphrase:** regenerate the kit from settings (requires step-up).
 - **Lost both:** account data is unrecoverable. Say so at signup, in the kit, and in the docs. This is what zero-knowledge means, and the audience we're courting respects it.
 - **Rhythm changed permanently** (e.g., injury): step-up → Pause → 3 refresh logins → resume. Or re-enroll from settings.
@@ -98,4 +99,4 @@ Settings → Security → "How strict should CypherKey be?" Three stops:
 - **Medium** (default) — "A small slip in your Phantom Keys is forgiven — about one per ten keystrokes. A wrong passphrase never is."
 - **Relaxed** — "More forgiving on both rhythm and Phantom Keys. Good while you're on a new keyboard or recovering."
 
-Any change requires a step-up. The Rhythm Light tooltip reflects the level ("Medium strictness").
+Any change requires a step-up, and that step-up means **typing the passphrase as part of the change** rather than relying on one cleared minutes earlier (A-17). Moving to or from Strict re-derives the master key, so the same action also re-wraps every TOTP secret — the client sends the old and the new `authHash` together and the server swaps them in one transaction, or nothing changes at all. The Rhythm Light tooltip reflects the level ("Medium strictness").

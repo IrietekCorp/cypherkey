@@ -169,6 +169,8 @@ export function score(profile: Profile, sample: FeatureVector, alignment?: Align
 **Acceptance:** e2e: enroll with 2 phantoms on Medium; login with one lone-Escape slip passes; login with resolved passphrase only (missing both phantoms) fails; wrong passphrase fails before alignment runs (timing-padded).
 
 ### M1-17c · Strictness setting endpoint and Strict re-key flow · M · deps: M1-17b, M1-13
+
+**Added retroactively (A-17), to be tested when M3's TOTP lands:** a re-key performed while a TOTP factor is enrolled must leave that factor verifiable afterwards. The secret is encrypted under `stepUpKey = HKDF(authHash, …)` and the re-key changes `authHash`, so the client must send the old and the new value together and the server must re-wrap in the same transaction — or roll the whole change back. Until TOTP exists there is nothing to re-wrap and nothing to test; the requirement is recorded here so it is not discovered by an account that can no longer step up.
 `PATCH /user/settings {strictness}` requires step-up flag; server updates thresholds. Client `session.changeStrictness(level)`: if crossing into/out of Strict, re-derive `masterKey`, re-wrap `vaultKey`, re-register `authHash`, re-send commitments, revoke other devices' cached keys (bump `key_version`). Tests: medium→relaxed touches no keys; medium→strict rotates and old authHash no longer works.
 
 ### M1-18 · Update the web demo for Phantom Keys · S · deps: M1-16
@@ -224,36 +226,39 @@ export function createSync(deps: SyncDeps): {
 
 **Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
 
-### M2-00e · Server support for recovery-code step-up · M · deps: M1-13a · **drafted**
+### M2-00e · Server support for Backup Code step-up · M · deps: M1-13a · **approved**
 
-**Why.** M2-07 says "step-up with recovery codes". The server accepts `retype` only, and `step_up_factors` is a table no route touches, so M2-07 cannot be built until this exists.
+**Why.** M2-07 says step-up with backup codes. The server accepts `retype` only, and `step_up_factors` is a table no route touches, so M2-07 cannot be built until this exists.
 
-**A correction I owe first.** The M1-13a commit said a recovery code "cannot be verified server-side without breaking zero-knowledge". That conflated two different things. The **Recovery Kit** (X-5, 33 Crockford characters) derives `recoveryKey` and unwraps the vault — the server must never hold anything that helps guess it. **Step-up recovery codes** (X-3, ten one-time codes) derive nothing and unwrap nothing; they only prove "it is me" to the server. Verifying those server-side is exactly right and costs no confidentiality: a passphrase is still required for the vault, so a stolen code buys a session and no plaintext.
+**Naming, and it is load-bearing.** These ten one-time codes are **Backup Codes**, everywhere — route, table, response field, UI string, doc. **"Recovery" is reserved for the Recovery Kit**, which is a different object with a different job and a different failure mode: the Kit opens the vault, a Backup Code opens a session. The two were called the same thing in the original draft and that is exactly how the mistake below happened.
 
-**Files:** create `server/src/routes/recovery-codes.ts` (+test); modify `server/src/routes/stepup.ts` (+test), `server/src/routes/auth.ts` (signup returns the first set), `server/src/db/schema/{sqlite,pg}.ts`, `docs/02` A-9 and A-10.
+**A correction I owe.** The M1-13a commit said a recovery code "cannot be verified server-side without breaking zero-knowledge". That conflated the two objects the rename now separates. The **Recovery Kit** (X-5, 33 Crockford characters) derives `recoveryKey` and unwraps the vault — the server must never hold anything that helps guess it. **Backup Codes** (X-3) derive nothing and unwrap nothing; they only prove "it is me" to the server. Verifying those server-side is right and costs no confidentiality: the vault still needs the passphrase, so a stolen code buys a session and no plaintext.
+
+**Files:** create `server/src/routes/backup-codes.ts` (+test); modify `server/src/routes/stepup.ts` (+test), `server/src/routes/auth.ts` (signup returns the first set), `server/src/db/schema/{sqlite,pg}.ts`, `docs/02` A-9 and A-10.
 
 **Schema.** A new table rather than `step_up_factors`:
 ```
-recovery_codes | id, user_id, code_hash (unique), used_at, created_at
+backup_codes | id, user_id, code_hash (unique), used_at, created_at
 ```
-`step_up_factors.secret_enc` is the wrong home. Its name promises a *reversible* secret, which TOTP and passkey will need — and A-13 removed `ENCRYPTION_KEY`, so there is currently no server key to encrypt one with. That contradiction belongs to M3 when TOTP lands; a one-time code needs only a one-way hash, so it should not inherit the problem.
+`step_up_factors.secret_enc` is the wrong home: a one-time code needs a one-way hash, not a reversible secret. **A-17 now settles what that column means for the factors that do need one** — passkeys plaintext, TOTP encrypted under `stepUpKey = HKDF(authHash, …)`, implemented in M3. Backup Codes stay out of it entirely.
 
 **Interfaces / wire:**
 ```
-POST /auth/signup            → 201 now also returns { recoveryCodes: string[] }   (ten, shown once)
-POST /user/recovery-codes    → regenerate; invalidates every previous code, returns ten new
-                               requires access token + device signature + a fresh step-up (X-5)
-GET  /user/recovery-codes    → { remaining: number }   — never the codes themselves
-POST /auth/step-up           → gains { method: 'recovery_code', proof: string }
+POST /auth/signup          → 201 now also returns { backupCodes: string[] }   (ten, shown once)
+POST /user/backup-codes    → regenerate; invalidates every previous code, returns ten new.
+                             Access token + device signature + the passphrase in the same
+                             request (A-17), not a step-up flag minted earlier.
+GET  /user/backup-codes    → { remaining: number }   — never the codes themselves
+POST /auth/step-up         → gains { method: 'backup_code', proof: string }
 ```
 
 **Codes.** Ten per set, ten Crockford base32 symbols each (50 bits), formatted `XXXXX-XXXXX`. Server-generated, because they are not key material: the server already sees `authHash` at signup, and a malicious operator gains nothing here that A-11 does not already grant it — the vault still needs the passphrase-derived `wrapKey`. Stored as `base64url(sha256(normalized))`, the same treatment as refresh tokens and for the same reason: these are high-entropy secrets the server generated, so a fast hash is correct and Argon2id is for low-entropy human input. Verification normalizes case and strips hyphens before lookup.
 
-**Lockout — this ticket must also fix an existing hole.** A failed step-up currently returns 401 and does **not** call `recordFailure`, so step-up attempts are bounded only by the per-account rate limit (ten a minute). That is tolerable for a rhythm retype and not for a bearer secret. Failed `recovery_code` attempts must count toward lockout, and the retype path should count too.
+**Lockout — this ticket must also fix an existing hole.** A failed step-up currently returns 401 and does **not** call `recordFailure`, so step-up attempts are bounded only by the per-account rate limit (ten a minute). That is tolerable for a rhythm retype and not for a bearer secret. Failed `backup_code` attempts must count toward lockout, and the retype path should count too.
 
 **Tests:** signup returns ten distinct codes and stores ten hashes, never a code in the clear; a valid code clears step-up and issues a token carrying `stepUpAt`; the same code fails the second time (`used_at` set); an unknown code fails; a code belonging to another account fails; failures increment the lockout counter and five of them lock; regeneration invalidates the whole previous set; `GET` returns a count and no code; the response and every table are asserted free of any code after storage.
 
-**Acceptance:** enrol, force a grey login, clear it with a recovery code rather than a retype, and confirm the second use of that code is refused.
+**Acceptance:** enrol, force a grey login, clear it with a Backup Code rather than a retype, and confirm the second use of that code is refused. No response body or table row anywhere contains a code in the clear.
 
 ### The client surface as it actually is
 
@@ -311,7 +316,8 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 - **M2-03** — onboarding must capture the script **twice, token-identical** (A-14), show "12 keystrokes · 8 characters", default Strictness to Medium, and record the A-12 consent checkbox.
 - **M2-04** — the Recovery Kit code is **33 characters**, not 32.
 - **M2-05** — "backspace retry" is withdrawn: Backspace is a legitimate Phantom Key. The retry condition is a **script mismatch**, and every sample carries commitments.
-- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. **M2-00e above now covers this** and is a hard prerequisite: M2-07 cannot start until it lands. M2-00e also fixes a hole it uncovered — a failed step-up does not currently count toward lockout.
+- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. **M2-00e above now covers this** and is a hard prerequisite: M2-07 cannot start until it lands. M2-00e also fixes a hole it uncovered — a failed step-up does not currently count toward lockout. The screen says **Backup Codes**, never "recovery codes".
+- **M2-14 and the server, new** — A-17 requires every step-up-gated settings change to carry **the passphrase in that request**: Pause, Strictness, Backup Code regeneration, TOTP enrolment. M1-13 shipped a weaker check — a `stepUpAt` claim on the access token, good for five minutes — which cannot produce `stepUpKey` and so cannot touch a TOTP factor. Someone has to replace `hasFreshStepUp` with an in-request re-auth; M2-14 owns the screens and the server change should land with it.
 - **M2-09** — the cache must honour `key_version`: a Strict re-key (M1-17c) invalidates every other device's offline blob.
 
 | ID | Title | Size | Notes |
@@ -327,7 +333,7 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 | M2-04 | Recovery Kit screen with "type 4 chars back" confirmation; printable view | M | X-2, M1-06 |
 | M2-05 | Enrollment screen: 8 samples, ring, backspace retry | M | |
 | M2-06 | In-app Party Trick screen (post-enrollment, one-time) | S | X-7 |
-| M2-07 | Unlock screen: login flow, bands, grey retype, step-up with recovery codes | L | X-3 |
+| M2-07 | Unlock screen: login flow, bands, grey retype, step-up with Backup Codes | L | X-3 · needs M2-00e |
 | M2-08 | Vault list, fuzzy search, item view, add/edit login + note | L | X-6 |
 | M2-09 | Encrypted local cache (IndexedDB) + sync engine + offline queue | L | A-6, A-7 |
 | M2-10 | Content script: field detection, domain-bound autofill, inline icon, punycode warning | L | X-6 — highest bug risk; budget for two passes |
