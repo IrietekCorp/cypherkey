@@ -305,36 +305,21 @@ Returns `{ userId, serverShare, enrollmentToken }`. `vaultKey` itself never chan
 
 **Open question for you, not decided here:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
 
-### M2-00g · Adaptation that actually adapts · M · deps: M1-09 · **measured, awaiting your call**
+### M2-00g · Learn from a verified step-up · M · deps: M1-09 · **approved, mechanism revised**
 
-A-4.5 adaptation is implemented and, as measured, does not work in the case it exists for. Two defects.
+An earlier draft of this ticket proposed a "catch-up" adaptation after N consecutive passes in `[0.62, 0.70)`. **Measurement killed it.** With realistic per-login variation, a drifting user's samples straddle 0.70, so ordinary A-4.5 adaptation already pulls the profile along: a user 10% slower recovers fully in a median of 7 logins, unaided. The proposed catch-up fired **zero times in 60 logins at every α from 0.05 to 0.5**, because the same variation that rescues the user also breaks the consecutive streak. Lowering N enough to make it fire would make it fire for a borderline attacker too. The mechanism was solving a problem that mostly does not exist.
 
-**A dead zone between passing and learning.** The pass band is 0.62 and adaptation requires 0.70, so a user whose rhythm drifts into `[0.62, 0.70)` is admitted every time while the profile never follows them. Simulating someone who permanently slows 15% — a new keyboard, a wrist injury, a different desk:
+The real trap is below the pass band. A user 14% slower scores 0.572, never produces a sample over 0.70, recovers **0% of the time**, and is sent to step-up on every single login — permanently, because A-4.5 forbids learning from grey. See the table in docs/02 A-4.5.
 
-```
-before            0.690  pass
-after 12 logins   0.695  pass     ← never adapted, and never will
-```
+**What to build instead.** Adapt after a **grey attempt whose step-up succeeded**. A completed passkey or TOTP challenge is stronger evidence of identity than a bare 0.70 score, and it is currently the one verified event the profile refuses to learn from. This is also attacker-safe in a way the catch-up was not: an attacker sitting in the grey band cannot complete the step-up, so they can never trigger it, whereas the catch-up asked only for repetition.
 
-They pass, they stay one bad day from the grey band, and nothing improves. This is the band where learning matters most and it is the one band where learning is switched off.
+**Parameters.** α = 0.1, the same as ordinary adaptation — a step-up is at least as trustworthy as a 0.70 pass, so there is no reason to discount it. The existing once-per-10-minutes cap and the exact-script-match requirement both still apply. **This ticket blocks on step-up actually existing (M3 passkey/TOTP);** until then a grey user's only recovery is the Recovery Kit.
 
-**`adapt()` never updates `stds`.** It EMAs the means and copies the variance through untouched, so the profile's idea of how variable a user is, is frozen at enrolment forever. Enrolment happens in one sitting — one posture, one keyboard, one mood — so that frozen spread is systematically narrower than the user's real variability, and it can never widen no matter how many honest logins arrive.
+**Also in scope, as correctness rather than as a drift fix:** EMA the variance with a floor so `stds` can widen from real logins instead of being frozen at its one-sitting enrolment value. Measured, this is worth little by itself (0.717 → 0.724 for a stuck user, and it costs the owner a little), so it must not be sold as the fix for drift.
 
-**Measured options, on a profile of 8 samples against a user drifted 15% and a stranger who knows the passphrase:**
+**Tests:** a user 14% slower who completes step-up is tracked back into the pass band within X logins; a grey attempt with a *failed* or absent step-up never adapts; a fail never adapts; the 10-minute cap holds; variance widens toward observed spread and never below the floor.
 
-| Strategy | Drifted user | Stranger | Separation |
-|---|---|---|---|
-| Today: means only, adapt ≥ 0.70 | 0.695 | 0.453 | 0.242 |
-| Means only, adapt ≥ pass (0.62) | 0.954 | 0.647 | 0.307 |
-| Means + variance, adapt ≥ 0.62 | 0.968 | 0.665 | 0.302 |
-
-Separation improves, but look at the stranger crossing 0.62 in both adapted rows. That is A-4.5's "an attacker slowly walks the profile toward themselves" appearing in numbers rather than in prose, and it is why the 0.70 gap should not simply be lowered.
-
-**Proposed, not decided.** Keep 0.70 for ordinary adaptation, and add a *slow catch-up*: after N consecutive passes in `[pass, 0.70)` with an exact script match (distance 0), adapt once at a reduced α. A drifting user produces such a run naturally; an attacker cannot produce a long consecutive run without already being inside. Separately, EMA the variance with a floor so the frozen enrolment spread can widen toward reality. Both need a decision on N and α before implementation.
-
-**Tests:** the drift simulation above, as a regression — a user who slows 15% is tracked within X logins; a stranger's score does not rise above the pass band across the same run; variance widens toward the observed spread and never below the 8 ms floor; a grey or failed attempt still never adapts; the once-per-10-minutes cap still holds.
-
-**Do not, in any case, ask users to type deliberately slowly or quickly during enrolment.** It was measured and it is actively harmful: six natural samples plus one slow and one fast lifts the median feature std from 8 ms to 21.4 ms, and the stranger's score from **0.453 (fail) to 0.840 (comfortable pass)**. Widening the band cannot distinguish anyone; it only admits more people. Natural variability must be learned from real logins, which is what this ticket is for.
+**Do not, in any case, ask users to type deliberately slowly or quickly during enrolment** — measured harmful, see docs/02 A-4.5.
 
 ### M2-00h · Capture without a DOM · M · deps: M1-16 · **approved in principle**
 
@@ -355,6 +340,8 @@ Answering directly: **a browser cannot identify a keyboard**, and the parts that
 - **Nothing exposes switch type, travel or actuation.** Those are the properties that actually change typing rhythm.
 
 **And anything the client reports about itself is attacker-controlled.** A device signature is Ed25519 and cannot be forged; a claimed keyboard id is a string in a JSON body. Keyboard identity may therefore inform *which profile to score against* — a usability decision — and must never be part of *whether to admit* — a security decision. That line should be explicit wherever this is built.
+
+**Decision (2026-09-04): layer 1 only — per device.** Rhythm clustering within a single device is not being built; a user who swaps between a laptop keyboard and an external mechanical board on the same machine keeps one profile for now. Revisit only if real usage shows those users sitting in the grey band.
 
 **What does work, and needs no new signal.** Two layers:
 

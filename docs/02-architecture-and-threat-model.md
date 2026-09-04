@@ -115,7 +115,18 @@ Decision bands (per-user, adaptive after M3; defaults below):
 ### A-4.5 Adaptation
 After a **pass** with score ≥ 0.70, update profile via EMA (`α = 0.1`) toward the new sample. Never adapt on grey or fail. Cap adaptation to once per 10 minutes per user. This prevents an attacker from slowly walking the profile toward themselves while tracking natural drift.
 
-**Known defective as specified; see M2-00g.** Two measured problems. (1) Pass is 0.62 and adaptation is 0.70, so a user who drifts into `[0.62, 0.70)` is admitted forever while the profile never follows them — the band where adaptation matters most is the one band where it never runs. (2) The implementation EMAs the means and copies `stds` through unchanged, so a user's modelled variability is frozen at enrolment, which is one sitting on one keyboard and systematically narrower than reality. The 0.70 gap is nonetheless doing real work: lowering it to the pass threshold was measured to raise a stranger's score from 0.453 to 0.647, over the pass line. Any fix keeps a gap and earns crossings slowly.
+**Partially defective; see M2-00g.** The gap between the 0.62 pass band and the 0.70 adapt threshold is much less harmful than it looks, because per-login variation carries a drifting user over 0.70 often enough to pull the profile along. Measured over 200 trials of 60 logins, with ordinary adaptation and nothing else:
+
+| Drift | Fresh score | Samples ≥ 0.70 | Recovered | Median logins |
+|---|---|---|---|---|
+| 6% slower | 0.760 | 95.0% | 100% | 0 |
+| 10% slower | 0.675 | 23.5% | 100% | 7 |
+| 12% slower | 0.627 | 1.3% | 47% | 42 |
+| 14% slower | 0.572 | 0.0% | **0%** | never |
+
+So adaptation self-heals everything down to about 0.65. The real failure is *below* the pass band: a user at 0.572 never produces an adaptable sample, is sent to step-up on every login, and stays there permanently — the profile can never learn the drift that is causing the step-ups. **A-4.5's "never adapt on grey" is the actual defect**, because a grey attempt followed by a *successful step-up* is a more strongly verified user than a bare 0.70 pass, and is currently the one verified event we refuse to learn from.
+
+**The variance is frozen.** `adapt()` EMAs the means and copies `stds` through unchanged, so modelled variability stays at its one-sitting enrolment value forever. Measured, correcting this is worth little on its own (a stuck user reaches 0.724 rather than 0.717, and the owner's own score drops slightly), so it is a correctness matter rather than a fix for drift.
 
 **Never widen the band deliberately.** Asking a user to contribute fast and slow enrolment samples raises per-feature `std`, and a wider band admits *everyone*: six natural samples plus one slow and one fast moved a stranger from 0.453 to 0.840 while median std went 8 ms → 21.4 ms. Real variability is learned from real logins, never injected at enrolment.
 
