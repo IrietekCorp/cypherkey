@@ -30,6 +30,9 @@ let canonicalScript: string | null = null;
 
 /** Live keystroke count for the current sample, since the field only shows characters. */
 let keystrokesTyped = 0;
+
+/** Which of the two setup options is active. Nothing else decides the phrase. */
+let setupChoice: 'random' | 'own' = 'random';
 let enrollmentSamples: FeatureVector[] = [];
 let userProfile: Profile | null = null;
 let friendScoreResult: { score: number; band: 'pass' | 'grey' | 'fail' } | null = null;
@@ -63,7 +66,11 @@ const enrollDotsContainer = document.getElementById('enroll-dots-container') as 
 const enrollKeyCounter = document.getElementById('enroll-key-counter') as HTMLElement;
 const inputEnroll = document.getElementById('input-enroll') as HTMLInputElement;
 const rhythmLight = document.getElementById('rhythm-light') as HTMLElement;
-const phantomToggle = document.getElementById('phantom-toggle') as HTMLInputElement;
+const optionRandom = document.getElementById('option-random') as HTMLButtonElement;
+const optionOwn = document.getElementById('option-own') as HTMLButtonElement;
+const randomPhraseDisplay = document.getElementById('random-phrase-display') as HTMLElement;
+const debugPanel = document.getElementById('debug-panel') as HTMLElement;
+const debugRows = document.getElementById('debug-rows') as HTMLElement;
 const phantomReadout = document.getElementById('phantom-script-readout') as HTMLElement;
 const phantomCounts = document.getElementById('phantom-counts') as HTMLElement;
 const phantomDetail = document.getElementById('phantom-detail') as HTMLElement;
@@ -220,24 +227,14 @@ function renderEnrollDots() {
 /**
  * Prepares the input and capture listener for an enrollment sample.
  */
-phantomToggle.addEventListener('change', () => {
-  // Flipping the toggle mid-enrollment would mean two different scripts in one
-  // profile, so the samples collected so far are discarded along with the script.
-  enrollmentSamples.length = 0;
-  canonicalScript = null;
-  phantomReadout.classList.add('hidden');
-  renderEnrollDots();
-  showFeedback(
-    enrollFeedback,
-    'ok',
-    phantomToggle.checked
-      ? 'Phantom Keys on. Type the passphrase with a few extra keystrokes you delete — every sample has to repeat them.'
-      : 'Phantom Keys off. Type the passphrase normally.',
-  );
-  prepareEnrollSample();
-});
-
-function prepareEnrollSample() {
+/**
+ * Resets the field for the next sample.
+ *
+ * `keepFeedback` exists because every rejection path used to call this immediately
+ * after showing its reason, which wiped the message before anyone could read it — the
+ * sample was refused and the screen said nothing at all.
+ */
+function prepareEnrollSample(keepFeedback = false) {
   if (activeCapture) {
     activeCapture.cancel();
     activeCapture = null;
@@ -246,8 +243,10 @@ function prepareEnrollSample() {
   inputEnroll.value = '';
   keystrokesTyped = 0;
   enrollKeyCounter.textContent = '0 keystrokes · 0 characters';
-  enrollFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-  enrollFeedback.textContent = '';
+  if (!keepFeedback) {
+    enrollFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
+    enrollFeedback.textContent = '';
+  }
   enrollCurrentStep.textContent = String(enrollmentSamples.length + 1);
 
   rhythmLight.className = 'rhythm-light-dot listening';
@@ -267,6 +266,44 @@ function prepareEnrollSample() {
   }
 
   setTimeout(() => inputEnroll.focus(), 50);
+}
+
+/**
+ * Diagnostics, enabled with `?debug=1`.
+ *
+ * Scope is deliberate. This lives in the demo and nowhere else: `core/` gains no debug
+ * hook, so nothing here can reach the extension, which imports `core/` and never this
+ * file. It holds only the throwaway phrase the visitor just invented on a page with no
+ * account and no network, and the page already prints that phrase on screen. It never
+ * writes to storage, never logs to the console (AGENTS forbids logging key material),
+ * and never sends anything anywhere — the demo has no server to send it to.
+ *
+ * The extension must never grow an equivalent. Real feature vectors and real scripts
+ * are exactly what A-4.1 and A-14 say must not be surfaced, and a runtime flag would
+ * be the wrong control there: it would have to be stripped at build time.
+ */
+const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+
+/** Renders control tokens so a phantom is visible rather than invisible. */
+function readableScript(script: string): string {
+  return [...script]
+    .map((token) => {
+      if (token === '\u0008') return '⌫';
+      if (token === '\u007F') return '⌦';
+      if (token === '\u001B') return '⎋';
+      if (token >= '\uE000' && token <= '\uE004') return '⌘';
+      return token === ' ' ? '␣' : token;
+    })
+    .join('');
+}
+
+function debugNote(stage: string, outcome: string, detail = '') {
+  if (!DEBUG) return;
+  const row = document.createElement('div');
+  row.textContent = `${stage.padEnd(10)} ${outcome.padEnd(10)} ${detail}`;
+  row.className = outcome === 'accepted' ? 'text-emerald-800' : 'text-rose-800';
+  debugRows.appendChild(row);
+  debugRows.scrollTop = debugRows.scrollHeight;
 }
 
 /** Human wording for each reason a sample can be void (A-14.1). */
@@ -341,8 +378,9 @@ function handleEnrollSampleSubmit() {
   // A-14.1 decides what counted as a keystroke, including the phantoms.
   const script = eventsToScript(events);
   if ('error' in script) {
+    debugNote('enroll', 'rejected', script.error);
     showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.');
-    prepareEnrollSample();
+    prepareEnrollSample(true);
     return;
   }
 
@@ -351,12 +389,13 @@ function handleEnrollSampleSubmit() {
   // The resolved text is what a normal form would have received — phantoms and all
   // the corrections have already been applied.
   if (script.resolved !== targetPassphrase) {
+    debugNote('enroll', 'rejected', `resolved ${JSON.stringify(script.resolved)} != target`);
     showFeedback(
       enrollFeedback,
       'warn',
       'That doesn’t resolve to the target passphrase. Corrections are fine — the end result has to match.',
     );
-    prepareEnrollSample();
+    prepareEnrollSample(true);
     return;
   }
 
@@ -365,12 +404,17 @@ function handleEnrollSampleSubmit() {
   if (canonicalScript === null) {
     canonicalScript = script.script;
   } else if (!scriptsEqual(canonicalScript, script.script)) {
+    debugNote(
+      'enroll',
+      'rejected',
+      `script ${readableScript(script.script)} != enrolled ${readableScript(canonicalScript)}`,
+    );
     showFeedback(
       enrollFeedback,
       'warn',
       'Same passphrase, different keystrokes. Every sample has to include the same Phantom Keys.',
     );
-    prepareEnrollSample();
+    prepareEnrollSample(true);
     return;
   }
 
@@ -378,10 +422,15 @@ function handleEnrollSampleSubmit() {
 
   if ('error' in result) {
     showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[result.error] ?? 'Length mismatch.');
-    prepareEnrollSample();
+    prepareEnrollSample(true);
     return;
   }
 
+  debugNote(
+    'enroll',
+    'accepted',
+    `#${enrollmentSamples.length + 1}/8  ${readableScript(script.script)}  ${scriptLength(script.script)}k/${script.resolved.length}c`,
+  );
   enrollmentSamples.push(result);
   renderEnrollDots();
 
@@ -403,7 +452,7 @@ function handleEnrollSampleSubmit() {
 /**
  * Prepares the friend challenge input and capture.
  */
-function prepareChallengeFriend() {
+function prepareChallengeFriend(keepFeedback = false) {
   if (activeCapture) {
     activeCapture.cancel();
     activeCapture = null;
@@ -411,8 +460,10 @@ function prepareChallengeFriend() {
 
   inputChallengeFriend.value = '';
   friendKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
-  friendFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-  friendFeedback.textContent = '';
+  if (!keepFeedback) {
+    friendFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
+    friendFeedback.textContent = '';
+  }
   rhythmLightFriend.className = 'rhythm-light-dot listening';
 
   try {
@@ -441,7 +492,7 @@ function handleFriendSubmit() {
   const attempt = readAttempt(events);
   if ('message' in attempt) {
     showFeedback(friendFeedback, 'warn', attempt.message);
-    prepareChallengeFriend();
+    prepareChallengeFriend(true);
     return;
   }
 
@@ -473,7 +524,7 @@ function handleFriendSubmit() {
 /**
  * Prepares your challenge input and capture.
  */
-function prepareChallengeYou() {
+function prepareChallengeYou(keepFeedback = false) {
   if (activeCapture) {
     activeCapture.cancel();
     activeCapture = null;
@@ -481,8 +532,10 @@ function prepareChallengeYou() {
 
   inputChallengeYou.value = '';
   youKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
-  youFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-  youFeedback.textContent = '';
+  if (!keepFeedback) {
+    youFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
+    youFeedback.textContent = '';
+  }
   rhythmLightYou.className = 'rhythm-light-dot listening';
 
   try {
@@ -511,7 +564,7 @@ function handleYouSubmit() {
   const attempt = readAttempt(events);
   if ('message' in attempt) {
     showFeedback(youFeedback, 'warn', attempt.message);
-    prepareChallengeYou();
+    prepareChallengeYou(true);
     return;
   }
   if (attempt.phantomMismatch) {
@@ -520,7 +573,7 @@ function handleYouSubmit() {
       'warn',
       'That’s the passphrase, but not your script — the Phantom Keys were different. Try it again the way you enrolled it.',
     );
-    prepareChallengeYou();
+    prepareChallengeYou(true);
     return;
   }
 
@@ -597,28 +650,74 @@ function renderResults() {
   }
 }
 
+/**
+ * Stops a button from stealing focus when it is clicked.
+ *
+ * A-14.1 voids any sample whose field loses focus — that is how "the key did not move
+ * focus" is enforced without a per-platform key list, and it must stay. But clicking a
+ * submit button blurs the field before the click handler ever runs, so every
+ * click-submitted sample was being discarded as `focus_lost`. Preventing the default
+ * on mousedown stops the focus shift entirely, so the rule keeps its teeth and the
+ * button still works — including via the keyboard, which never blurs anyway.
+ */
+function keepFocusOnMouseDown(button: HTMLButtonElement) {
+  button.addEventListener('mousedown', (event) => event.preventDefault());
+}
+
 // Event Listeners Setup
 function initEventListeners() {
-  // Random sample phrase button
-  btnSamplePhrase.addEventListener('click', () => {
-    const randomIndex = Math.floor(Math.random() * SAMPLE_PHRASES.length);
-    const chosen = SAMPLE_PHRASES[randomIndex];
-    if (chosen) {
-      inputPassphraseSetup.value = chosen;
-    }
+  for (const button of [btnSubmitEnrollSample, btnSubmitFriendChallenge, btnSubmitYouChallenge]) {
+    keepFocusOnMouseDown(button);
+  }
+
+  if (DEBUG) debugPanel.classList.remove('hidden');
+
+  // Two setup choices, one selected at a time. The selected one is the only thing
+  // "Begin enrollment" reads, so there is never a question of which phrase is in play.
+  const shuffle = () => {
+    const chosen = SAMPLE_PHRASES[Math.floor(Math.random() * SAMPLE_PHRASES.length)];
+    randomPhraseDisplay.textContent = chosen ?? '';
+  };
+  const selectChoice = (choice: 'random' | 'own') => {
+    setupChoice = choice;
+    optionRandom.setAttribute('aria-pressed', String(choice === 'random'));
+    optionOwn.setAttribute('aria-pressed', String(choice === 'own'));
+    setupError.classList.add('hidden');
+    if (choice === 'own') inputPassphraseSetup.focus();
+  };
+
+  shuffle();
+  selectChoice('random');
+
+  optionRandom.addEventListener('click', () => selectChoice('random'));
+  optionOwn.addEventListener('click', () => selectChoice('own'));
+  // Typing in the field is itself a choice; nobody should have to click the card first.
+  inputPassphraseSetup.addEventListener('focus', () => selectChoice('own'));
+  inputPassphraseSetup.addEventListener('input', () => selectChoice('own'));
+
+  btnSamplePhrase.addEventListener('click', (event) => {
+    event.stopPropagation();
+    shuffle();
+    selectChoice('random');
   });
 
   // Begin enrollment button
   btnBeginEnroll.addEventListener('click', () => {
-    const phrase = inputPassphraseSetup.value.trim();
+    const phrase =
+      setupChoice === 'random'
+        ? (randomPhraseDisplay.textContent ?? '').trim()
+        : inputPassphraseSetup.value.trim();
     if (phrase.length < 10) {
       setupError.textContent =
-        'Passphrase must be at least 10 characters for reliable rhythm extraction.';
+        setupChoice === 'own'
+          ? 'Your passphrase needs at least 10 characters for a readable rhythm.'
+          : 'Pick a phrase first.';
       setupError.classList.remove('hidden');
       return;
     }
     setupError.classList.add('hidden');
     targetPassphrase = phrase;
+    inputPassphraseSetup.value = phrase;
     enrollmentSamples = [];
     canonicalScript = null;
     userProfile = null;
