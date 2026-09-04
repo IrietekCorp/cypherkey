@@ -4,6 +4,7 @@ import type { Db } from './db/client';
 import { authRoutes } from './routes/auth';
 import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
+import { loginRoutes } from './routes/login';
 
 /** A-5: every auth response is padded to this floor. Tests pass 0. */
 const DEFAULT_TIMING_FLOOR_MS = 500;
@@ -30,6 +31,15 @@ export function createApp(deps: AppDeps): Hono {
       }),
     );
     app.route('/', enrollRoutes({ db: deps.db, config: deps.config, now: deps.now }));
+    app.route(
+      '/',
+      loginRoutes({
+        db: deps.db,
+        config: deps.config,
+        timingFloorMs: deps.timingFloorMs ?? DEFAULT_TIMING_FLOOR_MS,
+        now: deps.now,
+      }),
+    );
   }
   return app;
 }
