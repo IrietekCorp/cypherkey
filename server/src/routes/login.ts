@@ -2,15 +2,19 @@ import { eq, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getFeatureRanges } from '../../../core/biometrics/features';
-import { adapt, band as bandOf, score as scoreOf } from '../../../core/biometrics/score';
+import { adapt, band as bandOf } from '../../../core/biometrics/score';
 import type { Profile } from '../../../core/biometrics/score';
 import { verifyRequest } from '../../../core/crypto/device';
 import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
+import { budget, rhythmBands } from '../../../core/crypto/phantom';
+import type { Strictness } from '../../../core/crypto/phantom';
 import { issueSession } from '../auth/session-tokens';
+import { scoreAligned } from '../biometrics/score';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import { MAX_SEQUENCE, alignCommitments } from '../phantom/align';
 
 /** A-3: ±30 s of clock skew. */
 const MAX_SKEW_MS = 30_000;
@@ -27,9 +31,20 @@ const loginSchema = z.object({
   username: z.string().min(1).max(64),
   authHash: z.string().min(1).max(512),
   featureVector: z.array(z.number().finite()).min(1).max(4096),
+  /** A-14.2: the script commitments for this attempt, in order. */
+  commitments: z.array(z.string().min(1).max(64)).min(1).max(MAX_SEQUENCE),
 });
 
 export type LoginDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
+
+/** A malformed commitment cannot match anything, so it aligns as a mismatch. */
+function decodeCommitment(value: string): Uint8Array {
+  try {
+    return fromBase64Url(value);
+  } catch {
+    return new Uint8Array(0);
+  }
+}
 
 async function withFloor<T>(floorMs: number, work: () => Promise<T>): Promise<T> {
   const started = performance.now();
@@ -256,8 +271,26 @@ export function loginRoutes(deps: LoginDeps): Hono {
         });
       }
 
-      const expected = getFeatureRanges(profile.scriptLen).totalLength;
-      if (input.featureVector.length !== expected) return deny();
+      // The vector must describe the number of tokens the client says it typed.
+      const loginLen = input.commitments.length;
+      if (input.featureVector.length !== getFeatureRanges(loginLen).totalLength) return deny();
+
+      // A-14.3 step 2: align the enrolled script against this attempt, counting
+      // insertions and deletions separately.
+      const level: Strictness = user.thresholdsJson?.strictness ?? 'medium';
+      const canonical = profile.scriptCommitments.map(decodeCommitment);
+      const alignment = alignCommitments(canonical, input.commitments.map(decodeCommitment));
+
+      // A-14.3 step 3. A missing enrolled token is what someone holding only the
+      // leaked resolved passphrase looks like, so it is budgeted apart from a fumble.
+      const allowed = budget(level, profile.scriptLen);
+      if (
+        alignment.insertions > allowed.maxInsertions ||
+        alignment.deletions + alignment.substitutions > allowed.maxMissing
+      ) {
+        await recordFailure(user.id);
+        return c.json({ band: 'fail', error: 'phantom_mismatch' }, 401);
+      }
 
       const loaded: Profile = {
         version: 1,
@@ -267,9 +300,11 @@ export function loginRoutes(deps: LoginDeps): Hono {
         weights: profile.weights,
         sampleCount: profile.sampleCount,
       };
-      const sample = { version: 1 as const, len: profile.scriptLen, values: input.featureVector };
-      const score = scoreOf(loaded, sample);
-      const result = bandOf(score, config.scorePass, config.scoreGrey);
+      const sample = { version: 1 as const, len: loginLen, values: input.featureVector };
+      // A-14.3 step 4: score through the alignment path.
+      const score = scoreAligned(loaded, sample, alignment);
+      const thresholds = rhythmBands(level);
+      const result = bandOf(score, thresholds.pass, thresholds.grey);
 
       await recordScore(user.id, device.id, score, result);
 
@@ -285,7 +320,13 @@ export function loginRoutes(deps: LoginDeps): Hono {
 
       // A-4.5: adapt only on a confident pass, and at most once per window, so an
       // attacker cannot walk the profile toward themselves.
-      if (score >= ADAPT_MIN_SCORE && now() - profile.updatedAt.getTime() >= ADAPT_WINDOW_MS) {
+      if (
+        score >= ADAPT_MIN_SCORE &&
+        alignment.distance === 0 &&
+        now() - profile.updatedAt.getTime() >= ADAPT_WINDOW_MS
+      ) {
+        // Only an exact script adapts the profile. Folding a fumbled attempt in would
+        // teach the profile the fumble.
         const next = adapt(loaded, sample);
         const update = {
           means: next.means,

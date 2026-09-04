@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test';
+import { extractFeatures } from '../../../core/biometrics/features';
+import type { KeyEvent } from '../../../core/biometrics/types';
 import { generateDeviceKey, signRequest } from '../../../core/crypto/device';
 import { toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { randomBytes } from '../../../core/crypto/kdf';
@@ -12,12 +14,40 @@ import { consistencyOf } from './user';
 const SECRET_32 = 'x'.repeat(32);
 const SCRIPT_LEN = 12;
 const VECTOR_LEN = 3 * SCRIPT_LEN + 5;
-const BASELINE = 100;
+
+/** A-14.2 commitments: one per script token. Distinct, deterministic, opaque. */
+const commitsFor = (n = SCRIPT_LEN) =>
+  Array.from({ length: n }, (_, i) => toBase64Url(new Uint8Array(16).fill(i + 1)));
+
 const CLOCK = { value: 1_788_000_000_000, now: () => CLOCK.value };
 
-const at = (v: number) => Array.from({ length: VECTOR_LEN }, () => v);
-const SAME = at(BASELINE);
-const GREY = at(BASELINE + 16);
+/**
+ * Samples must be physically consistent: flight is digraph − dwell, so a vector has to
+ * come from real timings rather than a filled array. Scaling the whole rhythm moves
+ * every feature family together, and the scores below are measured, not guessed.
+ */
+function rhythm(scale: number): number[] {
+  const events: KeyEvent[] = [];
+  const dwell = Math.round(BASELINE_DWELL * scale);
+  const gap = Math.round(BASELINE_GAP * scale);
+  let t = 0;
+  for (let i = 0; i < SCRIPT_LEN; i++) {
+    const key = String.fromCharCode(97 + i);
+    events.push({ type: 'down', key, t });
+    events.push({ type: 'up', key, t: t + dwell });
+    t += gap;
+  }
+  const result = extractFeatures(events, SCRIPT_LEN);
+  if ('error' in result) throw new Error(result.error);
+  return result.values;
+}
+
+const BASELINE_DWELL = 80;
+const BASELINE_GAP = 120;
+const SAME = rhythm(1.0); // 1.00 → pass
+const NEAR = rhythm(1.1); // 0.81 → pass, and >= 0.70 so it adapts
+const GREY = rhythm(1.2); // 0.58 → grey
+const FAR = rhythm(1.4); //  0.32 → fail
 
 const open: Db[] = [];
 afterAll(async () => {
@@ -102,22 +132,38 @@ async function account() {
     },
   });
   for (let i = 0; i < config.enrollmentSamples; i++) {
-    await call('POST', '/enroll/sample', { featureVector: SAME }, enrollmentToken);
+    await call(
+      'POST',
+      '/enroll/sample',
+      { featureVector: SAME, commitments: commitsFor() },
+      enrollmentToken,
+    );
   }
   await call('POST', '/enroll/build', {}, enrollmentToken);
 
   const plain = (await (
-    await call('POST', '/auth/login', { username: 'shawn', authHash, featureVector: SAME })
+    await call('POST', '/auth/login', {
+      username: 'shawn',
+      authHash,
+      featureVector: SAME,
+      commitments: commitsFor(),
+    })
   ).json()) as { accessToken: string };
 
   /** A grey login then a clean retype, which is the only way to get a step-up flag. */
   const stepUpToken = async () => {
-    await call('POST', '/auth/login', { username: 'shawn', authHash, featureVector: GREY });
+    await call('POST', '/auth/login', {
+      username: 'shawn',
+      authHash,
+      featureVector: GREY,
+      commitments: commitsFor(),
+    });
     const res = await call('POST', '/auth/step-up', {
       username: 'shawn',
       authHash,
       method: 'retype',
       featureVector: SAME,
+      commitments: commitsFor(),
     });
     return ((await res.json()) as { accessToken: string }).accessToken;
   };
@@ -285,7 +331,8 @@ describe('PATCH /user/settings — validation', () => {
     const before = await a.call('POST', '/auth/login', {
       username: 'shawn',
       authHash: a.authHash,
-      featureVector: at(BASELINE + 40),
+      featureVector: FAR,
+      commitments: commitsFor(),
     });
     expect(before.status).toBe(401);
 
@@ -295,7 +342,8 @@ describe('PATCH /user/settings — validation', () => {
     const after = await a.call('POST', '/auth/login', {
       username: 'shawn',
       authHash: a.authHash,
-      featureVector: at(BASELINE + 40),
+      featureVector: FAR,
+      commitments: commitsFor(),
     });
     expect(after.status).toBe(200);
     expect(((await after.json()) as { band: string }).band).toBe('pass');
@@ -310,6 +358,7 @@ describe('PATCH /user/settings — validation', () => {
       username: 'shawn',
       authHash: toBase64Url(randomBytes(32)),
       featureVector: SAME,
+      commitments: commitsFor(),
     });
     expect(res.status).toBe(401);
   });
@@ -341,7 +390,7 @@ describe('GET /user/rhythm', () => {
     expect(body).not.toContain('featureVector');
     expect(body).not.toContain('means');
     expect(body).not.toContain('stds');
-    expect(body).not.toContain(String(BASELINE));
+    expect(body).not.toContain(JSON.stringify(SAME));
     expect(Object.keys(JSON.parse(body)).sort()).toEqual([
       'consistency',
       'recentScores',

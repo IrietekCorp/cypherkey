@@ -15,6 +15,10 @@ const SECRET_32 = 'x'.repeat(32);
 const SCRIPT_LEN = 12;
 const VECTOR_LEN = 3 * SCRIPT_LEN + 5;
 
+/** A-14.2 commitments: one per script token. Distinct, deterministic, opaque. */
+const commitsFor = (n = SCRIPT_LEN) =>
+  Array.from({ length: n }, (_, i) => toBase64Url(new Uint8Array(16).fill(i + 1)));
+
 const open: Db[] = [];
 afterAll(async () => {
   await Promise.all(open.map((d) => d.close()));
@@ -110,7 +114,7 @@ async function enrolledFixture(overrides: { enrollmentSamples?: string } = {}) {
   };
 
   const sample = async (seed: number, token = enrollmentToken) => {
-    const body = { featureVector: sampleVector(seed) };
+    const body = { featureVector: sampleVector(seed), commitments: commitsFor() };
     return post(
       app,
       '/enroll/sample',
@@ -193,7 +197,7 @@ describe('POST /enroll/sample', () => {
 
     // 8 is a well-formed 3n+5 vector for a 1-token script — rejected as too short.
     for (const length of [VECTOR_LEN - 1, VECTOR_LEN + 1, 0, 8, 3 * 11 + 5]) {
-      const body = { featureVector: Array.from({ length }, () => 100) };
+      const body = { featureVector: Array.from({ length }, () => 100), commitments: commitsFor() };
       const res = await post(
         f.app,
         '/enroll/sample',
@@ -217,7 +221,10 @@ describe('POST /enroll/sample', () => {
     await f.registerRecovery();
     await f.sample(0);
 
-    const body = { featureVector: Array.from({ length: 3 * 13 + 5 }, () => 100) };
+    const body = {
+      featureVector: Array.from({ length: 3 * 13 + 5 }, () => 100),
+      commitments: commitsFor(13),
+    };
     const res = await post(
       f.app,
       '/enroll/sample',
@@ -241,7 +248,7 @@ describe('POST /enroll/sample', () => {
     for (const bad of ['NaN', null, 'abc']) {
       const vector: unknown[] = sampleVector(0);
       vector[3] = bad === 'NaN' ? Number.NaN : bad;
-      const body = { featureVector: vector };
+      const body = { featureVector: vector, commitments: commitsFor() };
       const res = await post(
         f.app,
         '/enroll/sample',
@@ -297,7 +304,10 @@ describe('POST /enroll/build', () => {
     await f.registerRecovery();
     // Identical samples would otherwise give a std of exactly zero and divide by it.
     for (let i = 0; i < f.config.enrollmentSamples; i++) {
-      const body = { featureVector: Array.from({ length: VECTOR_LEN }, () => 100) };
+      const body = {
+        featureVector: Array.from({ length: VECTOR_LEN }, () => 100),
+        commitments: commitsFor(),
+      };
       await post(
         f.app,
         '/enroll/sample',
@@ -396,7 +406,7 @@ describe('authorization (A-10: token AND device signature)', () => {
   test('a valid token without a device signature is rejected', async () => {
     const f = await enrolledFixture();
     await f.registerRecovery();
-    const body = { featureVector: sampleVector(0) };
+    const body = { featureVector: sampleVector(0), commitments: commitsFor() };
     const res = await post(f.app, '/enroll/sample', body, {
       authorization: `Bearer ${f.enrollmentToken}`,
     });
@@ -407,7 +417,7 @@ describe('authorization (A-10: token AND device signature)', () => {
     const f = await enrolledFixture();
     await f.registerRecovery();
     const attacker = await generateDeviceKey();
-    const body = { featureVector: sampleVector(0) };
+    const body = { featureVector: sampleVector(0), commitments: commitsFor() };
     const res = await post(
       f.app,
       '/enroll/sample',

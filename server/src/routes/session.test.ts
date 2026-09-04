@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
+import { extractFeatures } from '../../../core/biometrics/features';
+import type { KeyEvent } from '../../../core/biometrics/types';
 import { generateDeviceKey, signRequest } from '../../../core/crypto/device';
 import { toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { randomBytes } from '../../../core/crypto/kdf';
@@ -12,6 +14,25 @@ import * as schema from '../db/schema/sqlite';
 
 const SECRET_32 = 'x'.repeat(32);
 const CLOCK = { value: 1_788_000_000_000, now: () => CLOCK.value };
+
+/** A-14.2 commitments: one per script token (12), matching the 41-value vector. */
+const commitsFor = (n = 12) =>
+  Array.from({ length: n }, (_, i) => toBase64Url(new Uint8Array(16).fill(i + 1)));
+
+/** A physically consistent 12-token sample: flight must equal digraph − dwell. */
+function steadyRhythm(): number[] {
+  const events: KeyEvent[] = [];
+  let t = 0;
+  for (let i = 0; i < 12; i++) {
+    const key = String.fromCharCode(97 + i);
+    events.push({ type: 'down', key, t });
+    events.push({ type: 'up', key, t: t + 80 });
+    t += 120;
+  }
+  const result = extractFeatures(events, 12);
+  if ('error' in result) throw new Error(result.error);
+  return result.values;
+}
 
 const open: Db[] = [];
 afterAll(async () => {
@@ -98,7 +119,8 @@ async function loggedIn() {
     const body = {
       username: 'shawn',
       authHash,
-      featureVector: Array.from({ length: 41 }, () => 100),
+      featureVector: steadyRhythm(),
+      commitments: commitsFor(),
     };
     const res = await app.request('/auth/login', {
       method: 'POST',

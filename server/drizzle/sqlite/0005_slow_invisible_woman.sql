@@ -1,0 +1,1 @@
+ALTER TABLE `enrollment_samples` ADD `script_commitments` text NOT NULL;

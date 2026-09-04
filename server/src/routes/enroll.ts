@@ -10,6 +10,7 @@ import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import { MAX_SEQUENCE } from '../phantom/align';
 
 /**
  * `03` X-2 requires at least 12 resolved characters, and Phantom Keys only ever add
@@ -25,6 +26,16 @@ const MIN_SCRIPT_LEN = 12;
  * `getFeatureRanges`, which is the single definition of the layout (AGENTS), rather
  * than trusting the formula written out a second time here.
  */
+/** Constant-time comparison of two commitment sequences (AGENTS §6). */
+function sameCommitments(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  let differing = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) differing++;
+  }
+  return differing === 0;
+}
+
 function scriptLenFor(vectorLength: number): number | null {
   const n = (vectorLength - 5) / 3;
   if (!Number.isInteger(n) || n < MIN_SCRIPT_LEN) return null;
@@ -33,6 +44,8 @@ function scriptLenFor(vectorLength: number): number | null {
 
 const sampleSchema = z.object({
   featureVector: z.array(z.number().finite()).min(1).max(4096),
+  /** A-14.2: one base64url commitment per script token, in order. */
+  commitments: z.array(z.string().min(1).max(64)).min(1).max(MAX_SEQUENCE),
 });
 
 export type EnrollDeps = { db: Db; config: Config; now?: () => number };
@@ -152,12 +165,23 @@ export function enrollRoutes(deps: EnrollDeps): Hono {
       return c.json({ error: 'already_enrolled' }, 409);
     }
 
+    // A-14.1: the number of commitments is the number of tokens, and that is what
+    // the vector describes. If they disagree the client built one of them wrongly.
+    if (parsed.data.commitments.length !== scriptLen) {
+      return c.json({ error: 'commitment_length_mismatch' }, 400);
+    }
+
     const samples = await loadSamples(userId);
     // The first sample fixes the script length; the rest must agree, or the
     // profile would be built from vectors that are not comparable.
     const first = samples[0];
     if (first !== undefined && first.featureVector.length !== vector.length) {
       return c.json({ error: 'script_length_mismatch' }, 400);
+    }
+    // A-14: enrollment tolerates nothing. Every sample must be the same script, or
+    // the canonical sequence the server stores would not be the one the user typed.
+    if (first !== undefined && !sameCommitments(first.scriptCommitments, parsed.data.commitments)) {
+      return c.json({ error: 'script_mismatch' }, 400);
     }
     if (samples.length >= config.enrollmentSamples) {
       return c.json({ error: 'enough_samples' }, 409);
@@ -167,6 +191,7 @@ export function enrollRoutes(deps: EnrollDeps): Hono {
       id: crypto.randomUUID(),
       userId,
       featureVector: vector,
+      scriptCommitments: parsed.data.commitments,
       createdAt: new Date(now()),
     };
     if (db.dialect === 'sqlite') {
@@ -208,9 +233,8 @@ export function enrollRoutes(deps: EnrollDeps): Hono {
       means: profile.means,
       stds: profile.stds,
       weights: profile.weights,
-      // A-14.2 commitments arrive with M1-17b. An empty canonical sequence fails
-      // every alignment closed, which is the safe direction until it is populated.
-      scriptCommitments: [] as string[],
+      // The canonical sequence, taken from the samples that built this profile.
+      scriptCommitments: samples[0]?.scriptCommitments ?? [],
       sampleCount: profile.sampleCount,
       updatedAt: new Date(now()),
     };

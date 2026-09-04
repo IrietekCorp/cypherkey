@@ -1,0 +1,1 @@
+ALTER TABLE "enrollment_samples" ADD COLUMN "script_commitments" jsonb NOT NULL;

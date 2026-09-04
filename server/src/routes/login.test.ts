@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { eq } from 'drizzle-orm';
+import { extractFeatures } from '../../../core/biometrics/features';
+import type { KeyEvent } from '../../../core/biometrics/types';
 import { generateDeviceKey, signRequest } from '../../../core/crypto/device';
 import { toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { randomBytes } from '../../../core/crypto/kdf';
@@ -14,15 +16,38 @@ import * as schema from '../db/schema/sqlite';
 const SECRET_32 = 'x'.repeat(32);
 const SCRIPT_LEN = 12;
 const VECTOR_LEN = 3 * SCRIPT_LEN + 5;
-/** Every enrolment sample is this value, so means land here and stds floor at 8 ms. */
-const BASELINE = 100;
 
-/** z = |x − mean| / std, and featureScore = 1/(1+(z/2)²). std is 8 after the A-4.3 floor. */
-const vectorAt = (value: number) => Array.from({ length: VECTOR_LEN }, () => value);
-const SAME = vectorAt(BASELINE); //  z=0   → 1.00  → pass
-const NEAR = vectorAt(BASELINE + 8); //  z=1   → 0.80  → pass, and ≥ 0.70 so it adapts
-const GREY = vectorAt(BASELINE + 16); //  z=2   → 0.50  → grey
-const FAR = vectorAt(BASELINE + 40); //  z=5   → 0.14  → fail
+/** A-14.2 commitments: one per script token. Distinct, deterministic, opaque. */
+const commitsFor = (n = SCRIPT_LEN) =>
+  Array.from({ length: n }, (_, i) => toBase64Url(new Uint8Array(16).fill(i + 1)));
+
+/**
+ * Samples must be physically consistent: flight is digraph − dwell, so a vector has to
+ * come from real timings rather than a filled array. Scaling the whole rhythm moves
+ * every feature family together, and the scores below are measured, not guessed.
+ */
+function rhythm(scale: number): number[] {
+  const events: KeyEvent[] = [];
+  const dwell = Math.round(BASELINE_DWELL * scale);
+  const gap = Math.round(BASELINE_GAP * scale);
+  let t = 0;
+  for (let i = 0; i < SCRIPT_LEN; i++) {
+    const key = String.fromCharCode(97 + i);
+    events.push({ type: 'down', key, t });
+    events.push({ type: 'up', key, t: t + dwell });
+    t += gap;
+  }
+  const result = extractFeatures(events, SCRIPT_LEN);
+  if ('error' in result) throw new Error(result.error);
+  return result.values;
+}
+
+const BASELINE_DWELL = 80;
+const BASELINE_GAP = 120;
+const SAME = rhythm(1.0); // 1.00 → pass
+const NEAR = rhythm(1.1); // 0.81 → pass, and >= 0.70 so it adapts
+const GREY = rhythm(1.2); // 0.58 → grey
+const FAR = rhythm(1.4); //  0.32 → fail
 
 /** One mutable clock shared by the fixture and its signers, so time can be advanced. */
 const CLOCK = { value: 1_788_000_000_000, now: () => CLOCK.value };
@@ -119,7 +144,7 @@ async function enrolledAccount(timingFloorMs = 0) {
   );
 
   for (let i = 0; i < config.enrollmentSamples; i++) {
-    const body = { featureVector: SAME };
+    const body = { featureVector: SAME, commitments: commitsFor() };
     await post(
       app,
       '/enroll/sample',
@@ -142,12 +167,14 @@ async function enrolledAccount(timingFloorMs = 0) {
       ts?: number;
       nonce?: Uint8Array;
       signed?: boolean;
+      commitments?: string[];
     } = {},
   ) => {
     const body = {
       username: 'shawn',
       authHash: opts.authHash ?? authHash,
       featureVector,
+      commitments: opts.commitments ?? commitsFor(),
     };
     const signer = opts.device ?? { priv: device.priv, id: deviceId };
     const headers =
@@ -229,7 +256,12 @@ describe('bands (A-4.4)', () => {
 
   test('an unknown username is 401 and looks like any other failure', async () => {
     const a = await enrolledAccount();
-    const body = { username: 'ghost', authHash: a.authHash, featureVector: SAME };
+    const body = {
+      username: 'ghost',
+      authHash: a.authHash,
+      featureVector: SAME,
+      commitments: commitsFor(),
+    };
     const res = await post(
       a.app,
       '/auth/login',
@@ -376,14 +408,14 @@ describe('adaptation (A-4.5)', () => {
   test('a pass at or above 0.70 moves the profile toward the sample', async () => {
     const a = await enrolledAccount();
     const before = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(before?.means[0]).toBe(BASELINE);
+    expect(before?.means[0]).toBe(BASELINE_DWELL);
 
     a.advance(11 * 60_000);
     expect((await a.login(NEAR)).status).toBe(200);
 
     const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    // EMA with alpha 0.1 toward 108: 100 + 0.1 × 8 = 100.8
-    expect(after?.means[0]).toBeCloseTo(100.8, 5);
+    // EMA with alpha 0.1 from the enrolled dwell of 80 toward NEAR's 88.
+    expect(after?.means[0]).toBeCloseTo(80.8, 5);
   });
 
   test('a grey band never adapts', async () => {
@@ -391,7 +423,7 @@ describe('adaptation (A-4.5)', () => {
     a.advance(11 * 60_000);
     await a.login(GREY);
     const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(after?.means[0]).toBe(BASELINE);
+    expect(after?.means[0]).toBe(BASELINE_DWELL);
   });
 
   test('a fail never adapts', async () => {
@@ -399,7 +431,7 @@ describe('adaptation (A-4.5)', () => {
     a.advance(11 * 60_000);
     await a.login(FAR);
     const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(after?.means[0]).toBe(BASELINE);
+    expect(after?.means[0]).toBe(BASELINE_DWELL);
   });
 
   test('adaptation is capped at once per ten minutes', async () => {
@@ -407,7 +439,7 @@ describe('adaptation (A-4.5)', () => {
     a.advance(11 * 60_000);
     await a.login(NEAR);
     const once = (await a.drizzle.select().from(schema.biometricProfiles))[0]?.means[0];
-    expect(once).toBeCloseTo(100.8, 5);
+    expect(once).toBeCloseTo(80.8, 5);
 
     // Immediately again: inside the window, so the profile must not move.
     await a.login(NEAR);
@@ -426,7 +458,9 @@ describe('adaptation (A-4.5)', () => {
   test('a freshly built profile does not adapt on the very next login', async () => {
     const a = await enrolledAccount();
     await a.login(NEAR);
-    expect((await a.drizzle.select().from(schema.biometricProfiles))[0]?.means[0]).toBe(BASELINE);
+    expect((await a.drizzle.select().from(schema.biometricProfiles))[0]?.means[0]).toBe(
+      BASELINE_DWELL,
+    );
   });
 });
 
@@ -475,7 +509,12 @@ describe('a user who has not enrolled yet', () => {
       consentPolicyVersion: '2026-09-01',
     });
 
-    const body = { username: 'newbie', authHash, featureVector: SAME };
+    const body = {
+      username: 'newbie',
+      authHash,
+      featureVector: SAME,
+      commitments: commitsFor(),
+    };
     const res = await post(
       app,
       '/auth/login',

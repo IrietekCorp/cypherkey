@@ -2,25 +2,39 @@ import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { getFeatureRanges } from '../../../core/biometrics/features';
-import { adapt, score as scoreOf } from '../../../core/biometrics/score';
+import { adapt } from '../../../core/biometrics/score';
 import type { Profile } from '../../../core/biometrics/score';
 import { verifyRequest } from '../../../core/crypto/device';
 import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
+import { budget } from '../../../core/crypto/phantom';
+import type { Strictness } from '../../../core/crypto/phantom';
 import { issueSession } from '../auth/session-tokens';
+import { scoreAligned } from '../biometrics/score';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import { MAX_SEQUENCE, alignCommitments } from '../phantom/align';
 
 const MAX_SKEW_MS = 30_000;
 /** How long a grey attempt stays open for its retype (X-3: "type it once more"). */
 const PENDING_WINDOW_MS = 5 * 60_000;
+
+/** A malformed commitment cannot match anything, so it aligns as a mismatch. */
+function decodeCommitment(value: string): Uint8Array {
+  try {
+    return fromBase64Url(value);
+  } catch {
+    return new Uint8Array(0);
+  }
+}
 
 const stepUpSchema = z.object({
   username: z.string().min(1).max(64),
   authHash: z.string().min(1).max(512),
   method: z.literal('retype'),
   featureVector: z.array(z.number().finite()).min(1).max(4096),
+  commitments: z.array(z.string().min(1).max(64)).min(1).max(MAX_SEQUENCE),
 });
 
 export type StepUpDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
@@ -156,9 +170,26 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
       let combined: number | null = null;
 
       if (profile !== undefined && user.biometricEnabled) {
-        if (input.featureVector.length !== getFeatureRanges(profile.scriptLen).totalLength) {
+        const loginLen = input.commitments.length;
+        if (input.featureVector.length !== getFeatureRanges(loginLen).totalLength) {
           return deny();
         }
+
+        // A step-up is a second chance at the rhythm, never at the script: the same
+        // A-14.3 budget applies, or a retype would be a way around the phantoms.
+        const level: Strictness = user.thresholdsJson?.strictness ?? 'medium';
+        const alignment = alignCommitments(
+          profile.scriptCommitments.map(decodeCommitment),
+          input.commitments.map(decodeCommitment),
+        );
+        const allowed = budget(level, profile.scriptLen);
+        if (
+          alignment.insertions > allowed.maxInsertions ||
+          alignment.deletions + alignment.substitutions > allowed.maxMissing
+        ) {
+          return c.json({ band: 'fail', error: 'phantom_mismatch' }, 401);
+        }
+
         const loaded: Profile = {
           version: 1,
           len: profile.scriptLen,
@@ -167,8 +198,8 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
           weights: profile.weights,
           sampleCount: profile.sampleCount,
         };
-        const sample = { version: 1 as const, len: profile.scriptLen, values: input.featureVector };
-        const retype = scoreOf(loaded, sample);
+        const sample = { version: 1 as const, len: loginLen, values: input.featureVector };
+        const retype = scoreAligned(loaded, sample, alignment);
 
         // X-3: the grey band asks for a second sample and scores the average. A
         // pending grey attempt within the window is what this is completing.
@@ -198,7 +229,8 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
         // X-3: a cleared step-up folds the sample into the profile — this is how the
         // profile learns a new keyboard. It deliberately bypasses the A-4.5 ten-minute
         // cap, because the passphrase and a second sample were both just proven.
-        const next = adapt(loaded, sample);
+        // Only an exact script feeds the profile, for the same reason as at login.
+        const next = alignment.distance === 0 ? adapt(loaded, sample) : loaded;
         const update = {
           means: next.means,
           stds: next.stds,

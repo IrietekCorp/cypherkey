@@ -6,25 +6,59 @@
  * login with a good sample (pass) → login with a bad sample (fail) → vault write →
  * vault read on a second device → refresh → logout.
  *
- * Not yet covered, and the reason the M1 exit criterion is not met: the Phantom
- * Keys cases. docs/04 also requires signing up with a two-phantom script and a
- * second attempt using only the resolved passphrase failing. Those need M1-16,
- * M1-17 and M1-17b, and M1-17b owns adding them here.
+ * The enrolled script carries two Phantom Keys, so the sequence also covers what
+ * docs/04 asks of them: one extra lone-Escape slip still passes, typing only the
+ * resolved passphrase fails, and a wrong passphrase fails before alignment runs.
  */
+import { extractFeatures } from '../core/biometrics/features';
+import { eventsToScript } from '../core/biometrics/script';
+import type { KeyEvent } from '../core/biometrics/types';
 import { decryptItem, encryptItem, unwrapKey, wrapKey, xor32 } from '../core/crypto/aead';
 import { generateDeviceKey, signRequest } from '../core/crypto/device';
 import { fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from '../core/crypto/encoding';
 import { deriveMasterKey, deriveSubkey, randomBytes } from '../core/crypto/kdf';
+import { kdfInput, scriptCommitments } from '../core/crypto/phantom';
 import { generateRecoveryCode, recoveryKeyFromCode } from '../core/crypto/recovery';
 import { createApp } from '../server/src/app';
 import { loadConfigOrExit } from '../server/src/config';
 import { createDb } from '../server/src/db/client';
 import { migrateDb } from '../server/src/db/migrate';
 
-const SCRIPT_LEN = 12;
-const VECTOR_LEN = 3 * SCRIPT_LEN + 5;
-const BASELINE = 100;
-const at = (v: number) => Array.from({ length: VECTOR_LEN }, () => v);
+/**
+ * The enrolled script: "passw0rd!" typed with two Phantom Keys — a doubled `s` that is
+ * corrected away, and a lone Escape. Twelve keystrokes, nine characters (A-14).
+ */
+const ENROLLED_KEYS = ['p', 'a', 's', 's', 's', 'Backspace', 'Escape', 'w', '0', 'r', 'd', '!'];
+/** The same resolved text with no phantoms: what someone with only the passphrase types. */
+const RESOLVED_ONLY_KEYS = ['p', 'a', 's', 's', 'w', '0', 'r', 'd', '!'];
+/** The enrolled script plus one extra stray Escape: the slip docs/04 says must pass. */
+const ONE_SLIP_KEYS = [...ENROLLED_KEYS.slice(0, 7), 'Escape', ...ENROLLED_KEYS.slice(7)];
+
+/** Turns a list of keys into the events a real capture would have produced. */
+function typeKeys(keys: string[], dwell = 80, gap = 120): KeyEvent[] {
+  const events: KeyEvent[] = [];
+  let t = 0;
+  for (const key of keys) {
+    events.push({ type: 'down', key, t });
+    events.push({ type: 'up', key, t: t + dwell });
+    t += gap;
+  }
+  return events;
+}
+
+/** The script, its resolved text, its feature vector and its commitments. */
+async function sampleFor(keys: string[], phantomKey: Uint8Array, dwell = 80, gap = 120) {
+  const events = typeKeys(keys, dwell, gap);
+  const script = eventsToScript(events);
+  if ('error' in script) throw new Error(`tokenization failed: ${script.error}`);
+  const features = extractFeatures(events, keys.length);
+  if ('error' in features) throw new Error(`extraction failed: ${features.error}`);
+  return {
+    ...script,
+    featureVector: features.values,
+    commitments: (await scriptCommitments(phantomKey, script.script)).map(toBase64Url),
+  };
+}
 
 let stepNumber = 0;
 function ok(label: string): void {
@@ -51,15 +85,30 @@ async function main(): Promise<void> {
   console.log(`\ncypherkey e2e — ${db.dialect}\n`);
 
   const username = `e2e-${Date.now()}`;
-  const passphrase = utf8Encode('correct horse battery staple');
   const userSalt = randomBytes(16);
 
-  // ---- client-side key hierarchy (A-2) -------------------------------------
-  const masterKey = await deriveMasterKey(passphrase, userSalt, config.argonParams);
+  // ---- client-side key hierarchy (A-2, A-14.2) -----------------------------
+  const enrolledScript = eventsToScript(typeKeys(ENROLLED_KEYS));
+  if ('error' in enrolledScript) throw new Error(enrolledScript.error);
+  assert(enrolledScript.resolved === 'passw0rd!', 'the script must resolve to the passphrase');
+  ok(
+    `script: ${[...enrolledScript.script].length} keystrokes, ${enrolledScript.resolved.length} characters (two phantoms)`,
+  );
+
+  // Medium strictness: the KDF sees the resolved text, and the script is verified
+  // separately through commitments (A-14.2).
+  const masterKey = await deriveMasterKey(
+    kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium'),
+    userSalt,
+    config.argonParams,
+  );
   const authKey = await deriveSubkey(masterKey, 'cypherkey/auth/v1');
   const wrapKeyBytes = await deriveSubkey(masterKey, 'cypherkey/wrap/v1');
+  const phantomKey = await deriveSubkey(masterKey, 'cypherkey/phantom/v1');
   masterKey.fill(0);
-  ok('derived masterKey, authKey and wrapKey');
+  ok('derived masterKey, authKey, wrapKey and phantomKey');
+
+  const enrolled = await sampleFor(ENROLLED_KEYS, phantomKey);
 
   const deviceOne = await generateDeviceKey();
   const deviceOneId = toBase64Url(deviceOne.pub);
@@ -148,7 +197,7 @@ async function main(): Promise<void> {
     const res = await call(
       'POST',
       '/enroll/sample',
-      { featureVector: at(BASELINE) },
+      { featureVector: enrolled.featureVector, commitments: enrolled.commitments },
       { priv: deviceOne.priv, id: deviceOneId },
       enrollmentToken,
     );
@@ -184,7 +233,8 @@ async function main(): Promise<void> {
     {
       username,
       authHash: toBase64Url(authKey),
-      featureVector: at(BASELINE),
+      featureVector: enrolled.featureVector,
+      commitments: enrolled.commitments,
     },
     { priv: deviceOne.priv, id: deviceOneId },
   );
@@ -197,13 +247,16 @@ async function main(): Promise<void> {
   ok('login with a good sample → pass');
 
   // ---- login with a bad sample ---------------------------------------------
+  // Same script, typed at nearly twice the speed: the rhythm is what fails here.
+  const slowSample = await sampleFor(ENROLLED_KEYS, phantomKey, 150, 240);
   const bad = await call(
     'POST',
     '/auth/login',
     {
       username,
       authHash: toBase64Url(authKey),
-      featureVector: at(BASELINE + 40),
+      featureVector: slowSample.featureVector,
+      commitments: enrolled.commitments,
     },
     { priv: deviceOne.priv, id: deviceOneId },
   );
@@ -212,6 +265,63 @@ async function main(): Promise<void> {
     `bad login expected fail, got ${bad.status}`,
   );
   ok('login with a bad sample → fail');
+
+  // ---- Phantom Keys acceptance (docs/04, A-14.3) ----------------------------
+  const slip = await sampleFor(ONE_SLIP_KEYS, phantomKey);
+  const slipLogin = await call(
+    'POST',
+    '/auth/login',
+    {
+      username,
+      authHash: toBase64Url(authKey),
+      featureVector: slip.featureVector,
+      commitments: slip.commitments,
+    },
+    { priv: deviceOne.priv, id: deviceOneId },
+  );
+  assert(
+    slipLogin.status === 200 && slipLogin.body.band === 'pass',
+    `one lone-Escape slip should pass, got ${slipLogin.status} ${String(slipLogin.body.band ?? slipLogin.body.error)}`,
+  );
+  ok('login with one extra lone-Escape slip → pass (Medium forgives insertions)');
+
+  // The same resolved text with the phantoms left out: what a leaked password buys.
+  const resolvedOnly = await sampleFor(RESOLVED_ONLY_KEYS, phantomKey);
+  assert(resolvedOnly.resolved === enrolledScript.resolved, 'same resolved text, no phantoms');
+  const resolvedLogin = await call(
+    'POST',
+    '/auth/login',
+    {
+      username,
+      authHash: toBase64Url(authKey),
+      featureVector: resolvedOnly.featureVector,
+      commitments: resolvedOnly.commitments,
+    },
+    { priv: deviceOne.priv, id: deviceOneId },
+  );
+  assert(
+    resolvedLogin.status === 401 && resolvedLogin.body.error === 'phantom_mismatch',
+    `resolved passphrase alone should fail, got ${resolvedLogin.status} ${String(resolvedLogin.body.error)}`,
+  );
+  ok('login with the resolved passphrase only → phantom_mismatch');
+
+  // A wrong passphrase never reaches alignment: authHash is checked first.
+  const wrongPass = await call(
+    'POST',
+    '/auth/login',
+    {
+      username,
+      authHash: toBase64Url(randomBytes(32)),
+      featureVector: enrolled.featureVector,
+      commitments: enrolled.commitments,
+    },
+    { priv: deviceOne.priv, id: deviceOneId },
+  );
+  assert(
+    wrongPass.status === 401 && wrongPass.body.error === 'invalid_credentials',
+    `a wrong passphrase should fail before alignment, got ${String(wrongPass.body.error)}`,
+  );
+  ok('wrong passphrase → rejected before alignment runs');
 
   // ---- vault write ----------------------------------------------------------
   const plaintext = utf8Encode(JSON.stringify({ title: 'GitHub', password: 'hunter2' }));
@@ -246,7 +356,8 @@ async function main(): Promise<void> {
     {
       username,
       authHash: toBase64Url(authKey),
-      featureVector: at(BASELINE),
+      featureVector: enrolled.featureVector,
+      commitments: enrolled.commitments,
     },
     { priv: deviceTwo.priv, id: deviceTwoId },
   );
@@ -260,7 +371,8 @@ async function main(): Promise<void> {
       username,
       authHash: toBase64Url(authKey),
       method: 'retype',
-      featureVector: at(BASELINE),
+      featureVector: enrolled.featureVector,
+      commitments: enrolled.commitments,
     },
     { priv: deviceTwo.priv, id: deviceTwoId },
   );
@@ -272,7 +384,11 @@ async function main(): Promise<void> {
   // the server released — it never saw device one's memory.
   const twoWrapped = cleared.body.wrappedVaultKey as { ct: string; nonce: string };
   const twoShare = fromBase64Url(cleared.body.serverShare as string);
-  const twoMaster = await deriveMasterKey(passphrase, userSalt, config.argonParams);
+  const twoMaster = await deriveMasterKey(
+    kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium'),
+    userSalt,
+    config.argonParams,
+  );
   const twoWrapKey = await deriveSubkey(twoMaster, 'cypherkey/wrap/v1');
   twoMaster.fill(0);
   const twoVaultKey = xor32(
@@ -361,8 +477,9 @@ async function main(): Promise<void> {
   ok('Recovery Kit opens the vault with no help from the server');
 
   await db.close();
-  console.log(`\n  ${stepNumber} steps passed on ${db.dialect}.`);
-  console.log('  Not covered yet: the Phantom Keys cases from docs/04 — they need M1-16/17/17b.\n');
+  console.log(
+    `\n  ${stepNumber} steps passed on ${db.dialect}. The M1 exit sequence is complete.\n`,
+  );
 }
 
 main().catch(async (error) => {

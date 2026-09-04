@@ -41,6 +41,8 @@ async function fresh() {
         username,
         authHash: toBase64Url(randomBytes(32)),
         featureVector: [1],
+        // A-14.2: the shape must be valid, so a rejection is a 401 and not a 400.
+        commitments: [toBase64Url(new Uint8Array(16).fill(1))],
       }),
     });
 

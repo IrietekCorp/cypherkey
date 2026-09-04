@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test';
+import { extractFeatures } from '../../../core/biometrics/features';
+import type { KeyEvent } from '../../../core/biometrics/types';
 import { generateDeviceKey, signRequest } from '../../../core/crypto/device';
 import { toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { randomBytes } from '../../../core/crypto/kdf';
@@ -13,13 +15,40 @@ import * as schema from '../db/schema/sqlite';
 const SECRET_32 = 'x'.repeat(32);
 const SCRIPT_LEN = 12;
 const VECTOR_LEN = 3 * SCRIPT_LEN + 5;
-const BASELINE = 100;
+
+/** A-14.2 commitments: one per script token. Distinct, deterministic, opaque. */
+const commitsFor = (n = SCRIPT_LEN) =>
+  Array.from({ length: n }, (_, i) => toBase64Url(new Uint8Array(16).fill(i + 1)));
+
 const CLOCK = { value: 1_788_000_000_000, now: () => CLOCK.value };
 
-const at = (v: number) => Array.from({ length: VECTOR_LEN }, () => v);
-const SAME = at(BASELINE); // z=0 → 1.00
-const GREY = at(BASELINE + 16); // z=2 → 0.50
-const FAR = at(BASELINE + 40); // z=5 → 0.14
+/**
+ * Samples must be physically consistent: flight is digraph − dwell, so a vector has to
+ * come from real timings rather than a filled array. Scaling the whole rhythm moves
+ * every feature family together, and the scores below are measured, not guessed.
+ */
+function rhythm(scale: number): number[] {
+  const events: KeyEvent[] = [];
+  const dwell = Math.round(BASELINE_DWELL * scale);
+  const gap = Math.round(BASELINE_GAP * scale);
+  let t = 0;
+  for (let i = 0; i < SCRIPT_LEN; i++) {
+    const key = String.fromCharCode(97 + i);
+    events.push({ type: 'down', key, t });
+    events.push({ type: 'up', key, t: t + dwell });
+    t += gap;
+  }
+  const result = extractFeatures(events, SCRIPT_LEN);
+  if ('error' in result) throw new Error(result.error);
+  return result.values;
+}
+
+const BASELINE_DWELL = 80;
+const BASELINE_GAP = 120;
+const SAME = rhythm(1.0); // 1.00 → pass
+const NEAR = rhythm(1.1); // 0.81 → pass, and >= 0.70 so it adapts
+const GREY = rhythm(1.2); // 0.58 → grey
+const FAR = rhythm(1.4); //  0.32 → fail
 
 const open: Db[] = [];
 afterAll(async () => {
@@ -103,15 +132,28 @@ async function enrolled() {
     },
   });
   for (let i = 0; i < config.enrollmentSamples; i++) {
-    await send('/enroll/sample', { featureVector: SAME }, signer, enrollmentToken);
+    await send(
+      '/enroll/sample',
+      { featureVector: SAME, commitments: commitsFor() },
+      signer,
+      enrollmentToken,
+    );
   }
   await send('/enroll/build', {}, signer, enrollmentToken);
 
   const login = (featureVector: number[], as: Signer = signer) =>
-    send('/auth/login', { username: 'shawn', authHash, featureVector }, as);
+    send(
+      '/auth/login',
+      { username: 'shawn', authHash, featureVector, commitments: commitsFor() },
+      as,
+    );
 
   const stepUp = (featureVector: number[], as: Signer = signer, method = 'retype') =>
-    send('/auth/step-up', { username: 'shawn', authHash, method, featureVector }, as);
+    send(
+      '/auth/step-up',
+      { username: 'shawn', authHash, method, featureVector, commitments: commitsFor() },
+      as,
+    );
 
   return { app, drizzle: db.drizzle, config, signer, authHash, login, stepUp, send };
 }
@@ -128,8 +170,8 @@ describe('POST /auth/step-up (X-3 retype)', () => {
     expect(payload.band).toBe('pass');
     expect(payload.serverShare).toBeDefined();
     expect(payload.wrappedVaultKey).toBeDefined();
-    // (0.5 grey + 1.0 retype) / 2 = 0.75
-    expect(payload.score as number).toBeCloseTo(0.75, 2);
+    // The grey attempt scored 0.58 and the retype 1.00, so the average is 0.79.
+    expect(payload.score as number).toBeCloseTo(0.79, 2);
   });
 
   test('the issued token carries a fresh step-up flag', async () => {
@@ -153,7 +195,7 @@ describe('POST /auth/step-up (X-3 retype)', () => {
   test('the average is what decides, so grey plus grey still fails', async () => {
     const a = await enrolled();
     await a.login(GREY);
-    // 0.5 and 0.5 average to 0.5, which is below the 0.62 pass band.
+    // 0.58 and 0.58 average to 0.58, which is below the 0.62 pass band.
     expect((await a.stepUp(GREY)).status).toBe(401);
   });
 
@@ -162,8 +204,8 @@ describe('POST /auth/step-up (X-3 retype)', () => {
     await a.login(GREY);
     CLOCK.value += 6 * 60_000; // past the five-minute window
 
-    // Alone, GREY scores 0.5 and fails; averaged with the stale 0.5 it would also fail,
-    // so use a sample that only passes on its own merits.
+    // Alone, GREY scores 0.58 and fails; averaged with the stale 0.58 it would also
+    // fail, so use a sample that passes on its own merits.
     const res = await a.stepUp(SAME);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { score: number }).score).toBeCloseTo(1.0, 2);
@@ -177,6 +219,7 @@ describe('POST /auth/step-up (X-3 retype)', () => {
       authHash: toBase64Url(randomBytes(32)),
       method: 'retype',
       featureVector: SAME,
+      commitments: commitsFor(),
     });
     expect(res.status).toBe(401);
   });
@@ -192,6 +235,7 @@ describe('POST /auth/step-up (X-3 retype)', () => {
         authHash: a.authHash,
         method: 'retype',
         featureVector: SAME,
+        commitments: commitsFor(),
       }),
     });
     expect(res.status).toBe(401);
@@ -240,13 +284,13 @@ describe('what a cleared step-up does to the profile (X-3)', () => {
   test('the sample is folded in, even inside the A-4.5 window', async () => {
     const a = await enrolled();
     const before = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(before?.means[0]).toBe(BASELINE);
+    expect(before?.means[0]).toBe(BASELINE_DWELL);
 
     await a.login(GREY);
-    await a.stepUp(at(BASELINE + 8));
+    await a.stepUp(NEAR);
 
     const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(after?.means[0]).toBeCloseTo(100.8, 5);
+    expect(after?.means[0]).toBeCloseTo(80.8, 5);
   });
 
   test('a failed step-up never touches the profile', async () => {
@@ -255,6 +299,6 @@ describe('what a cleared step-up does to the profile (X-3)', () => {
     await a.stepUp(FAR);
 
     const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
-    expect(after?.means[0]).toBe(BASELINE);
+    expect(after?.means[0]).toBe(BASELINE_DWELL);
   });
 });

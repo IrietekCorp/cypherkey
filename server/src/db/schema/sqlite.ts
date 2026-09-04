@@ -68,6 +68,10 @@ export const enrollmentSamples = table('enrollment_samples', {
   id: txt('id').primaryKey(),
   userId: userRef('user_id').notNull(),
   featureVector: json<number[]>('feature_vector').notNull(),
+  /** A-14: the script commitments for this sample. The first sample fixes the
+   *  canonical sequence; every later one must match it exactly, so the profile is
+   *  built from one script rather than several. Deleted with the sample at build. */
+  scriptCommitments: json<string[]>('script_commitments').notNull(),
   createdAt: ts('created_at').notNull(),
 });
 

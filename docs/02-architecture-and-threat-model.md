@@ -194,7 +194,7 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 | `users` | id, username(unique), email, user_salt, argon_params, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
 | `devices` | id, user_id, public_key, name, platform, trusted_at, last_seen_at, revoked_at |
 | `biometric_profiles` | user_id, script_len, means[], stds[], weights[], script_commitments, sample_count, version, updated_at |
-| `enrollment_samples` | id, user_id, feature_vector (deleted on build), created_at |
+| `enrollment_samples` | id, user_id, feature_vector, script_commitments (both deleted on build), created_at — the first sample fixes the canonical commitment sequence and every later one must match it exactly |
 | `auth_score_history` | id, user_id, device_id, score, band, created_at |
 | `vault_items` | **primary key (user_id, id)**, cursor, version, ciphertext, nonce, updated_at, deleted_at — item ids come from the client, so they are unique only within an account; a global key would let one account claim an id and lock others out of it |
 | `vault_cursors` | user_id, cursor |
@@ -303,10 +303,12 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 **Verification (A-14.3).**
 1. Server verifies `authHash` (fails hard on wrong passphrase).
 2. Server aligns canonical against login commitments (edit distance with path), counting `ins` (extra login tokens), `del` (canonical tokens absent) and `sub` separately — **not** as one symmetric number. See A-16 for why.
+   *Note on step 4:* the server never receives raw timings, only the feature vector — and it does not need them. `digraph[i]` is `down[i+1] − down[i]` and `dwell[i]` is `up[i] − down[i]`, so the whole down/up sequence follows from an arbitrary origin (`flight[i]` is just `digraph[i] − dwell[i]`, carrying no independent information). That is what makes "recompute from the retained neighbours" implementable without asking the client for anything more.
 3. Budget from the user's Strictness (A-16): `ins ≤ t` **and** `del + sub ≤ m`. Exceeding either → **fail** (counts toward lockout; never grey).
 4. Within budget, the alignment path drives rhythm scoring, per op:
    - `match` — dwell, flight and digraph used as-is.
-   - `ins` — **bridge across it.** Drop the inserted token's dwell entirely (no feature, no weight), and recompute the flight and digraph that span it from the retained neighbours: `flight = next.down − prev.up`, `digraph = next.down − prev.down`. Nothing is neutralized, so a lone extra keystroke perturbs two values, not four.
+   - `ins` — **bridge across it.** Drop the inserted token's dwell entirely (no feature, no weight), and recompute the flight and digraph that span it from the retained neighbours: `flight = next.down − prev.up`, `digraph = next.down − prev.down`.
+     *Corrected in M1-17b, having been measured:* bridging is the **stricter** rule, not the more forgiving one. The recomputed gap includes however long the fumble took, so the cost to the score scales with that time — 0 for a stray key fast enough to fit inside the existing rhythm, and about 0.08 for one costing 60 ms. Neutralizing the spanning pair instead would score *higher* for a slow fumble, because it discards the evidence that the rhythm really was disturbed. Keeping that evidence is the point, so bridging stands; the earlier rationale ("a lone extra keystroke perturbs two values, not four") described the arithmetic but implied leniency that does not exist.
    - `del` — the missing dwell and **both** touching flight/digraph pairs are neutralized: feature score 0.5 at half weight.
    - `sub` — timing features kept, position flagged.
    Globals are recomputed from the **aligned** token set (post-bridge), so both sides of the comparison are `3·canonLen + 7`. Rhythm scoring then proceeds per A-4.4 on the aligned vector.
