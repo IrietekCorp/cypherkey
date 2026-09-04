@@ -227,7 +227,11 @@ GET   /vault/changes?since=
 POST  /vault/changes
 GET   /vault/events           (SSE, M4)
 GET   /user/settings
-PATCH /user/settings          {biometricEnabled, pauseUntil, thresholds}
+PATCH /user/settings          {biometricEnabled, pauseUntil, thresholds}   ← refuses Strict; that is a re-key
+POST  /user/rekey             {strictness, authHash, wrappedVaultKey, commitments}  ← M1-17c; needs a fresh step-up.
+                              Crossing into or out of Strict changes kdfInput and so masterKey (A-16). vaultKey itself
+                              does not change, so recoveryWrappedVaultKey stays valid. Bumps users.key_version, which is
+                              how other devices learn their A-7 offline cache is stale.
 GET   /user/devices
 DELETE /user/devices/:id
 GET   /user/rhythm            {sampleCount, recentScores[], consistency}

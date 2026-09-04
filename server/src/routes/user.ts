@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { fromBase64Url } from '../../../core/crypto/encoding';
 import { requireAuth } from '../auth/require';
 import { bearerToken, hasFreshStepUp, verifyToken } from '../auth/token';
 import type { Config } from '../config';
@@ -12,6 +13,34 @@ import * as sqliteSchema from '../db/schema/sqlite';
 const RECENT_SCORES = 20;
 /** X-4 offers 24h and 7d; anything longer is an indefinite pause, not a duration. */
 const MAX_PAUSE_MS = 30 * 24 * 60 * 60_000;
+
+/** A base64url string that decodes to exactly `bytes` bytes. */
+function b64url(bytes?: number) {
+  return z.string().refine((value) => {
+    try {
+      const decoded = fromBase64Url(value);
+      return bytes === undefined ? decoded.length > 0 : decoded.length === bytes;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Everything that changes when Strictness crosses into or out of Strict (A-16).
+ *
+ * The vault key itself does not change, so the Recovery Kit blob stays valid: it
+ * wraps the full `vaultKey` under a key derived from the recovery code, which owes
+ * nothing to the passphrase. What changes is `masterKey`, and with it the three
+ * branches hanging off it — hence a new authHash, a re-wrapped share, and a fresh
+ * commitment sequence.
+ */
+const rekeySchema = z.object({
+  strictness: z.enum(['strict', 'medium', 'relaxed']),
+  authHash: b64url(32),
+  wrappedVaultKey: z.object({ ct: b64url(), nonce: b64url(12) }),
+  commitments: z.array(z.string().min(1).max(64)).min(1).max(128),
+});
 
 const settingsSchema = z
   .object({
@@ -153,6 +182,74 @@ export function userRoutes(deps: UserDeps): Hono {
 
     const updated = await q.user(auth.userId);
     return c.json(settingsOf(updated as NonNullable<typeof updated>));
+  });
+
+  app.post('/user/rekey', async (c) => {
+    const rawBody = await c.req.text();
+    const auth = await requireAuth(db, config, c.req, rawBody, now());
+    if (auth === null) return c.json({ error: 'unauthorized' }, 401);
+
+    // Same guard as the settings that weaken the rhythm: this rotates the master key,
+    // and an attacker holding only the passphrase must not be able to trigger it.
+    const token = bearerToken(c.req.raw.headers);
+    const claims = token === null ? null : verifyToken(token, config.jwtSecret, 'access', now());
+    if (claims === null || !hasFreshStepUp(claims, now())) {
+      return c.json({ error: 'step_up_required' }, 403);
+    }
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(rawBody);
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const parsed = rekeySchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'invalid_body' }, 400);
+    const input = parsed.data;
+
+    const user = await q.user(auth.userId);
+    if (user === undefined) return c.json({ error: 'unauthorized' }, 401);
+
+    const profile = await q.profile(auth.userId);
+    // The script does not change when Strictness does — only the key that commits to
+    // it — so a different token count means the client rebuilt the wrong thing.
+    if (profile !== undefined && input.commitments.length !== profile.scriptLen) {
+      return c.json({ error: 'commitment_length_mismatch' }, 400);
+    }
+
+    const authHash = await Bun.password.hash(input.authHash, { algorithm: 'argon2id' });
+    const keyVersion = user.keyVersion + 1;
+    const update = {
+      authHash,
+      wrappedVaultKey: input.wrappedVaultKey,
+      // A-7: every other device is holding a cache wrapped under the old wrapKey.
+      // Bumping this is how they learn to throw it away.
+      keyVersion,
+      thresholdsJson: { ...(user.thresholdsJson ?? {}), strictness: input.strictness },
+    };
+
+    if (db.dialect === 'sqlite') {
+      await db.drizzle
+        .update(sqliteSchema.users)
+        .set(update)
+        .where(eq(sqliteSchema.users.id, user.id));
+      if (profile !== undefined) {
+        await db.drizzle
+          .update(sqliteSchema.biometricProfiles)
+          .set({ scriptCommitments: input.commitments, updatedAt: new Date(now()) })
+          .where(eq(sqliteSchema.biometricProfiles.userId, user.id));
+      }
+    } else {
+      await db.drizzle.update(pgSchema.users).set(update).where(eq(pgSchema.users.id, user.id));
+      if (profile !== undefined) {
+        await db.drizzle
+          .update(pgSchema.biometricProfiles)
+          .set({ scriptCommitments: input.commitments, updatedAt: new Date(now()) })
+          .where(eq(pgSchema.biometricProfiles.userId, user.id));
+      }
+    }
+
+    return c.json({ keyVersion, strictness: input.strictness });
   });
 
   app.get('/user/rhythm', async (c) => {

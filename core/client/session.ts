@@ -9,6 +9,7 @@ import {
   deriveSubkey,
   randomBytes,
 } from '../crypto/kdf';
+import { type Strictness, kdfInput, scriptCommitments } from '../crypto/phantom';
 import { generateRecoveryCode, recoveryKeyFromCode } from '../crypto/recovery';
 
 /** A-5 step 6: the vault key lives in memory only, and only while unlocked. */
@@ -58,12 +59,26 @@ export type LoginResult =
   | { band: 'grey'; stepUp: string[] }
   | { band: 'fail'; error: string };
 
+/**
+ * A-16: crossing into or out of Strict changes `kdfInput` and therefore `masterKey`.
+ * The caller supplies the script again because the new key cannot be derived from
+ * anything the unlocked session is holding.
+ */
+export type StrictnessChange = {
+  level: Strictness;
+  resolved: string;
+  script: string;
+  /** Must carry a step-up cleared in the last five minutes. */
+  accessToken: string;
+};
+
 export type Session = {
   state(): SessionState;
   signup(input: SignupInput): Promise<SignupResult>;
   login(input: LoginInput): Promise<LoginResult>;
   stepUp(method: string, proof: string): Promise<LoginResult>;
   unlockOffline(input: Credential): Promise<boolean>;
+  changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
   lock(): void;
   touch(): void;
   checkIdle(): void;
@@ -113,6 +128,8 @@ export function createSession(deps: SessionDeps): Session {
   let vaultKeyBytes: Uint8Array | null = null;
   let wrapKeyBytes: Uint8Array | null = null;
   let lastActivity = now();
+  /** Held while unlocked so a re-key can re-wrap it without another round trip. */
+  let vaultShareBytes: Uint8Array | null = null;
   /** Held between a grey login and the step-up that resolves it. */
   let pending: { username: string } | null = null;
 
@@ -133,13 +150,15 @@ export function createSession(deps: SessionDeps): Session {
     method: string,
     path: string,
     body: unknown,
-    signWith?: Uint8Array,
+    signWith?: Uint8Array | null,
     deviceId?: string,
+    accessToken?: string,
   ): Promise<{ status: number; body: unknown }> {
     const serialized = body === undefined ? undefined : JSON.stringify(body);
     const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (accessToken !== undefined) headers.authorization = `Bearer ${accessToken}`;
 
-    if (signWith !== undefined && deviceId !== undefined) {
+    if (signWith !== undefined && signWith !== null && deviceId !== undefined) {
       // A-3: the signature and its inputs travel in headers. They cannot live in the
       // body, because the signing string covers sha256(body).
       const nonce = randomBytes(NONCE_BYTES);
@@ -201,9 +220,10 @@ export function createSession(deps: SessionDeps): Session {
     if (share.length !== KEY_BYTES) throw new Error('malformed server response: serverShare');
     const vaultShare = await unwrapKey(sealedFromJson(payload.wrappedVaultKey), wrap);
     const vault = xor32(vaultShare, share);
-    vaultShare.fill(0);
     await cacheForOffline(vault, wrap);
     unlockWith(vault, wrap);
+    // Kept so a Strictness re-key can re-wrap it without another round trip.
+    vaultShareBytes = vaultShare;
   }
 
   async function fetchSalt(username: string) {
@@ -262,7 +282,6 @@ export function createSession(deps: SessionDeps): Session {
       const payload = asRecord(created.body);
       const serverShare = fromBase64Url(requireString(payload.serverShare, 'serverShare'));
       const vault = xor32(vaultShare, serverShare);
-      vaultShare.fill(0);
 
       // Leg two (A-5): the Recovery Kit wraps the FULL vault key, which the client can
       // only compute now that serverShare has arrived. Enrollment is refused until this
@@ -297,6 +316,7 @@ export function createSession(deps: SessionDeps): Session {
       await deps.storage.set(KEYS.userSalt, toBase64Url(userSalt));
       await cacheForOffline(vault, wrap);
       unlockWith(vault, wrap);
+      vaultShareBytes = vaultShare;
 
       return { userId: requireString(payload.userId, 'userId'), recoveryCode };
     },
@@ -380,6 +400,116 @@ export function createSession(deps: SessionDeps): Session {
       return { band: 'pass' };
     },
 
+    /**
+     * Moves the account to another Strictness (A-16).
+     *
+     * Medium and Relaxed differ only in server-side tolerance, so that is a settings
+     * edit. Crossing into or out of Strict changes `kdfInput` and therefore
+     * `masterKey`, so the client re-derives all three branches, re-wraps the vault
+     * share under the new wrap key, re-commits the script under the new phantom key,
+     * and hands the lot to the server in one call.
+     *
+     * `vaultKey` itself never changes, so the Recovery Kit blob stays valid and the
+     * vault is never re-encrypted — A-1 principle 4 in practice.
+     */
+    async changeStrictness(input) {
+      if (state !== 'unlocked' || wrapKeyBytes === null || vaultShareBytes === null) {
+        return { error: 'locked' };
+      }
+
+      const current = await request(
+        'GET',
+        '/user/settings',
+        undefined,
+        null,
+        undefined,
+        input.accessToken,
+      );
+      if (current.status !== 200) return { error: 'settings_unavailable' };
+      const settings = asRecord(current.body);
+      const from = (asRecord(settings.thresholds).strictness ?? 'medium') as Strictness;
+
+      if (from === input.level) return { keyVersion: Number(settings.keyVersion ?? 0) };
+
+      // Medium to Relaxed and back moves no keys at all.
+      if (from !== 'strict' && input.level !== 'strict') {
+        const patched = await request(
+          'PATCH',
+          '/user/settings',
+          { thresholds: { strictness: input.level } },
+          null,
+          undefined,
+          input.accessToken,
+        );
+        if (patched.status !== 200) return { error: `settings_${patched.status}` };
+        return { keyVersion: Number(asRecord(patched.body).keyVersion ?? 0) };
+      }
+
+      const saltRaw = await deps.storage.get(KEYS.userSalt);
+      if (saltRaw === null) return { error: 'unknown_salt' };
+
+      const master = await deriveMasterKey(
+        kdfInput(input.resolved, input.script, input.level),
+        fromBase64Url(saltRaw),
+        deps.argonParams,
+      );
+      let authKey: Uint8Array;
+      let nextWrap: Uint8Array;
+      let phantomKey: Uint8Array;
+      try {
+        authKey = await deriveSubkey(master, 'cypherkey/auth/v1');
+        nextWrap = await deriveSubkey(master, 'cypherkey/wrap/v1');
+        phantomKey = await deriveSubkey(master, 'cypherkey/phantom/v1');
+      } finally {
+        master.fill(0);
+      }
+
+      const rewrapped = await wrapKey(vaultShareBytes, nextWrap, 'cypherkey/wrap/vault-key/v1');
+      const commitments = (await scriptCommitments(phantomKey, input.script)).map(toBase64Url);
+      phantomKey.fill(0);
+
+      const device = await loadDevice(wrapKeyBytes);
+      const response = await request(
+        'POST',
+        '/user/rekey',
+        {
+          strictness: input.level,
+          authHash: toBase64Url(authKey),
+          wrappedVaultKey: sealedToJson(rewrapped),
+          commitments,
+        },
+        device?.priv,
+        device?.id,
+        input.accessToken,
+      );
+      authKey.fill(0);
+
+      if (response.status !== 200) {
+        device?.priv.fill(0);
+        nextWrap.fill(0);
+        return { error: `rekey_${response.status}` };
+      }
+
+      // Everything stored under the old wrap key has to move with it.
+      if (device !== null) {
+        const devicePrivWrapped = await wrapKey(
+          device.priv,
+          nextWrap,
+          'cypherkey/wrap/device-key/v1',
+        );
+        device.priv.fill(0);
+        await deps.storage.set(
+          KEYS.devicePrivWrapped,
+          JSON.stringify(sealedToJson(devicePrivWrapped)),
+        );
+      }
+      await cacheForOffline(vaultKeyBytes as Uint8Array, nextWrap);
+      wrapKeyBytes.fill(0);
+      wrapKeyBytes = nextWrap;
+
+      return { keyVersion: Number(asRecord(response.body).keyVersion ?? 0) };
+    },
+
     async unlockOffline(input) {
       const saltRaw = await deps.storage.get(KEYS.userSalt);
       const cached = await deps.storage.get(KEYS.offlineVaultKey);
@@ -410,8 +540,10 @@ export function createSession(deps: SessionDeps): Session {
     lock() {
       vaultKeyBytes?.fill(0);
       wrapKeyBytes?.fill(0);
+      vaultShareBytes?.fill(0);
       vaultKeyBytes = null;
       wrapKeyBytes = null;
+      vaultShareBytes = null;
       pending = null;
       state = 'locked';
     },

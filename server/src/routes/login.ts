@@ -264,6 +264,7 @@ export function loginRoutes(deps: LoginDeps): Hono {
         return c.json({
           band: 'pass',
           enrolled: profile !== undefined,
+          keyVersion: user.keyVersion,
           accessToken,
           refreshToken,
           wrappedVaultKey: user.wrappedVaultKey,
@@ -359,6 +360,7 @@ export function loginRoutes(deps: LoginDeps): Hono {
       return c.json({
         band: 'pass',
         enrolled: true,
+        keyVersion: user.keyVersion,
         accessToken,
         refreshToken,
         wrappedVaultKey: user.wrappedVaultKey,
