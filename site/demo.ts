@@ -4,6 +4,7 @@ import { startCapture } from '../core/biometrics/capture';
 import { extractFeatures } from '../core/biometrics/features';
 import { band, buildProfile, score } from '../core/biometrics/score';
 import type { Profile } from '../core/biometrics/score';
+import { eventsToScript, scriptLength, scriptsEqual } from '../core/biometrics/script';
 import type { FeatureVector, KeyEvent } from '../core/biometrics/types';
 
 type DemoState = 'idle' | 'enrolling' | 'built' | 'challenge_friend' | 'challenge_you' | 'results';
@@ -19,6 +20,16 @@ const SAMPLE_PHRASES = [
 // App State
 let currentState: DemoState = 'idle';
 let targetPassphrase = 'correct horse battery staple';
+
+/**
+ * The canonical script from the first enrollment sample (docs/02 A-14). With Phantom
+ * Keys on, this is what every later sample — and the friend's attempt — must
+ * reproduce. It holds the phantoms; `targetPassphrase` holds only what survives them.
+ */
+let canonicalScript: string | null = null;
+
+/** Live keystroke count for the current sample, since the field only shows characters. */
+let keystrokesTyped = 0;
 let enrollmentSamples: FeatureVector[] = [];
 let userProfile: Profile | null = null;
 let friendScoreResult: { score: number; band: 'pass' | 'grey' | 'fail' } | null = null;
@@ -52,6 +63,10 @@ const enrollDotsContainer = document.getElementById('enroll-dots-container') as 
 const enrollKeyCounter = document.getElementById('enroll-key-counter') as HTMLElement;
 const inputEnroll = document.getElementById('input-enroll') as HTMLInputElement;
 const rhythmLight = document.getElementById('rhythm-light') as HTMLElement;
+const phantomToggle = document.getElementById('phantom-toggle') as HTMLInputElement;
+const phantomReadout = document.getElementById('phantom-script-readout') as HTMLElement;
+const phantomCounts = document.getElementById('phantom-counts') as HTMLElement;
+const phantomDetail = document.getElementById('phantom-detail') as HTMLElement;
 const rhythmMiniBars = document.getElementById('rhythm-mini-bars') as HTMLElement;
 const enrollFeedback = document.getElementById('enroll-feedback') as HTMLElement;
 const btnSubmitEnrollSample = document.getElementById(
@@ -205,6 +220,23 @@ function renderEnrollDots() {
 /**
  * Prepares the input and capture listener for an enrollment sample.
  */
+phantomToggle.addEventListener('change', () => {
+  // Flipping the toggle mid-enrollment would mean two different scripts in one
+  // profile, so the samples collected so far are discarded along with the script.
+  enrollmentSamples.length = 0;
+  canonicalScript = null;
+  phantomReadout.classList.add('hidden');
+  renderEnrollDots();
+  showFeedback(
+    enrollFeedback,
+    'ok',
+    phantomToggle.checked
+      ? 'Phantom Keys on. Type the passphrase with a few extra keystrokes you delete — every sample has to repeat them.'
+      : 'Phantom Keys off. Type the passphrase normally.',
+  );
+  prepareEnrollSample();
+});
+
 function prepareEnrollSample() {
   if (activeCapture) {
     activeCapture.cancel();
@@ -212,7 +244,8 @@ function prepareEnrollSample() {
   }
 
   inputEnroll.value = '';
-  enrollKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
+  keystrokesTyped = 0;
+  enrollKeyCounter.textContent = '0 keystrokes · 0 characters';
   enrollFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
   enrollFeedback.textContent = '';
   enrollCurrentStep.textContent = String(enrollmentSamples.length + 1);
@@ -223,7 +256,10 @@ function prepareEnrollSample() {
     activeCapture = startCapture(inputEnroll, rhythmLight, {
       onPulse: () => {
         triggerPulse(rhythmLight, rhythmMiniBars);
-        enrollKeyCounter.textContent = `${inputEnroll.value.length} / ${targetPassphrase.length} keys`;
+        // Keystrokes and characters diverge the moment a Phantom Key is typed, which
+        // is the whole idea — the field shows the resolved length, the counter does not.
+        keystrokesTyped++;
+        enrollKeyCounter.textContent = `${keystrokesTyped} keystrokes · ${inputEnroll.value.length} characters`;
       },
     });
   } catch (err) {
@@ -233,43 +269,115 @@ function prepareEnrollSample() {
   setTimeout(() => inputEnroll.focus(), 50);
 }
 
+/** Human wording for each reason a sample can be void (A-14.1). */
+const SCRIPT_ERROR_COPY: Record<string, string> = {
+  unsupported_key: 'That used a key we can’t time — arrows, Tab and paste all end a sample.',
+  unsupported_combo: 'Ctrl, Alt and ⌘ combinations end a sample. A lone tap is fine.',
+  focus_lost: 'The field lost focus mid-sample. Let’s try that one again.',
+  malformed: 'That sample came out garbled. Let’s try again.',
+};
+
+/** Shows "12 keystrokes · 8 characters" — the count A-14 says the user should see. */
+function showScriptCounts(script: string, resolved: string) {
+  const keystrokes = scriptLength(script);
+  phantomCounts.textContent = `${keystrokes} keystrokes · ${resolved.length} characters`;
+  const phantoms = keystrokes - resolved.length;
+  phantomDetail.textContent =
+    phantoms > 0
+      ? `  —  ${phantoms} phantom ${phantoms === 1 ? 'key' : 'keys'} that never reach the passphrase`
+      : '  —  no phantom keys yet';
+  phantomReadout.classList.remove('hidden');
+}
+
+function showFeedback(el: HTMLElement, tone: 'warn' | 'ok', message: string) {
+  el.className =
+    tone === 'ok'
+      ? 'text-xs font-medium px-3 py-2 rounded-lg bg-teal-50 text-teal-800 border border-teal-200'
+      : 'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+/**
+ * Turns a capture into something scoreable, or explains why it is not.
+ *
+ * Three outcomes, in the order the real server checks them (A-14.3): the sample was
+ * void, the resolved text was wrong, or the script did not match the enrolled one.
+ * Only after all three does a rhythm score mean anything.
+ */
+function readAttempt(
+  events: ReturnType<NonNullable<typeof activeCapture>['stop']>,
+):
+  | { message: string }
+  | { phantomMismatch: true }
+  | { phantomMismatch: false; features: FeatureVector } {
+  const script = eventsToScript(events);
+  if ('error' in script) {
+    return { message: SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.' };
+  }
+  if (script.resolved !== targetPassphrase) {
+    return { message: 'That doesn’t resolve to the target passphrase. Type the exact phrase.' };
+  }
+  if (canonicalScript !== null && !scriptsEqual(canonicalScript, script.script)) {
+    return { phantomMismatch: true };
+  }
+
+  const features = extractFeatures(events, scriptLength(script.script));
+  if ('error' in features) {
+    return { message: SCRIPT_ERROR_COPY[features.error] ?? 'Please type once more.' };
+  }
+  return { phantomMismatch: false, features };
+}
+
 /**
  * Handles submission of one enrollment sample.
  */
 function handleEnrollSampleSubmit() {
   if (!activeCapture) return;
 
-  const typed = inputEnroll.value;
-  const rawEvents = activeCapture.stop();
+  const events = activeCapture.stop();
   activeCapture = null;
 
-  // Filter out control keys the M0 demo never scored. M1-18 replaces this with the
-  // A-14.1 token rules, where Escape is a Phantom Key rather than something to drop.
-  const events = rawEvents.filter(
-    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
-  );
-
-  if (typed !== targetPassphrase) {
-    enrollFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    enrollFeedback.textContent =
-      'Passphrase characters do not match target. Please type the exact phrase.';
-    enrollFeedback.classList.remove('hidden');
+  // A-14.1 decides what counted as a keystroke, including the phantoms.
+  const script = eventsToScript(events);
+  if ('error' in script) {
+    showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.');
     prepareEnrollSample();
     return;
   }
 
-  const result = extractFeatures(events, targetPassphrase.length);
+  showScriptCounts(script.script, script.resolved);
+
+  // The resolved text is what a normal form would have received — phantoms and all
+  // the corrections have already been applied.
+  if (script.resolved !== targetPassphrase) {
+    showFeedback(
+      enrollFeedback,
+      'warn',
+      'That doesn’t resolve to the target passphrase. Corrections are fine — the end result has to match.',
+    );
+    prepareEnrollSample();
+    return;
+  }
+
+  // A-14: enrollment tolerates nothing. The first sample fixes the script; the rest
+  // must reproduce it exactly, phantoms included, so the profile is built from one.
+  if (canonicalScript === null) {
+    canonicalScript = script.script;
+  } else if (!scriptsEqual(canonicalScript, script.script)) {
+    showFeedback(
+      enrollFeedback,
+      'warn',
+      'Same passphrase, different keystrokes. Every sample has to include the same Phantom Keys.',
+    );
+    prepareEnrollSample();
+    return;
+  }
+
+  const result = extractFeatures(events, scriptLength(script.script));
 
   if ('error' in result) {
-    enrollFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    if (result.error === 'length_mismatch') {
-      enrollFeedback.textContent = 'Length mismatch. Please type the full phrase smoothly.';
-    } else {
-      enrollFeedback.textContent = 'Typing pattern interrupted. Please try again.';
-    }
-    enrollFeedback.classList.remove('hidden');
+    showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[result.error] ?? 'Length mismatch.');
     prepareEnrollSample();
     return;
   }
@@ -327,34 +435,31 @@ function prepareChallengeFriend() {
 function handleFriendSubmit() {
   if (!activeCapture || !userProfile) return;
 
-  const typed = inputChallengeFriend.value;
-  const rawEvents = activeCapture.stop();
+  const events = activeCapture.stop();
   activeCapture = null;
 
-  const events = rawEvents.filter(
-    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
-  );
-
-  if (typed !== targetPassphrase) {
-    friendFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    friendFeedback.textContent = 'Friend must type the exact target passphrase for evaluation.';
-    friendFeedback.classList.remove('hidden');
+  const attempt = readAttempt(events);
+  if ('message' in attempt) {
+    showFeedback(friendFeedback, 'warn', attempt.message);
     prepareChallengeFriend();
     return;
   }
 
-  const result = extractFeatures(events, targetPassphrase.length);
-  if ('error' in result) {
-    friendFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    friendFeedback.textContent =
-      'Sample discarded (e.g. backspace/malformed). Please type once more.';
-    friendFeedback.classList.remove('hidden');
-    prepareChallengeFriend();
+  // With phantoms on, this is where a stranger stops — they typed the passphrase they
+  // were shown, and it is missing keystrokes they never saw.
+  if (attempt.phantomMismatch) {
+    showFeedback(
+      friendFeedback,
+      'warn',
+      'Right passphrase, wrong keystrokes. Their attempt is missing your Phantom Keys — on the real server this never even reaches the rhythm check.',
+    );
+    friendScoreResult = { score: 0, band: 'fail' };
+    rhythmLightFriend.className = 'rhythm-light-dot fail';
+    setTimeout(() => setState('challenge_you'), 900);
     return;
   }
 
+  const result = attempt.features;
   const s = score(userProfile, result);
   const b = band(s);
   friendScoreResult = { score: s, band: b };
@@ -400,33 +505,26 @@ function prepareChallengeYou() {
 function handleYouSubmit() {
   if (!activeCapture || !userProfile) return;
 
-  const typed = inputChallengeYou.value;
-  const rawEvents = activeCapture.stop();
+  const events = activeCapture.stop();
   activeCapture = null;
 
-  const events = rawEvents.filter(
-    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
-  );
-
-  if (typed !== targetPassphrase) {
-    youFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    youFeedback.textContent = 'Please type the exact target passphrase.';
-    youFeedback.classList.remove('hidden');
+  const attempt = readAttempt(events);
+  if ('message' in attempt) {
+    showFeedback(youFeedback, 'warn', attempt.message);
+    prepareChallengeYou();
+    return;
+  }
+  if (attempt.phantomMismatch) {
+    showFeedback(
+      youFeedback,
+      'warn',
+      'That’s the passphrase, but not your script — the Phantom Keys were different. Try it again the way you enrolled it.',
+    );
     prepareChallengeYou();
     return;
   }
 
-  const result = extractFeatures(events, targetPassphrase.length);
-  if ('error' in result) {
-    youFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    youFeedback.textContent = 'Sample discarded (e.g. backspace/malformed). Please type once more.';
-    youFeedback.classList.remove('hidden');
-    prepareChallengeYou();
-    return;
-  }
-
+  const result = attempt.features;
   const s = score(userProfile, result);
   const b = band(s);
   youScoreResult = { score: s, band: b };
@@ -522,6 +620,7 @@ function initEventListeners() {
     setupError.classList.add('hidden');
     targetPassphrase = phrase;
     enrollmentSamples = [];
+    canonicalScript = null;
     userProfile = null;
     friendScoreResult = null;
     youScoreResult = null;
@@ -568,6 +667,7 @@ function initEventListeners() {
   // Global Reset button
   btnReset.addEventListener('click', () => {
     enrollmentSamples = [];
+    canonicalScript = null;
     userProfile = null;
     friendScoreResult = null;
     youScoreResult = null;
