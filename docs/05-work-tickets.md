@@ -224,6 +224,37 @@ export function createSync(deps: SyncDeps): {
 
 **Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
 
+### M2-00e · Server support for recovery-code step-up · M · deps: M1-13a · **drafted**
+
+**Why.** M2-07 says "step-up with recovery codes". The server accepts `retype` only, and `step_up_factors` is a table no route touches, so M2-07 cannot be built until this exists.
+
+**A correction I owe first.** The M1-13a commit said a recovery code "cannot be verified server-side without breaking zero-knowledge". That conflated two different things. The **Recovery Kit** (X-5, 33 Crockford characters) derives `recoveryKey` and unwraps the vault — the server must never hold anything that helps guess it. **Step-up recovery codes** (X-3, ten one-time codes) derive nothing and unwrap nothing; they only prove "it is me" to the server. Verifying those server-side is exactly right and costs no confidentiality: a passphrase is still required for the vault, so a stolen code buys a session and no plaintext.
+
+**Files:** create `server/src/routes/recovery-codes.ts` (+test); modify `server/src/routes/stepup.ts` (+test), `server/src/routes/auth.ts` (signup returns the first set), `server/src/db/schema/{sqlite,pg}.ts`, `docs/02` A-9 and A-10.
+
+**Schema.** A new table rather than `step_up_factors`:
+```
+recovery_codes | id, user_id, code_hash (unique), used_at, created_at
+```
+`step_up_factors.secret_enc` is the wrong home. Its name promises a *reversible* secret, which TOTP and passkey will need — and A-13 removed `ENCRYPTION_KEY`, so there is currently no server key to encrypt one with. That contradiction belongs to M3 when TOTP lands; a one-time code needs only a one-way hash, so it should not inherit the problem.
+
+**Interfaces / wire:**
+```
+POST /auth/signup            → 201 now also returns { recoveryCodes: string[] }   (ten, shown once)
+POST /user/recovery-codes    → regenerate; invalidates every previous code, returns ten new
+                               requires access token + device signature + a fresh step-up (X-5)
+GET  /user/recovery-codes    → { remaining: number }   — never the codes themselves
+POST /auth/step-up           → gains { method: 'recovery_code', proof: string }
+```
+
+**Codes.** Ten per set, ten Crockford base32 symbols each (50 bits), formatted `XXXXX-XXXXX`. Server-generated, because they are not key material: the server already sees `authHash` at signup, and a malicious operator gains nothing here that A-11 does not already grant it — the vault still needs the passphrase-derived `wrapKey`. Stored as `base64url(sha256(normalized))`, the same treatment as refresh tokens and for the same reason: these are high-entropy secrets the server generated, so a fast hash is correct and Argon2id is for low-entropy human input. Verification normalizes case and strips hyphens before lookup.
+
+**Lockout — this ticket must also fix an existing hole.** A failed step-up currently returns 401 and does **not** call `recordFailure`, so step-up attempts are bounded only by the per-account rate limit (ten a minute). That is tolerable for a rhythm retype and not for a bearer secret. Failed `recovery_code` attempts must count toward lockout, and the retype path should count too.
+
+**Tests:** signup returns ten distinct codes and stores ten hashes, never a code in the clear; a valid code clears step-up and issues a token carrying `stepUpAt`; the same code fails the second time (`used_at` set); an unknown code fails; a code belonging to another account fails; failures increment the lockout counter and five of them lock; regeneration invalidates the whole previous set; `GET` returns a count and no code; the response and every table are asserted free of any code after storage.
+
+**Acceptance:** enrol, force a grey login, clear it with a recovery code rather than a retype, and confirm the second use of that code is refused.
+
 ### The client surface as it actually is
 
 Verified against the source, not recalled. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.
@@ -280,7 +311,7 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 - **M2-03** — onboarding must capture the script **twice, token-identical** (A-14), show "12 keystrokes · 8 characters", default Strictness to Medium, and record the A-12 consent checkbox.
 - **M2-04** — the Recovery Kit code is **33 characters**, not 32.
 - **M2-05** — "backspace retry" is withdrawn: Backspace is a legitimate Phantom Key. The retry condition is a **script mismatch**, and every sample carries commitments.
-- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. Recovery-code step-up needs a server ticket first, or the row is unbuildable as written.
+- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. **M2-00e above now covers this** and is a hard prerequisite: M2-07 cannot start until it lands. M2-00e also fixes a hole it uncovered — a failed step-up does not currently count toward lockout.
 - **M2-09** — the cache must honour `key_version`: a Strict re-key (M1-17c) invalidates every other device's offline blob.
 
 | ID | Title | Size | Notes |
