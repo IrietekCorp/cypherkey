@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'bun:test';
 import { KeyboardEvent as HappyKeyboardEvent, Window } from 'happy-dom';
 import { startCapture } from './capture';
 import { extractFeatures } from './features';
+import { eventsToScript } from './script';
 
 describe('Rhythm Light capture module (startCapture)', () => {
   let window: Window;
@@ -119,6 +120,7 @@ describe('Rhythm Light capture module (startCapture)', () => {
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
       if (!event) throw new Error('Unexpected undefined event');
+      if (event.type === 'blur') throw new Error('Unexpected blur');
       expect(typeof event.key).toBe('string');
       expect(event.type === 'down' || event.type === 'up').toBe(true);
       expect(typeof event.t).toBe('number');
@@ -132,6 +134,7 @@ describe('Rhythm Light capture module (startCapture)', () => {
       const downEvent = events[i * 2];
       const upEvent = events[i * 2 + 1];
       if (!downEvent || !upEvent) throw new Error('Missing event pair');
+      if (downEvent.type === 'blur' || upEvent.type === 'blur') throw new Error('Unexpected blur');
 
       expect(downEvent.key).toBe(expectedKeys[i] ?? '');
       expect(downEvent.type).toBe('down');
@@ -237,33 +240,81 @@ describe('Rhythm Light capture module (startCapture)', () => {
     });
 
     // Ignored modifiers
-    const modifiers = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'NumLock', 'ScrollLock'];
-
-    for (const mod of modifiers) {
+    // A-14.1 reversed this: modifiers are recorded, because their down/up pairs are
+    // what distinguish a lone tap (a Phantom Key) from a held modifier and a chord.
+    for (const mod of ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock']) {
       typeKey(inputElement, mod);
     }
-
-    // None of the modifiers should have fired pulse
+    // They still do not pulse the light — the pulse marks a character, not a modifier.
     expect(pulseCount).toBe(0);
 
-    // Backspace must be recorded and pulse
+    // The locks change nothing about the script and are still dropped.
+    for (const lock of ['NumLock', 'ScrollLock']) {
+      typeKey(inputElement, lock);
+    }
+
     typeKey(inputElement, 'Backspace');
     expect(pulseCount).toBe(1);
 
     const events = session.stop();
+    // Five modifiers plus Backspace, down and up each; the two locks contribute none.
+    expect(events.length).toBe(12);
+    expect(events.filter((e) => e.type !== 'blur' && e.key === 'NumLock')).toHaveLength(0);
 
-    // Only Backspace events (down and up) should be present
-    expect(events.length).toBe(2);
-    const downEvt = events[0];
-    const upEvt = events[1];
-    if (!downEvt || !upEvt) throw new Error('Missing event pair');
+    const last = events.slice(-2);
+    expect(last.every((e) => e.type !== 'blur' && e.key === 'Backspace')).toBe(true);
+  });
 
-    expect(downEvt.key).toBe('Backspace');
-    expect(downEvt.type).toBe('down');
-    expect(upEvt.key).toBe('Backspace');
-    expect(upEvt.type).toBe('up');
+  it('records a blur, so a sample that lost focus can be voided', () => {
+    const session = startCapture(toInput(inputElement), toElement(lightElement));
 
-    // extractFeatures recognizes backspace and rejects per security policy
-    expect(extractFeatures(events, 1)).toEqual({ error: 'backspace' });
+    typeKey(inputElement, 'a');
+    inputElement.dispatchEvent(new window.Event('blur'));
+
+    const events = session.stop();
+    expect(events.some((e) => e.type === 'blur')).toBe(true);
+    expect(eventsToScript(events)).toEqual({ error: 'focus_lost' });
+  });
+
+  it('Backspace is a legitimate keystroke now, not a rejected one', () => {
+    const session = startCapture(toInput(inputElement), toElement(lightElement));
+
+    for (const key of ['a', 'x', 'Backspace', 'b']) typeKey(inputElement, key);
+
+    const events = session.stop();
+    const script = eventsToScript(events);
+    expect('error' in script).toBe(false);
+    if ('error' in script) throw new Error('unreachable');
+    expect(script.resolved).toBe('ab');
+
+    const features = extractFeatures(events, 4);
+    expect('error' in features).toBe(false);
+  });
+
+  it('a paste, a drop or an IME composition voids the sample', () => {
+    for (const eventName of ['paste', 'drop', 'compositionstart']) {
+      const reasons: string[] = [];
+      const session = startCapture(toInput(inputElement), toElement(lightElement), {
+        onCancel: (reason) => reasons.push(reason),
+      });
+
+      typeKey(inputElement, 'a');
+      inputElement.dispatchEvent(new window.Event(eventName));
+
+      expect(reasons).toEqual(['unsupported_key']);
+      // The buffer is emptied, so a cancelled attempt cannot be salvaged.
+      expect(session.stop()).toHaveLength(0);
+    }
+  });
+
+  it('drops auto-repeat, which is not a rhythm signal and cannot be paired', () => {
+    const session = startCapture(toInput(inputElement), toElement(lightElement));
+
+    dispatchKey(inputElement, 'keydown', 'a', false);
+    dispatchKey(inputElement, 'keydown', 'a', true);
+    dispatchKey(inputElement, 'keydown', 'a', true);
+    dispatchKey(inputElement, 'keyup', 'a', false);
+
+    expect(session.stop()).toHaveLength(2);
   });
 });

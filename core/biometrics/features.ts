@@ -1,6 +1,9 @@
+import { eventsToTokens } from './script';
 import type { FeatureExtractionError, FeatureVector, KeyEvent } from './types';
 
-// Assumption: Feature vector length is 3*len + 5 (23 for len=6) per A-4.2, comprising dwell[0..len-1], flight[0..len-2], digraph[0..len-2], and 7 globals [totalTime, meanDwell, stdDwell, meanFlight, stdFlight, meanDigraph, stdDigraph].
+// A-4.2: the vector is 3*len + 5 — dwell[0..len-1], flight[0..len-2], digraph[0..len-2]
+// (that is 3*len - 2) plus 7 globals [totalTime, meanDwell, stdDwell, meanFlight,
+// stdFlight, meanDigraph, stdDigraph]. `len` counts script tokens, not characters.
 
 /**
  * Computes the population standard deviation of an array of numbers.
@@ -51,14 +54,13 @@ export function getFeatureRanges(len: number) {
   };
 }
 
-interface KeyStroke {
-  key: string;
-  downT: number;
-  upT: number;
-}
-
 /**
- * Extracts a normalized, fixed-order biometric feature vector from raw key events.
+ * Extracts the fixed-order feature vector for a sample.
+ *
+ * Tokenization is not repeated here: `eventsToTokens` in `script.ts` is the single
+ * definition of what counts as a keystroke (A-14.1), so a Backspace, a lone Escape
+ * and a lone modifier tap are ordinary keys with ordinary timings. Backspace is no
+ * longer rejected — it is a legitimate Phantom Key.
  */
 export function extractFeatures(
   events: KeyEvent[],
@@ -68,49 +70,13 @@ export function extractFeatures(
     return { error: 'length_mismatch' };
   }
 
-  // 1. Backspace rejection
-  for (const event of events) {
-    if (event.key === 'Backspace') {
-      return { error: 'backspace' };
-    }
+  const tokenized = eventsToTokens(events);
+  if ('error' in tokenized) {
+    return { error: tokenized.error };
   }
 
-  // 2. Event validation and pairing
-  const pendingDowns: Map<string, number[]> = new Map();
-  const strokes: KeyStroke[] = [];
+  const strokes = tokenized.tokens.map((t) => ({ key: t.token, downT: t.downT, upT: t.upT }));
 
-  for (const event of events) {
-    if (event.type === 'down') {
-      const queue = pendingDowns.get(event.key) ?? [];
-      queue.push(event.t);
-      pendingDowns.set(event.key, queue);
-    } else if (event.type === 'up') {
-      const queue = pendingDowns.get(event.key);
-      if (!queue || queue.length === 0) {
-        return { error: 'malformed' };
-      }
-      const downT = queue.shift();
-      if (downT === undefined || event.t < downT) {
-        return { error: 'malformed' };
-      }
-      strokes.push({
-        key: event.key,
-        downT,
-        upT: event.t,
-      });
-    } else {
-      return { error: 'malformed' };
-    }
-  }
-
-  // Any unmatched down events remaining?
-  for (const queue of pendingDowns.values()) {
-    if (queue.length > 0) {
-      return { error: 'malformed' };
-    }
-  }
-
-  // Check key count
   if (strokes.length !== expectedLen) {
     return { error: 'length_mismatch' };
   }

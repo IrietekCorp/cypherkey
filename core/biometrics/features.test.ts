@@ -47,7 +47,9 @@ describe('extractFeatures', () => {
     expect(result.values[21]).toBe(124); // meanDigraph
   });
 
-  it('case 2: any Backspace event returns { error: "backspace" }', () => {
+  // Reversed by A-14.1: a Backspace is a Phantom Key, so it is an ordinary token with
+  // ordinary timings rather than grounds for rejecting the sample.
+  it('case 2: a Backspace is counted as a keystroke, not rejected', () => {
     const eventsWithBackspace: KeyEvent[] = [
       { key: 'a', type: 'down', t: 100 },
       { key: 'a', type: 'up', t: 180 },
@@ -57,8 +59,43 @@ describe('extractFeatures', () => {
       { key: 'b', type: 'up', t: 380 },
     ];
 
-    const result = extractFeatures(eventsWithBackspace, 2);
-    expect(result).toEqual({ error: 'backspace' });
+    // Three tokens, not two: the Backspace is one of them.
+    expect(extractFeatures(eventsWithBackspace, 2)).toEqual({ error: 'length_mismatch' });
+
+    const result = extractFeatures(eventsWithBackspace, 3);
+    if ('error' in result) throw new Error(`unexpected ${result.error}`);
+    expect(result.len).toBe(3);
+    expect(result.values).toHaveLength(3 * 3 + 5);
+    // The Backspace contributes its own dwell, in sequence.
+    expect(result.values[1]).toBe(50);
+  });
+
+  it('a lone Escape and a lone modifier tap are keystrokes too', () => {
+    const events: KeyEvent[] = [
+      { key: 'a', type: 'down', t: 100 },
+      { key: 'a', type: 'up', t: 180 },
+      { key: 'Escape', type: 'down', t: 200 },
+      { key: 'Escape', type: 'up', t: 240 },
+      { key: 'Control', type: 'down', t: 300 },
+      { key: 'Control', type: 'up', t: 330 },
+      { key: 'b', type: 'down', t: 400 },
+      { key: 'b', type: 'up', t: 480 },
+    ];
+
+    const result = extractFeatures(events, 4);
+    if ('error' in result) throw new Error(`unexpected ${result.error}`);
+    expect(result.values.slice(0, 4)).toEqual([80, 40, 30, 80]);
+  });
+
+  it('passes a script error through rather than flattening it to malformed', () => {
+    const chord: KeyEvent[] = [
+      { key: 'Control', type: 'down', t: 100 },
+      { key: 'a', type: 'down', t: 120 },
+      { key: 'a', type: 'up', t: 170 },
+      { key: 'Control', type: 'up', t: 200 },
+    ];
+    expect(extractFeatures(chord, 1)).toEqual({ error: 'unsupported_combo' });
+    expect(extractFeatures([{ type: 'blur', t: 100 }], 1)).toEqual({ error: 'focus_lost' });
   });
 
   it('case 3: unmatched down/up returns { error: "malformed" }', () => {

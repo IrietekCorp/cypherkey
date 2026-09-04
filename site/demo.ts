@@ -243,9 +243,10 @@ function handleEnrollSampleSubmit() {
   const rawEvents = activeCapture.stop();
   activeCapture = null;
 
-  // Filter out any control keys (Enter, Tab, Escape)
+  // Filter out control keys the M0 demo never scored. M1-18 replaces this with the
+  // A-14.1 token rules, where Escape is a Phantom Key rather than something to drop.
   const events = rawEvents.filter(
-    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
   );
 
   if (typed !== targetPassphrase) {
@@ -263,10 +264,7 @@ function handleEnrollSampleSubmit() {
   if ('error' in result) {
     enrollFeedback.className =
       'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-    if (result.error === 'backspace') {
-      enrollFeedback.textContent =
-        'Backspace detected — sample discarded. Consistency beats speed, try that one again!';
-    } else if (result.error === 'length_mismatch') {
+    if (result.error === 'length_mismatch') {
       enrollFeedback.textContent = 'Length mismatch. Please type the full phrase smoothly.';
     } else {
       enrollFeedback.textContent = 'Typing pattern interrupted. Please try again.';
@@ -334,7 +332,7 @@ function handleFriendSubmit() {
   activeCapture = null;
 
   const events = rawEvents.filter(
-    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
   );
 
   if (typed !== targetPassphrase) {
@@ -407,7 +405,7 @@ function handleYouSubmit() {
   activeCapture = null;
 
   const events = rawEvents.filter(
-    (e) => e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
+    (e) => e.type !== 'blur' && e.key !== 'Enter' && e.key !== 'Tab' && e.key !== 'Escape',
   );
 
   if (typed !== targetPassphrase) {
