@@ -38,6 +38,7 @@
         <a href="#how-it-works" class="text-slate-600 hover:text-teal-600 transition hidden sm:inline">How It Works</a>
         <a href="#safety" class="text-slate-600 hover:text-teal-600 transition hidden md:inline">Threat Model</a>
         <a href="./one-pager.html" class="text-slate-600 hover:text-teal-600 transition">One-Pager</a>
+        <!-- HIDDEN UNTIL PUBLIC RELEASE — the repository is private; this 404s. Restore by removing this comment and its closing marker.
         <a
           href="https://github.com/IrietekCorp/cypherkey"
           target="_blank"
@@ -49,6 +50,7 @@
           </svg>
           <span>Star on GitHub</span>
         </a>
+        -->
       </div>
     </div>
   </nav>
@@ -75,14 +77,16 @@
       >
         Try the Interactive Browser Demo &darr;
       </a>
+      <!-- HIDDEN UNTIL PUBLIC RELEASE — see the header note.
       <a
         href="https://github.com/IrietekCorp/cypherkey"
         target="_blank"
         rel="noopener noreferrer"
         class="px-6 py-3.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold text-base shadow-xs transition"
       >
-        Explore Code & Specs
+        Explore Code &amp; Specs
       </a>
+      -->
     </div>
 
     <!-- Trust Markers -->
@@ -191,8 +195,9 @@
               <strong class="text-teal-900 block font-semibold">How this demonstration works:</strong>
               <span>
                 1. You will type your chosen passphrase <strong>8 times</strong> so CypherKey can calculate your personal rhythm baseline.<br/>
-                2. Next, you will hand the laptop to a friend/colleague to try the exact same passphrase.<br/>
-                3. Finally, you type it again to see both scores side-by-side: <em>Same passphrase. Different rhythm.</em>
+                2. <strong>Add Phantom Keys if you like.</strong> Type extra keys and delete them &mdash; an extra letter you backspace away, a tap of <kbd class="bg-white/70 px-1 py-0.5 rounded border border-teal-300 font-mono text-[11px]">Esc</kbd> mid-word. They never reach the passphrase, so the phrase above stays what it is, but they become part of your secret. Do it the same way in all 8 samples.<br/>
+                3. Next, you will hand the laptop to a friend/colleague to try the exact same passphrase &mdash; the one you showed them, without the phantoms they never saw.<br/>
+                4. Finally, you type it again to see both scores side-by-side: <em>Same passphrase. Different rhythm.</em>
               </span>
             </div>
           </div>
@@ -823,9 +828,12 @@
       </div>
       <div class="flex flex-wrap items-center gap-6 font-medium">
         <a href="./one-pager.html" class="text-slate-600 hover:text-teal-600 transition">Executive One-Pager</a>
-        <a href="https://github.com/IrietekCorp/cypherkey/blob/main/SECURITY.md" class="text-slate-600 hover:text-teal-600 transition">Security Disclosure</a>
-        <a href="https://github.com/IrietekCorp/cypherkey/blob/main/LICENSE-CLIENT" class="text-slate-600 hover:text-teal-600 transition">Client License (MIT)</a>
-        <a href="https://github.com/IrietekCorp/cypherkey/blob/main/LICENSE-SERVER" class="text-slate-600 hover:text-teal-600 transition">Server License (AGPL-3.0)</a>
+        <a href="mailto:security@cypherkey.io" class="text-slate-600 hover:text-teal-600 transition">Security Disclosure</a>
+        <!-- Licence links point into the repository, which is private until release.
+             The licences themselves are unchanged, so the claims stay and only the
+             dead links go. Restore the hrefs when the repo goes public. -->
+        <span class="text-slate-600">Client License (MIT)</span>
+        <span class="text-slate-600">Server License (AGPL-3.0)</span>
       </div>
     </div>
   </footer>
