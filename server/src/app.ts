@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Config } from './config';
 import type { Db } from './db/client';
 import { authRoutes } from './routes/auth';
+import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
 
 /** A-5: every auth response is padded to this floor. Tests pass 0. */
@@ -28,6 +29,7 @@ export function createApp(deps: AppDeps): Hono {
         now: deps.now,
       }),
     );
+    app.route('/', enrollRoutes({ db: deps.db, config: deps.config, now: deps.now }));
   }
   return app;
 }

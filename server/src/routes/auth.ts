@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { fromBase64Url, toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { randomBytes } from '../../../core/crypto/kdf';
 import { verifyDeviceSignature } from '../auth/signature';
+import { mintToken } from '../auth/token';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
@@ -14,6 +15,9 @@ import * as sqliteSchema from '../db/schema/sqlite';
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
+
+/** Long enough to finish onboarding in one sitting (X-2 targets under 3 minutes). */
+const ENROLLMENT_TOKEN_TTL_MS = 60 * 60_000;
 
 /** A base64url string that decodes to exactly `bytes` bytes. */
 function b64url(bytes?: number) {
@@ -206,7 +210,15 @@ export function authRoutes(deps: AuthDeps): Hono {
         return c.json({ error: 'username_taken' }, 409);
       }
 
-      return c.json({ userId, serverShare }, 201);
+      // A-9 replaced the enroll_tokens table with scoped tokens; /enroll/* needs this
+      // one plus the device signature.
+      const enrollmentToken = mintToken(
+        { sub: userId, scope: 'enroll' },
+        config.jwtSecret,
+        now(),
+        ENROLLMENT_TOKEN_TTL_MS,
+      );
+      return c.json({ userId, serverShare, enrollmentToken }, 201);
     });
   });
 

@@ -34,7 +34,7 @@ Read AGENTS.md first and follow it exactly. Work only on the ticket below. Do no
 
 M0-01 … M0-07 are done and their tickets are retired; the work is in git history and in `core/biometrics/` and `site/`. `core/biometrics/{features,score,capture}.ts` and `site/` are the only pre-M1 files that carry forward. Nothing under M1 may patch pre-M0 server or extension code — there is none left in the tree.
 
-> Note: M0-02's feature-vector spec was superseded — the vector is `3n + 7` with seven globals and no count-based globals. See docs/02 A-4.2, owned by M1-16.
+> Note: M0-02's feature-vector spec was superseded only in *content*: seven globals, none of them count-based. The length is unchanged at `3n + 5` (n=6 → 23), which is what the M0 code and its test always produced. See docs/02 A-4.2, owned by M1-16.
 
 ---
 
@@ -109,7 +109,7 @@ Validate with Zod; store Argon2id(authHash) via `Bun.password`; generate `server
 Verify authHash → device sig → nonce/ts → score → band → tokens or stepUp. 500 ms floor. Score row written; feature vector **never** persisted (test asserts DB contains no vector). Lockout after 5 fails. Tests: pass/grey/fail/new-device/lockout/replayed nonce.
 
 ### M1-10 · Server `/enroll/*` · M · deps: M1-08 · refs A-4.3
-Sample upload (requires enrollment-scoped token issued at signup), build at N samples, delete samples after build. Tests: builds at exactly N; samples table empty after; rejects vector whose length is not `3·script_len + 7`.
+Sample upload (requires enrollment-scoped token issued at signup), build at N samples, delete samples after build. Tests: builds at exactly N; samples table empty after; rejects vector whose length is not `3·script_len + 5`. The server derives `script_len` from the first sample and validates it against `getFeatureRanges` in `core/biometrics/features.ts`, which is the single definition of the layout (AGENTS). It also enforces a **minimum script length of 12**: `03` X-2 requires 12 resolved characters and phantoms only add tokens, and without a floor a 1-token script is a well-formed `3n + 5` vector that builds a profile scoring everything alike.
 
 ### M1-11 · Refresh tokens, logout, device list/revoke · M · deps: M1-09
 Rotating refresh tokens hashed in DB; reuse of a rotated token revokes the family. Tests: rotation; reuse → all revoked.
@@ -137,7 +137,7 @@ export function eventsToScript(events: KeyEvent[]): { script: string; resolved: 
 export function scriptsEqual(a: string, b: string): boolean;   // constant-time
 export function scriptLength(script: string): number;          // code-point count
 ```
-**Changes:** `KeyEvent` gains `{ type: 'blur' }`. `startCapture` records Backspace/Delete/Escape (Escape with `preventDefault`), detects lone modifier taps (down/up with no other keydown in between) as tokens, marks Ctrl/Alt/Meta chords, listens for `blur`, and cancels on Tab/Enter-as-non-terminator/arrows/nav keys/`paste`/`drop`/`compositionstart`. `extractFeatures` treats every token as a key and the `backspace` error is removed. **Do not add a `backspaceCount` global** — the earlier instruction to keep it at weight 0 was wrong and is withdrawn: a count of Backspace tokens tells the server how many backspaces are in the script, which breaks A-14's guarantee that only the script *length* leaks. The vector stays at `3n + 7` with the seven globals M0 shipped, `n` = script token count (docs/02 A-4.2).
+**Changes:** `KeyEvent` gains `{ type: 'blur' }`. `startCapture` records Backspace/Delete/Escape (Escape with `preventDefault`), detects lone modifier taps (down/up with no other keydown in between) as tokens, marks Ctrl/Alt/Meta chords, listens for `blur`, and cancels on Tab/Enter-as-non-terminator/arrows/nav keys/`paste`/`drop`/`compositionstart`. `extractFeatures` treats every token as a key and the `backspace` error is removed. **Do not add a `backspaceCount` global** — the earlier instruction to keep it at weight 0 was wrong and is withdrawn: a count of Backspace tokens tells the server how many backspaces are in the script, which breaks A-14's guarantee that only the script *length* leaks. The vector stays at `3n + 5` with the seven globals M0 shipped, `n` = script token count (docs/02 A-4.2).
 **Tests:** `script.test.ts`: (1) `p,a,s,s,s,s,⌫,⌫,w,0,r,d` → length 12, resolved `passw0rd`; (2) Shift-held `P` → single token `P`, no modifier token; (3) lone Ctrl tap → U+E001 token; (4) Ctrl+A → `unsupported_combo`; (5) ArrowLeft → `unsupported_key`; (6) blur mid-sample → `focus_lost`; (7) Escape → U+001B token; (8) `scriptsEqual` false between (1) and plain `passw0rd`.
 **Prompt:**
 ```

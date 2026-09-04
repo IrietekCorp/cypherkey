@@ -88,7 +88,9 @@ Server verifies against the registered device public key, checks nonce uniquenes
 - Flight: `n−1` values (next keydown − keyup)
 - Digraph: `n−1` values (next keydown − keydown)
 - Globals: exactly seven, in this order — `totalTime, meanDwell, stdDwell, meanFlight, stdFlight, meanDigraph, stdDigraph`. All seven carry weight 0.5.
-- Vector is length **`3n + 7`**, fixed order, float32. Serialized as JSON array for MVP.
+- Vector is length **`3n + 5`**, fixed order, float32. Serialized as JSON array for MVP.
+
+  The arithmetic, written out because it was got wrong once: `n + (n−1) + (n−1) = 3n − 2` timing features, plus the 7 globals, is `3n + 5`. n=6 → 23; n=12 → 41. This is what `core/biometrics/features.ts` has always produced. A v1.2 draft briefly said `3n + 7`, which is the same seven globals with the wrong sum; `3n + 7` is wrong everywhere it appears.
 
 **Rule (v1.2): no count-based or token-class globals, ever.** A backspace count would tell the server how many Backspace tokens are in the script, which breaks A-14's guarantee that the server learns the script *length* and nothing else about its contents. Backspace is an ordinary token with ordinary timing features and no special treatment anywhere in the pipeline. Samples containing Backspace are **never** rejected.
 
