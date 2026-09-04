@@ -12,5 +12,5 @@
     "resolveJsonModule": true,
     "types": ["@types/bun"]
   },
-  "include": ["core/**/*", "server/**/*", "site/**/*", "*.ts"]
+  "include": ["core/**/*", "server/**/*", "site/**/*", "scripts/**/*", "*.ts"]
 }

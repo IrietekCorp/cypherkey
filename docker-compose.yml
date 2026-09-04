@@ -1,0 +1,36 @@
+# Self-host: `docker compose up` gives a server on SQLite with a persistent volume.
+# Postgres is opt-in and is a convenience for people who want it — it is never part
+# of our image, and hosted CypherKey talks to a managed instance (docs/02 A-8).
+services:
+  server:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      # Required. Generate one with: openssl rand -base64 48
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET, e.g. export JWT_SECRET=$(openssl rand -base64 48)}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///data/cypherkey.db}
+      ENROLLMENT_SAMPLES: ${ENROLLMENT_SAMPLES:-8}
+    volumes:
+      - cypherkey-data:/data
+    restart: unless-stopped
+
+  # `docker compose --profile postgres up`
+  postgres:
+    profiles: ['postgres']
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cypherkey
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cypherkey}
+      POSTGRES_DB: cypherkey
+    volumes:
+      - cypherkey-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cypherkey']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cypherkey-data:
+  cypherkey-postgres:

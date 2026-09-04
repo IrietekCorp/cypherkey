@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  static:
+    name: typecheck, lint, audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      # Blocking, so any NEW advisory fails the build. One exception, by id:
+      # GHSA-67mh-4wv8-2f99 is esbuild's dev server letting any website read its
+      # responses. It reaches us only through drizzle-kit and vite > tsx, both of
+      # which use esbuild as a bundler and never start that server, and the fix is
+      # pinned out of reach by those packages' own ranges. Re-check when drizzle-kit
+      # or vite bumps esbuild past 0.24.2, and delete this flag.
+      - run: bun audit --ignore=GHSA-67mh-4wv8-2f99
+
+  test-sqlite:
+    name: tests (sqlite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      # DATABASE_URL deliberately unset: the Postgres suites must skip, not fail.
+      - run: bun test
+        env:
+          JWT_SECRET: ${{ secrets.CI_JWT_SECRET || 'ci-only-secret-not-used-in-production-32b' }}
+      - run: bun run e2e
+        env:
+          JWT_SECRET: ci-only-secret-not-used-in-production-32b
+
+  test-postgres:
+    name: tests (postgres 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cypherkey
+          POSTGRES_PASSWORD: cypherkey
+          POSTGRES_DB: cypherkey
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cypherkey"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://cypherkey:cypherkey@localhost:5432/cypherkey
+      JWT_SECRET: ci-only-secret-not-used-in-production-32b
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      - run: bun run db:migrate
+      - run: bun test
+      - run: bun run e2e
+
+  docker:
+    name: docker image builds and answers /healthz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t cypherkey:ci .
+      - name: start and probe
+        run: |
+          docker run -d --name ck -p 3000:3000 \
+            -e JWT_SECRET=ci-only-secret-not-used-in-production-32b cypherkey:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/healthz; then exit 0; fi
+            sleep 1
+          done
+          echo "healthz never came up"; docker logs ck; exit 1
+      - if: always()
+        run: docker rm -f ck || true
