@@ -155,7 +155,9 @@ Responses padded to ≥ 500 ms on all paths.
 
 **Endpoints:** `GET /vault/changes?since=cursor`, `POST /vault/changes` (batch upsert with per-item version check → 409 on conflict).
 
-**Conflict rule:** per-item last-writer-wins by `updatedAt`, ties broken by `deviceId`. Conflicted losers are kept as a "previous version" in the item history (client-side) for 30 days so nothing is silently lost.
+**Cursor (M1-12).** `vault_cursors.cursor` is the user's monotonic counter; every written item is stamped with the next value in `vault_items.cursor`, which is what `GET ?since=` filters and orders on. `updated_at` is client-supplied and cannot be trusted to order a log.
+
+**Conflict rule:** the two halves of this operate at different layers, which is easy to misread. On the wire the server does an **optimistic version check**: a write carries the `version` the client believes the server holds, and a mismatch is a `409` carrying the server's copy — the server never merges, because it cannot read either side. **Last-writer-wins by `updatedAt`, ties broken by `deviceId`,** is then the *client's* resolution rule applied to that 409 before it retries. Conflicted losers are kept as a "previous version" in the item history (client-side) for 30 days so nothing is silently lost.
 
 **Sync triggers (client):** on unlock, after any local write (debounced 2s), on window focus, every 5 min while unlocked, and via SSE push (`GET /vault/events`) in M4. All triggers no-op when offline and queue local writes.
 
@@ -194,7 +196,7 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 | `biometric_profiles` | user_id, script_len, means[], stds[], weights[], script_commitments, sample_count, version, updated_at |
 | `enrollment_samples` | id, user_id, feature_vector (deleted on build), created_at |
 | `auth_score_history` | id, user_id, device_id, score, band, created_at |
-| `vault_items` | id, user_id, version, ciphertext, nonce, updated_at, deleted_at |
+| `vault_items` | **primary key (user_id, id)**, cursor, version, ciphertext, nonce, updated_at, deleted_at — item ids come from the client, so they are unique only within an account; a global key would let one account claim an id and lock others out of it |
 | `vault_cursors` | user_id, cursor |
 | `refresh_tokens` | id, user_id, device_id, token_hash, expires_at, revoked_at, replaced_by |
 | `nonces` | nonce, user_id, seen_at (pruned > 5 min) |

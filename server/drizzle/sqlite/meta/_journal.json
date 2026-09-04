@@ -15,6 +15,20 @@
       "when": 1788481645939,
       "tag": "0001_busy_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788483223799,
+      "tag": "0002_conscious_moonstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788483348251,
+      "tag": "0003_wonderful_legion",
+      "breakpoints": true
     }
   ]
 }

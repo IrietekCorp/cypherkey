@@ -1,0 +1,1 @@
+ALTER TABLE "vault_items" ADD COLUMN "cursor" integer NOT NULL;

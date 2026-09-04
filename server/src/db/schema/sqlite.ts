@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 // docs/02 A-9, SQLite dialect. This file and ./pg.ts differ ONLY in this header;
 // schema/parity.test.ts fails the build if their shapes drift apart.
@@ -80,15 +80,24 @@ export const authScoreHistory = table('auth_score_history', {
   createdAt: ts('created_at').notNull(),
 });
 
-export const vaultItems = table('vault_items', {
-  id: txt('id').primaryKey(),
-  userId: userRef('user_id').notNull(),
-  version: int('version').notNull(),
-  ciphertext: txt('ciphertext').notNull(),
-  nonce: txt('nonce').notNull(),
-  updatedAt: ts('updated_at').notNull(),
-  deletedAt: ts('deleted_at'),
-});
+// Item ids are chosen by the client, so they are only unique within an account.
+// A global primary key would let one account claim an id and lock every other
+// account out of it — a cross-tenant denial of service. The key is (user_id, id).
+export const vaultItems = table(
+  'vault_items',
+  {
+    id: txt('id').notNull(),
+    userId: userRef('user_id').notNull(),
+    /** A-6: position in this user's monotonic change log. `GET ?since=` filters on it. */
+    cursor: int('cursor').notNull(),
+    version: int('version').notNull(),
+    ciphertext: txt('ciphertext').notNull(),
+    nonce: txt('nonce').notNull(),
+    updatedAt: ts('updated_at').notNull(),
+    deletedAt: ts('deleted_at'),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.id] })],
+);
 
 export const vaultCursors = table('vault_cursors', {
   userId: userRef('user_id').primaryKey(),

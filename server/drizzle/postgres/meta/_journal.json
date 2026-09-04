@@ -15,6 +15,20 @@
       "when": 1788481646399,
       "tag": "0001_rich_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788483224236,
+      "tag": "0002_wakeful_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788483348691,
+      "tag": "0003_fuzzy_spitfire",
+      "breakpoints": true
     }
   ]
 }
