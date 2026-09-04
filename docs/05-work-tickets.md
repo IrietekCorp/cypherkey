@@ -260,6 +260,51 @@ POST /auth/step-up         → gains { method: 'backup_code', proof: string }
 
 **Acceptance:** enrol, force a grey login, clear it with a Backup Code rather than a retype, and confirm the second use of that code is refused. No response body or table row anywhere contains a code in the clear.
 
+### M2-00f · Server-authenticated recovery · L · deps: M2-00e · **approved**
+
+**Confirmed gap, both halves.** There is no `recoveryAuthHash` anywhere in the codebase: `POST /auth/recovery-key` stores `recoveryWrappedVaultKey` and nothing else, so nothing proves possession of the Kit. And there is no `POST /auth/recover` — `03` X-5 describes the flow and no route implements it. Recovery today is a paragraph, not a feature.
+
+That matters more than a missing endpoint. `recoveryWrappedVaultKey` is the vault key wrapped under a key derived from the Kit. An unauthenticated recovery endpoint would hand that blob to anyone who could name a username, turning the server into an oracle that distributes the encrypted vault key on request. Verifying the Kit *before releasing anything* is the whole point.
+
+**Files:** create `server/src/routes/recover.ts` (+test); modify `server/src/routes/auth.ts` (register the auth hash), `server/src/db/schema/{sqlite,pg}.ts`, `core/crypto/recovery.ts` (+test), `core/client/session.ts` (+test), `docs/02` A-2/A-9/A-10.
+
+**Derivation.** A second branch off the Kit, so the value that authenticates is not the value that unwraps:
+```ts
+recoveryKey      = HKDF(recoverySecret, "cypherkey/recovery/v1")        // existing; unwraps the vault
+recoveryAuthHash = HKDF(recoveryKey,    "cypherkey/recovery-auth/v1")   // new; proves possession
+```
+Chained rather than a sibling of `recoveryKey` purely to reuse the tested `recoveryKeyFromCode()`; HKDF is one-way either way, so the stored verifier reveals nothing about the wrap key. The server stores `Argon2id(recoveryAuthHash)` in a new `users.recovery_auth_hash`, exactly as it stores `Argon2id(authHash)`.
+
+**Registration.** `POST /auth/recovery-key` gains `recoveryAuthHash` in the same one-shot call that registers the blob. It stays one-shot: both land together or neither does, so an account can never hold a blob nobody can prove title to.
+
+**Two calls, and the first one writes nothing.**
+```
+POST /auth/recover/begin   { username, recoveryAuthHash }
+                           → verifies, then returns { recoveryWrappedVaultKey, serverShare }
+                           → READ-ONLY. Touches no factor, no device, no key, no profile.
+
+POST /auth/recover         { username, recoveryAuthHash, newAuthHash, newUserSalt,
+                             newWrappedVaultKey, devicePub, deviceName, devicePlatform }
+                           → verifies again, then does everything below in ONE transaction
+```
+The split is forced, not convenient: the client cannot compute `newWrappedVaultKey` until it has unwrapped `vaultKey`, and it cannot unwrap `vaultKey` until it has the blob. Doing it in one call would mean the server re-wrapping, which it cannot do. Doing it in two *unverified* calls, or letting the first one mutate, is what the requirement forbids — so `begin` demands the same proof, counts toward the same lockout, and changes nothing.
+
+**The single transaction.** All of it commits or none of it does:
+1. delete every TOTP factor (A-17: their secrets were encrypted under a key derived from the passphrase that has just been lost, so they are unreachable and must not be left behind to lock the account out);
+2. revoke every device and every refresh token;
+3. register the presenting device;
+4. write the new `authHash`, `userSalt`, `argonParams` and `wrappedVaultKey`, and bump `key_version`;
+5. delete the biometric profile and any enrollment samples — X-5 requires a fresh enrolment;
+6. leave **Backup Codes untouched**: they are `sha256` hashes and owe nothing to the passphrase.
+
+Returns `{ userId, serverShare, enrollmentToken }`. `vaultKey` itself never changes, so the vault is not re-encrypted.
+
+**Hardening, matching `/auth/login` exactly.** The 500 ms timing floor on every path, including an unknown username; failures increment the same lockout counter with the same five-attempt threshold; the per-account rate-limit bucket applies; every rejection answers identically so a caller cannot distinguish an unknown user from a wrong Kit.
+
+**Tests:** a correct Kit recovers and the new passphrase logs in; the old passphrase does not; `begin` with a wrong `recoveryAuthHash` is 401 and returns no blob; `begin` mutates nothing (row-for-row comparison before and after); a wrong Kit increments lockout and five lock the account; an enrolled TOTP factor is gone afterwards and Backup Codes still work; every device is revoked and the presenting one is registered; the profile is gone and `/enroll/status` says so; a failure mid-transaction leaves the account exactly as it was; no response or table contains the Kit, `recoveryAuthHash`, or a decrypted key.
+
+**Open question for you, not decided here:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
+
 ### The client surface as it actually is
 
 Verified against the source, not recalled. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.
@@ -314,7 +359,8 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 
 - **M2-02** — `startCapture` now takes `onCancel(reason)` and records modifier keys and `blur`; `KeyEvent` is a union with a `blur` variant. The component must surface cancel reasons, and a submit control must not steal focus (see the M1-18 follow-up: `preventDefault` on `mousedown`).
 - **M2-03** — onboarding must capture the script **twice, token-identical** (A-14), show "12 keystrokes · 8 characters", default Strictness to Medium, and record the A-12 consent checkbox.
-- **M2-04** — the Recovery Kit code is **33 characters**, not 32.
+- **M2-04** — the Recovery Kit code is **33 characters**, not 32. The printed Kit and the on-screen copy must both carry: *"If you ever use this Kit, your authenticator app will need to be set up again. Your Backup Codes will still work."* Someone reading the sheet years later has only what is printed on it.
+- **M2-07 / M2-03, new** — recovery is now a real server flow (M2-00f): the Kit is verified before the wrapped vault key is released, `begin` is read-only, and the commit is one transaction. Any "forgot passphrase" screen must drive that, not a client-only unwrap.
 - **M2-05** — "backspace retry" is withdrawn: Backspace is a legitimate Phantom Key. The retry condition is a **script mismatch**, and every sample carries commitments.
 - **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. **M2-00e above now covers this** and is a hard prerequisite: M2-07 cannot start until it lands. M2-00e also fixes a hole it uncovered — a failed step-up does not currently count toward lockout. The screen says **Backup Codes**, never "recovery codes".
 - **M2-14 and the server, new** — A-17 requires every step-up-gated settings change to carry **the passphrase in that request**: Pause, Strictness, Backup Code regeneration, TOTP enrolment. M1-13 shipped a weaker check — a `stepUpAt` claim on the access token, good for five minutes — which cannot produce `stepUpKey` and so cannot touch a TOTP factor. Someone has to replace `hasFreshStepUp` with an in-request re-auth; M2-14 owns the screens and the server change should land with it.
@@ -330,7 +376,7 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 3. Fetch and compile the Argon2 module **when the popup opens**, in parallel with passphrase entry, not lazily on submit. The module is 11.6 KB gzipped; compiling it during typing makes the cost at submit the hash alone.
 | M2-02 | `<RhythmLight/>` React component wrapping `startCapture`; pulse, bands, tooltip, ARIA | M | X-1 |
 | M2-03 | Onboarding: passphrase + zxcvbn + generator | M | X-2 |
-| M2-04 | Recovery Kit screen with "type 4 chars back" confirmation; printable view | M | X-2, M1-06 |
+| M2-04 | Recovery Kit screen with "type 4 chars back" confirmation; printable view | M | X-2, M1-06 · printed Kit must carry the authenticator-app line, below |
 | M2-05 | Enrollment screen: 8 samples, ring, backspace retry | M | |
 | M2-06 | In-app Party Trick screen (post-enrollment, one-time) | S | X-7 |
 | M2-07 | Unlock screen: login flow, bands, grey retype, step-up with Backup Codes | L | X-3 · needs M2-00e |

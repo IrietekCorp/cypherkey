@@ -32,7 +32,9 @@ masterKey (32B, memory only, never leaves client)
    └── HKDF(masterKey, info="cypherkey/phantom/v1") → phantomKey (32B)   ← A-14.2
 
 vaultKey encrypts every vault item:  AES-256-GCM(item, vaultKey, nonce=random 12B, aad=itemId)
-recoveryKey (32B random, shown once as Recovery Kit) → wraps the FULL vaultKey, not the share
+recoveryKey (32B, from the Recovery Kit code) → wraps the FULL vaultKey, not the share
+recoveryAuthHash = HKDF(recoveryKey, "cypherkey/recovery-auth/v1") → proves possession of the Kit;
+                     server stores Argon2id(recoveryAuthHash), exactly as it does for authHash (M2-00f)
 
 every wrapped key is AEAD-bound to its purpose:  aad = "cypherkey/wrap/vault-key/v1" | "cypherkey/wrap/device-key/v1"
                                                      | "cypherkey/wrap/vault-key-offline/v1"   ← A-7 cache: wraps the FULL vaultKey, not the share
@@ -191,7 +193,7 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 
 | Table | Key columns |
 |---|---|
-| `users` | id, username(unique), email, user_salt, argon_params, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
+| `users` | id, username(unique), email, user_salt, argon_params, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), recovery_auth_hash (argon2, proves Kit possession), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
 | `devices` | id, user_id, public_key, name, platform, trusted_at, last_seen_at, revoked_at |
 | `biometric_profiles` | user_id, script_len, means[], stds[], weights[], script_commitments, sample_count, version, updated_at |
 | `enrollment_samples` | id, user_id, feature_vector, script_commitments (both deleted on build), created_at — the first sample fixes the canonical commitment sequence and every later one must match it exactly |
@@ -212,7 +214,14 @@ Removed from original: `credentials` (replaced by `vault_items`, no server-side 
 ```
 GET   /auth/salt
 POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,devicePub,consentAt,consentPolicyVersion}  → 201 {userId, serverShare}
-POST  /auth/recovery-key      {recoveryWrappedVaultKey}   ← second leg of signup (A-5); enrollment refused until it exists
+POST  /auth/recovery-key      {recoveryWrappedVaultKey, recoveryAuthHash}   ← second leg of signup (A-5);
+                              one-shot, both land together; enrollment refused until it exists
+POST  /auth/recover/begin     {username, recoveryAuthHash} → {recoveryWrappedVaultKey, serverShare}
+                              READ-ONLY. Verifies first, alters nothing. M2-00f
+POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserSalt, newWrappedVaultKey, devicePub, …}
+                              Verifies, then deletes TOTP factors, revokes devices, registers the new one,
+                              rotates authHash/salt/wrappedVaultKey, drops the profile — all in one transaction.
+                              Same 500 ms floor and lockout as /auth/login. Backup Codes survive.
 POST  /auth/login
 POST  /auth/step-up           {username, authHash, method:'retype', featureVector}   ← M1 supports `retype` only
                               Like /auth/refresh it takes no access token — a grey login issues none —
