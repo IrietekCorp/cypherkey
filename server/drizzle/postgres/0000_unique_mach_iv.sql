@@ -43,6 +43,7 @@ CREATE TABLE "enrollment_samples" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"feature_vector" jsonb NOT NULL,
+	"script_commitments" jsonb NOT NULL,
 	"created_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
@@ -56,6 +57,12 @@ CREATE TABLE "nonces" (
 	"nonce" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"seen_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "rate_limits" (
+	"key" text PRIMARY KEY NOT NULL,
+	"tokens" double precision NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "refresh_tokens" (
@@ -82,6 +89,7 @@ CREATE TABLE "users" (
 	"username" text NOT NULL,
 	"email" text NOT NULL,
 	"user_salt" text NOT NULL,
+	"argon_params" jsonb NOT NULL,
 	"auth_hash" text NOT NULL,
 	"wrapped_vault_key" jsonb NOT NULL,
 	"recovery_wrapped_vault_key" jsonb,
@@ -102,13 +110,15 @@ CREATE TABLE "vault_cursors" (
 );
 --> statement-breakpoint
 CREATE TABLE "vault_items" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text NOT NULL,
 	"user_id" text NOT NULL,
+	"cursor" integer NOT NULL,
 	"version" integer NOT NULL,
 	"ciphertext" text NOT NULL,
 	"nonce" text NOT NULL,
 	"updated_at" timestamp with time zone NOT NULL,
-	"deleted_at" timestamp with time zone
+	"deleted_at" timestamp with time zone,
+	CONSTRAINT "vault_items_user_id_id_pk" PRIMARY KEY("user_id","id")
 );
 --> statement-breakpoint
 ALTER TABLE "auth_score_history" ADD CONSTRAINT "auth_score_history_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

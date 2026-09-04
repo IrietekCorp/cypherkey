@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "argon_params" jsonb NOT NULL;

@@ -11,6 +11,7 @@
       "dist",
       "site/dist",
       "cypherkey-package",
+      "server/drizzle",
       "package-lock.json",
       "bun.lockb",
       "bun.lock"

@@ -1,1 +1,0 @@
-ALTER TABLE `vault_items` ADD `cursor` integer NOT NULL;

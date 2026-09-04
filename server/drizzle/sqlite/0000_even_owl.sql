@@ -46,6 +46,7 @@ CREATE TABLE `enrollment_samples` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
 	`feature_vector` text NOT NULL,
+	`script_commitments` text NOT NULL,
 	`created_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
@@ -62,6 +63,12 @@ CREATE TABLE `nonces` (
 	`user_id` text NOT NULL,
 	`seen_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `rate_limits` (
+	`key` text PRIMARY KEY NOT NULL,
+	`tokens` real NOT NULL,
+	`updated_at` integer NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `refresh_tokens` (
@@ -90,6 +97,7 @@ CREATE TABLE `users` (
 	`username` text NOT NULL,
 	`email` text NOT NULL,
 	`user_salt` text NOT NULL,
+	`argon_params` text NOT NULL,
 	`auth_hash` text NOT NULL,
 	`wrapped_vault_key` text NOT NULL,
 	`recovery_wrapped_vault_key` text,
@@ -111,12 +119,14 @@ CREATE TABLE `vault_cursors` (
 );
 --> statement-breakpoint
 CREATE TABLE `vault_items` (
-	`id` text PRIMARY KEY NOT NULL,
+	`id` text NOT NULL,
 	`user_id` text NOT NULL,
+	`cursor` integer NOT NULL,
 	`version` integer NOT NULL,
 	`ciphertext` text NOT NULL,
 	`nonce` text NOT NULL,
 	`updated_at` integer NOT NULL,
 	`deleted_at` integer,
+	PRIMARY KEY(`user_id`, `id`),
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );

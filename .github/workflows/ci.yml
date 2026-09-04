@@ -23,7 +23,20 @@ jobs:
       # which use esbuild as a bundler and never start that server, and the fix is
       # pinned out of reach by those packages' own ranges. Re-check when drizzle-kit
       # or vite bumps esbuild past 0.24.2, and delete this flag.
-      - run: bun audit --ignore=GHSA-67mh-4wv8-2f99
+      #
+      # Retried because it calls the npm advisory API, which returns 503 often enough
+      # to have already failed a build. A registry outage is not a vulnerability, but
+      # the step still fails if all three attempts get a real finding.
+      - name: bun audit
+        run: |
+          for attempt in 1 2 3; do
+            if bun audit --ignore=GHSA-67mh-4wv8-2f99; then exit 0; fi
+            status=$?
+            echo "audit attempt $attempt failed (exit $status)"
+            sleep $((attempt * 10))
+          done
+          echo "bun audit failed three times"
+          exit 1
 
   test-sqlite:
     name: tests (sqlite)

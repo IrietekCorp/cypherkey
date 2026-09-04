@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "49c97517-bb20-48ff-8145-807b166a54df",
+  "id": "1e2610e4-e98c-4c07-bf68-0b38f337a38a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "audit_log": {
@@ -108,8 +108,12 @@
           "name": "auth_score_history_user_id_users_id_fk",
           "tableFrom": "auth_score_history",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -192,8 +196,12 @@
           "name": "biometric_profiles_user_id_users_id_fk",
           "tableFrom": "biometric_profiles",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -268,8 +276,12 @@
           "name": "devices_user_id_users_id_fk",
           "tableFrom": "devices",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -302,6 +314,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "script_commitments": {
+          "name": "script_commitments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -316,8 +335,12 @@
           "name": "enrollment_samples_user_id_users_id_fk",
           "tableFrom": "enrollment_samples",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -358,8 +381,12 @@
           "name": "lockouts_user_id_users_id_fk",
           "tableFrom": "lockouts",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -399,12 +426,47 @@
           "name": "nonces_user_id_users_id_fk",
           "tableFrom": "nonces",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "rate_limits": {
+      "name": "rate_limits",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tokens": {
+          "name": "tokens",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -465,7 +527,9 @@
       "indexes": {
         "refresh_tokens_token_hash_unique": {
           "name": "refresh_tokens_token_hash_unique",
-          "columns": ["token_hash"],
+          "columns": [
+            "token_hash"
+          ],
           "isUnique": true
         }
       },
@@ -474,8 +538,12 @@
           "name": "refresh_tokens_user_id_users_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -529,8 +597,12 @@
           "name": "step_up_factors_user_id_users_id_fk",
           "tableFrom": "step_up_factors",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -565,6 +637,13 @@
         },
         "user_salt": {
           "name": "user_salt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "argon_params": {
+          "name": "argon_params",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -653,7 +732,9 @@
       "indexes": {
         "users_username_unique": {
           "name": "users_username_unique",
-          "columns": ["username"],
+          "columns": [
+            "username"
+          ],
           "isUnique": true
         }
       },
@@ -687,8 +768,12 @@
           "name": "vault_cursors_user_id_users_id_fk",
           "tableFrom": "vault_cursors",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -703,13 +788,20 @@
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
         "user_id": {
           "name": "user_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -756,13 +848,25 @@
           "name": "vault_items_user_id_users_id_fk",
           "tableFrom": "vault_items",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "vault_items_user_id_id_pk": {
+          "columns": [
+            "user_id",
+            "id"
+          ],
+          "name": "vault_items_user_id_id_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

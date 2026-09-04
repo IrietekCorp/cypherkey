@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1788472319411,
-      "tag": "0000_dry_mister_sinister",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1788481645939,
-      "tag": "0001_busy_catseye",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1788483223799,
-      "tag": "0002_conscious_moonstone",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1788483348251,
-      "tag": "0003_wonderful_legion",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1788485033021,
-      "tag": "0004_eminent_xavin",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1788490570605,
-      "tag": "0005_slow_invisible_woman",
+      "when": 1788494775907,
+      "tag": "0000_even_owl",
       "breakpoints": true
     }
   ]

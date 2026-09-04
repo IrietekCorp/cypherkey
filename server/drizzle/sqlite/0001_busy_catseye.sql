@@ -1,1 +1,0 @@
-ALTER TABLE `users` ADD `argon_params` text NOT NULL;

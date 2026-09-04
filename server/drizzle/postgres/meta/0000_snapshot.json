@@ -1,5 +1,5 @@
 {
-  "id": "57f042e7-4d52-4c08-8402-37a2c7062609",
+  "id": "def769a4-b13d-418e-92ee-58ca1e98b529",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -100,8 +100,12 @@
           "name": "auth_score_history_user_id_users_id_fk",
           "tableFrom": "auth_score_history",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -178,8 +182,12 @@
           "name": "biometric_profiles_user_id_users_id_fk",
           "tableFrom": "biometric_profiles",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -249,8 +257,12 @@
           "name": "devices_user_id_users_id_fk",
           "tableFrom": "devices",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -283,6 +295,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "script_commitments": {
+          "name": "script_commitments",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -296,8 +314,12 @@
           "name": "enrollment_samples_user_id_users_id_fk",
           "tableFrom": "enrollment_samples",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -338,8 +360,12 @@
           "name": "lockouts_user_id_users_id_fk",
           "tableFrom": "lockouts",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -379,12 +405,47 @@
           "name": "nonces_user_id_users_id_fk",
           "tableFrom": "nonces",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.rate_limits": {
+      "name": "rate_limits",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "tokens": {
+          "name": "tokens",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -444,8 +505,12 @@
           "name": "refresh_tokens_user_id_users_id_fk",
           "tableFrom": "refresh_tokens",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -455,7 +520,9 @@
         "refresh_tokens_token_hash_unique": {
           "name": "refresh_tokens_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": ["token_hash"]
+          "columns": [
+            "token_hash"
+          ]
         }
       },
       "policies": {},
@@ -503,8 +570,12 @@
           "name": "step_up_factors_user_id_users_id_fk",
           "tableFrom": "step_up_factors",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -540,6 +611,12 @@
         "user_salt": {
           "name": "user_salt",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "argon_params": {
+          "name": "argon_params",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -619,7 +696,9 @@
         "users_username_unique": {
           "name": "users_username_unique",
           "nullsNotDistinct": false,
-          "columns": ["username"]
+          "columns": [
+            "username"
+          ]
         }
       },
       "policies": {},
@@ -650,8 +729,12 @@
           "name": "vault_cursors_user_id_users_id_fk",
           "tableFrom": "vault_cursors",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -669,12 +752,18 @@
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "user_id": {
           "name": "user_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cursor": {
+          "name": "cursor",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
@@ -715,13 +804,25 @@
           "name": "vault_items_user_id_users_id_fk",
           "tableFrom": "vault_items",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "vault_items_user_id_id_pk": {
+          "name": "vault_items_user_id_id_pk",
+          "columns": [
+            "user_id",
+            "id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
