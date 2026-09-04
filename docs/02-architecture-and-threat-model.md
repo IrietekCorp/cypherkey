@@ -33,6 +33,8 @@ masterKey (32B, memory only, never leaves client)
 
 vaultKey encrypts every vault item:  AES-256-GCM(item, vaultKey, nonce=random 12B, aad=itemId)
 recoveryKey (32B random, shown once as Recovery Kit) → wraps the FULL vaultKey, not the share
+
+every wrapped key is AEAD-bound to its purpose:  aad = "cypherkey/wrap/vault-key/v1" | "cypherkey/wrap/device-key/v1"
 ```
 
 Rationale for Argon2id over PBKDF2: memory-hard, resists GPU cracking, and the salt is random rather than the username.
@@ -45,11 +47,15 @@ Measured on the reference machine: `hash-wasm` at m=64 MiB, t=3, p=1 takes **~17
 
 **Why authHash is hashed again on the server:** if the DB leaks, an attacker gets `Argon2id(authHash)`, which cannot be replayed as `authHash`.
 
+**Wrapped keys are domain-separated (decided in M1-04).** The same `wrapKey` seals both `vaultShare` (A-2) and the device private key (A-3). Both are 32 opaque bytes, so without separation a swapped blob unwraps as the other secret and the client cannot tell. Every `wrapKey`/`unwrapKey` call therefore passes a context label as AES-GCM associated data; `core/crypto/aead.ts` owns the closed set of labels.
+
 **Why the vault key is split but the Recovery Kit is not (decided, v1.2).** What the client wraps under `wrapKey` is a random `vaultShare`, never `vaultKey` itself; the server generates `serverShare` at signup and returns it in the 201 and on every later successful login. That is what makes the rhythm *enforcing*: passphrase alone reconstructs nothing. The **Recovery Kit is the deliberate exception** — the client computes `vaultKey` the moment it holds the 201, wraps the full `vaultKey` under `recoveryKey`, and registers that blob in a second call before enrollment may proceed. Consequence, stated plainly: the Recovery Kit plus the server ciphertext opens the vault **without the server agreeing to release the share**, so an encrypted export can carry the full vault key and a user can leave hosted CypherKey and still open their data. That is the AGPL promise and X-5 in concrete form. Yes, this bypasses the biometric: the Kit is 160 random bits held offline, not an online guessing target, and an attacker holding both a DB dump and your printed Kit has already won by other means. Every other path — passphrase-only, device-only — still needs the server to release the share after the rhythm passes.
 
 ## A-3. Device identity and request signing
 
-Each device generates an **Ed25519 keypair** at first unlock (WebCrypto `Ed25519` where available; `@noble/curves` fallback). The public key is registered with the server during the first authenticated session. The private key is stored in extension storage encrypted with `wrapKey` (so it's useless without the passphrase).
+Each device generates an **Ed25519 keypair** at first unlock. The public key is registered with the server during the first authenticated session. The private key is stored in extension storage encrypted with `wrapKey` (so it's useless without the passphrase).
+
+**Implementation (corrected in M1-05).** Signing uses `@noble/curves` unconditionally. The earlier wording — "WebCrypto `Ed25519` where available, `@noble/curves` fallback" — is not reachable: WebCrypto cannot import or export a raw 32-byte Ed25519 private seed (`InvalidAccessError` on export, `SyntaxError` on import), only PKCS#8, while our device key is raw bytes. WebCrypto remains a *second* implementation in tests, where it verifies our signatures and, given a test-only PKCS#8 wrapper, produces byte-identical ones — Ed25519 being deterministic makes that a real equality. RFC 8032 §7.1 vectors are committed.
 
 Every authenticated request is signed:
 

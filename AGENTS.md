@@ -9,7 +9,7 @@ You are working on CypherKey, an open-source zero-knowledge password manager wit
 3. **No keystroke capture without a visible Rhythm Light.** `startCapture` throws if the light element is not visible. Never bypass this, even in tests — use a visible stub element.
 4. **No insecure defaults.** The server exits if `JWT_SECRET` is missing or short. Never add a fallback secret.
 5. **Crypto comes from `core/crypto` only.** Use WebCrypto and `@noble/*`. Do not implement primitives. Do not use `Math.random` for anything security-related. Do not add crypto libraries not already in `package.json`.
-6. **Constant-time comparisons** for any secret comparison (`crypto.timingSafeEqual` on server, `@noble/hashes/utils` `equalBytes` in core).
+6. **Constant-time comparisons** for any secret comparison (`crypto.timingSafeEqual` on server, `equalBytes` from `core/crypto/encoding.ts` in core — it re-exports `@noble/curves/abstract/utils`, since `@noble/hashes/utils` has no such export).
 7. **Zero key material on lock.** Any function holding `masterKey`, `wrapKey`, `vaultKey`, or a device private key must `fill(0)` on lock/error paths.
 
 ## Scope discipline
@@ -24,7 +24,7 @@ You are working on CypherKey, an open-source zero-knowledge password manager wit
 
 ```
 core/        platform-agnostic client logic (MIT)   — no DOM imports except core/biometrics/capture.ts
-  crypto/    kdf, aead, device, recovery
+  crypto/    kdf, aead, device, recovery, encoding (base64url, utf8, constant-time compare)
   biometrics/ features, score, capture
   client/    session state machine, sync engine, storage interface
 server/      Bun + Hono + Drizzle (AGPL-3.0)

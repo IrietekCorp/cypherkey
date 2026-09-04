@@ -80,6 +80,21 @@ Tests: roundtrip; altered body fails; altered path fails.
 ### M1-06 · `core/crypto/recovery.ts` — Recovery Kit · S · deps: M1-03, M1-04
 32-char Crockford base32 code (160 bits) → HKDF → recovery wrap key. `generateRecoveryCode()`, `recoveryKeyFromCode(code)`, format/parse with checksum char. Tests: checksum catches single-char typos; case-insensitive.
 
+### M1-06b · `core/crypto/encoding.ts` · S · deps: M1-05 · **done**
+**Files:** create `core/crypto/encoding.ts`, `core/crypto/encoding.test.ts`; modify `core/crypto/device.ts` (replace its private helpers with imports). DO NOT TOUCH anything else.
+**Interfaces:**
+```ts
+export function toBase64Url(bytes: Uint8Array): string;          // no padding, RFC 4648 §5
+export function fromBase64Url(s: string): Uint8Array;            // throws on invalid chars or padding
+export function utf8Encode(s: string): Uint8Array;
+export function utf8Decode(b: Uint8Array): string;
+export function concatBytes(...parts: Uint8Array[]): Uint8Array;
+export function equalBytes(a: Uint8Array, b: Uint8Array): boolean; // constant-time
+```
+**Tests:** roundtrip for lengths 0–70; known vector (bytes 0x3e 0x3f → `"Pj8"`); rejects `+` `/` `=` and whitespace; `equalBytes` false on length mismatch; `device.test.ts` still passes unchanged.
+**Acceptance:** `grep -rn "base64" core/ | grep -v encoding` shows only imports.
+**Corrections found while building it:** `equalBytes` is re-exported from `@noble/curves/abstract/utils`, not `@noble/hashes/utils`, which has no such export. `device.test.ts` had to be touched despite the DO NOT TOUCH list, because its `Buffer.from(..., 'base64')` cross-check otherwise fails the acceptance grep.
+
 ### M1-07 · `core/client/session.ts` — the client state machine · L · deps: M1-03..06 · refs A-5
 Pure TS, no DOM: `signup()`, `login()`, `stepUp()`, `lock()`, `unlockOffline()`, with an injected `fetch` and `storage` interface. Holds `vaultKey` in memory; `lock()` zero-fills. Tests with a mocked server: full sequence from A-5 login flow.
 
