@@ -554,15 +554,18 @@ describe('nothing secret is logged or persisted in the clear', () => {
     const session = makeSession(server, storage);
     await session.signup(SIGNUP);
     session.lock();
-    await session.login({
-      username: 'shawn',
-      ...CREDENTIAL,
-      featureVector: [11, 22, 33],
-    });
+    // Distinctive nine-digit values on purpose. An earlier version of this test looked
+    // for "11", which appears by chance inside the random base64url nonce and signature
+    // roughly one run in ten — a flaky absence test is worse than none, because it
+    // trains everyone to ignore the one check that would catch a real leak.
+    const VECTOR = [987654321, 876543219, 765432198];
+    await session.login({ username: 'shawn', ...CREDENTIAL, featureVector: VECTOR });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
-    expect((login?.body as Record<string, unknown>).featureVector).toEqual([11, 22, 33]);
-    expect(JSON.stringify(login?.headers)).not.toContain('11');
+    expect((login?.body as Record<string, unknown>).featureVector).toEqual(VECTOR);
+
+    const headers = JSON.stringify(login?.headers);
+    for (const value of VECTOR) expect(headers).not.toContain(String(value));
   });
 });
 
