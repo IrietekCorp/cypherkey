@@ -143,6 +143,17 @@ export const lockouts = table('lockouts', {
   lockedUntil: ts('locked_until'),
 });
 
+/**
+ * Token buckets for A-8's per-IP and per-account rate limiting. The key is an HMAC
+ * of the scope and value under the server secret, so neither an IP nor a username
+ * is ever stored here in the clear.
+ */
+export const rateLimits = table('rate_limits', {
+  key: txt('key').primaryKey(),
+  tokens: num('tokens').notNull(),
+  updatedAt: ts('updated_at').notNull(),
+});
+
 export const auditLog = table('audit_log', {
   id: txt('id').primaryKey(),
   userId: txt('user_id'),
@@ -165,5 +176,6 @@ export const tables = {
   nonces,
   stepUpFactors,
   lockouts,
+  rateLimits,
   auditLog,
 } as const;

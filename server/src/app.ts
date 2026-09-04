@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import type { Config } from './config';
 import type { Db } from './db/client';
+import { auditLog } from './middleware/audit';
+import { rateLimit } from './middleware/rate-limit';
 import { authRoutes } from './routes/auth';
 import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
@@ -23,6 +25,12 @@ export type AppDeps = {
 /** Builds the HTTP app over injected dependencies, so tests need no listening socket. */
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
+  if (deps.config !== undefined) {
+    // Order matters: the limiter must run before anything expensive, and the audit
+    // middleware wraps the response so it can record the status.
+    app.use('*', rateLimit({ db: deps.db, config: deps.config, now: deps.now }));
+    app.use('*', auditLog({ db: deps.db, config: deps.config, now: deps.now }));
+  }
   app.route('/', healthRoutes(deps.db));
   if (deps.config !== undefined) {
     app.route(

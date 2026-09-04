@@ -179,7 +179,7 @@ Responses padded to ≥ 500 ms on all paths.
 | ORM | Drizzle | One schema, SQLite (`bun:sqlite`) and Postgres (`postgres.js`) drivers |
 | Validation | Zod | Shared with `core/` for request/response types |
 | Sessions | JWT access (15m, HS256 with `JWT_SECRET`) + rotating refresh tokens in DB | Refresh table gives persistent revocation from day one — removes the in-memory list |
-| Rate limiting | Per-IP and per-account token bucket in DB (SQLite) or Redis (hosted, M5) | |
+| Rate limiting | Per-IP and per-account token bucket in `rate_limits` (SQLite) or Redis (hosted, M5). 100 req/min per IP, 10 login attempts/min per account. The client IP is read from `x-forwarded-for`, which is only trustworthy behind our own proxy — a directly reachable deployment must not rely on the per-IP bucket. | |
 | Email | Resend | Free tier is fine until thousands of users |
 | Billing | Stripe Checkout + webhooks | M4 |
 
@@ -202,6 +202,7 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 | `nonces` | nonce, user_id, seen_at (pruned > 5 min) |
 | `step_up_factors` | id, user_id, type (totp/recovery_codes/passkey), secret_enc, created_at |
 | `lockouts` | user_id, failed_count, locked_until |
+| `rate_limits` | key (HMAC of scope+value under the server secret), tokens, updated_at — the DB token buckets A-8 calls for; neither an IP nor a username is stored in the clear |
 | `audit_log` | id, user_id, event, ip_hash, device_id, created_at |
 
 Removed from original: `credentials` (replaced by `vault_items`, no server-side key derivation), `enroll_tokens` (replaced by refresh tokens with scope), in-memory revocation.

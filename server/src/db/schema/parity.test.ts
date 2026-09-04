@@ -26,7 +26,7 @@ describe('dialect parity', () => {
     expect(shape(sqlite.tables)).toEqual(shape(pg.tables));
   });
 
-  test('covers exactly the twelve tables of A-9', () => {
+  test('covers exactly the thirteen tables of A-9', () => {
     expect(Object.keys(shape(sqlite.tables)).sort()).toEqual([
       'audit_log',
       'auth_score_history',
@@ -35,6 +35,7 @@ describe('dialect parity', () => {
       'enrollment_samples',
       'lockouts',
       'nonces',
+      'rate_limits',
       'refresh_tokens',
       'step_up_factors',
       'users',
