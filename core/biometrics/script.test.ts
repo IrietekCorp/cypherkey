@@ -117,6 +117,105 @@ describe('the eight cases of A-14.1', () => {
   });
 });
 
+describe('shifted characters, paired on the physical key', () => {
+  /**
+   * `KeyboardEvent.key` is the character produced *at that instant*, so releasing
+   * Shift before the letter turns a 'P' keydown into a 'p' keyup. Pairing on `key`
+   * left the 'P' unreleased and voided the sample; pairing on `code` does not.
+   * "Proleteri@te$" hits this three times — P, @ (Shift+2) and $ (Shift+4).
+   */
+  function shifted(char: string, unshifted: string, code: string, start: number): KeyEvent[] {
+    return [
+      { type: 'down', key: 'Shift', code: 'ShiftLeft', t: start },
+      { type: 'down', key: char, code, t: start + 10 },
+      { type: 'up', key: 'Shift', code: 'ShiftLeft', t: start + 20 },
+      // Shift is already up, so the browser reports the unshifted character here.
+      { type: 'up', key: unshifted, code, t: start + 30 },
+    ];
+  }
+
+  test('a capital survives Shift being released first', () => {
+    const r = eventsToScript(shifted('P', 'p', 'KeyP', 1000));
+    if ('error' in r) throw new Error(`${r.error}: ${r.detail}`);
+    expect(r.script).toBe('P');
+    expect(r.resolved).toBe('P');
+  });
+
+  test('so do shifted punctuation and digits', () => {
+    for (const [char, unshifted, code] of [
+      ['@', '2', 'Digit2'],
+      ['$', '4', 'Digit4'],
+      ['!', '1', 'Digit1'],
+    ] as const) {
+      const r = eventsToScript(shifted(char, unshifted, code, 1000));
+      if ('error' in r) throw new Error(`${char}: ${r.error} — ${r.detail}`);
+      expect(r.resolved).toBe(char);
+    }
+  });
+
+  test('a whole passphrase with three shifted characters resolves intact', () => {
+    // "Proleteri@te$" — the case that found this.
+    const plain = (ch: string, code: string, t: number): KeyEvent[] => [
+      { type: 'down', key: ch, code, t },
+      { type: 'up', key: ch, code, t: t + 30 },
+    ];
+    const events: KeyEvent[] = [];
+    let t = 1000;
+    const add = (batch: KeyEvent[]) => {
+      events.push(...batch);
+      t += 60;
+    };
+    add(shifted('P', 'p', 'KeyP', t));
+    for (const [ch, code] of [
+      ['r', 'KeyR'],
+      ['o', 'KeyO'],
+      ['l', 'KeyL'],
+      ['e', 'KeyE'],
+      ['t', 'KeyT'],
+      ['e', 'KeyE'],
+      ['r', 'KeyR'],
+      ['i', 'KeyI'],
+    ] as const)
+      add(plain(ch, code, t));
+    add(shifted('@', '2', 'Digit2', t));
+    for (const [ch, code] of [
+      ['t', 'KeyT'],
+      ['e', 'KeyE'],
+    ] as const)
+      add(plain(ch, code, t));
+    add(shifted('$', '4', 'Digit4', t));
+
+    const r = eventsToScript(events);
+    if ('error' in r) throw new Error(`${r.error}: ${r.detail}`);
+    expect(r.resolved).toBe('Proleteri@te$');
+    expect(scriptLength(r.script)).toBe(13);
+  });
+
+  test('left and right Shift are tracked separately', () => {
+    // Holding the left Shift while tapping the right one must not clear the hold.
+    const events: KeyEvent[] = [
+      { type: 'down', key: 'Shift', code: 'ShiftLeft', t: 1000 },
+      { type: 'down', key: 'Shift', code: 'ShiftRight', t: 1010 },
+      { type: 'up', key: 'Shift', code: 'ShiftRight', t: 1020 },
+      { type: 'down', key: 'A', code: 'KeyA', t: 1030 },
+      { type: 'up', key: 'a', code: 'KeyA', t: 1040 },
+      { type: 'up', key: 'Shift', code: 'ShiftLeft', t: 1050 },
+    ];
+    const r = eventsToScript(events);
+    if ('error' in r) throw new Error(`${r.error}: ${r.detail}`);
+    // The right Shift went down and up untouched, so it is a phantom; the left one
+    // shifted the A and is not a token.
+    expect(r.resolved).toBe('A');
+    expect(scriptLength(r.script)).toBe(2);
+  });
+
+  test('events without a code still pair on the key, as before', () => {
+    const r = eventsToScript(type(['a', 'b']));
+    if ('error' in r) throw new Error('expected a script');
+    expect(r.script).toBe('ab');
+  });
+});
+
 describe('the other modifier taps', () => {
   test.each([
     ['Shift', '\uE000'],

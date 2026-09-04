@@ -29,6 +29,8 @@ describe('Rhythm Light capture module (startCapture)', () => {
   ) => {
     const event = new HappyKeyboardEvent(type, {
       key,
+      // A real browser always sends this; pairing depends on it (see script.ts).
+      code: key.length === 1 ? `Key${key.toUpperCase()}` : key,
       repeat,
       bubbles: true,
       cancelable: true,
@@ -274,6 +276,16 @@ describe('Rhythm Light capture module (startCapture)', () => {
     const events = session.stop();
     expect(events.some((e) => e.type === 'blur')).toBe(true);
     expect(eventsToScript(events)).toMatchObject({ error: 'focus_lost' });
+  });
+
+  it('records the physical key alongside the character', () => {
+    const session = startCapture(toInput(inputElement), toElement(lightElement));
+    typeKey(inputElement, 'a');
+    const events = session.stop();
+    const down = events[0];
+    if (down === undefined || down.type === 'blur') throw new Error('expected a keydown');
+    // Without this, releasing Shift before a letter unpairs the keystroke entirely.
+    expect(down.code).toBe('KeyA');
   });
 
   it('Backspace is a legitimate keystroke now, not a rejected one', () => {

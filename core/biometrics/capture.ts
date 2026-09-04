@@ -104,12 +104,12 @@ export function startCapture(
       opts?.onPulse?.();
     }
 
-    events.push({ key: event.key, type: 'down', t: performance.now() });
+    events.push({ key: event.key, code: event.code, type: 'down', t: performance.now() });
   };
 
   const handleKeyUp = (event: KeyboardEvent) => {
     if (IGNORED_KEYS.has(event.key)) return;
-    events.push({ key: event.key, type: 'up', t: performance.now() });
+    events.push({ key: event.key, code: event.code, type: 'up', t: performance.now() });
   };
 
   // A-14.1: losing focus voids the sample. This is how "the key did not move focus"

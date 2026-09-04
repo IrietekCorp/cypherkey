@@ -4,7 +4,16 @@
  * which is how A-14.1 enforces "the key did not move focus" without a per-OS list.
  */
 export type KeyEvent =
-  | { type: 'down' | 'up'; key: string; t: number }
+  | {
+      type: 'down' | 'up';
+      /** The character produced. Changes with modifier state: the same physical key
+       *  reports 'P' while Shift is held and 'p' once it is released. */
+      key: string;
+      /** The physical key (`KeyboardEvent.code`), which does not change with modifiers.
+       *  Down and up are paired on this; falls back to `key` when absent. */
+      code?: string;
+      t: number;
+    }
   | { type: 'blur'; t: number };
 
 /** Why a sample could not be turned into a script (A-14.1). */

@@ -102,7 +102,14 @@ export function resolveScript(script: string): string {
  * `extractFeatures` both go through it.
  */
 export function eventsToTokens(events: KeyEvent[]): TimedResult | ScriptFailure {
-  const held = new Map<string, { downT: number; used: boolean }>();
+  /**
+   * Keyed on the *physical* key, never on the character.
+   *
+   * `KeyboardEvent.key` reports what was produced at that instant, so releasing Shift
+   * before the letter turns a 'P' keydown into a 'p' keyup and the two never pair.
+   * A passphrase with three shifted characters hits this three times.
+   */
+  const held = new Map<string, { downT: number; used: boolean; key: string }>();
   const pending = new Map<string, number[]>();
   const tokens: TimedToken[] = [];
 
@@ -115,9 +122,12 @@ export function eventsToTokens(events: KeyEvent[]): TimedResult | ScriptFailure 
 
     if (event.type === 'down') {
       const key = event.key;
+      const identity = event.code ?? key;
 
       if (key in MODIFIER_TOKENS) {
-        held.set(key, { downT: event.t, used: false });
+        // Tracked per physical key, so holding the left Shift and tapping the right
+        // one is two separate things rather than one confused one.
+        held.set(identity, { downT: event.t, used: false, key });
         continue;
       }
 
@@ -141,17 +151,18 @@ export function eventsToTokens(events: KeyEvent[]): TimedResult | ScriptFailure 
       const token = tokenFor(key);
       if (token === null) return { error: 'unsupported_key', detail: key };
 
-      const queue = pending.get(key) ?? [];
+      const queue = pending.get(identity) ?? [];
       queue.push(tokens.length);
-      pending.set(key, queue);
+      pending.set(identity, queue);
       tokens.push({ token, downT: event.t, upT: Number.NaN });
       continue;
     }
 
     // keyup
     const key = event.key;
+    const identity = event.code ?? key;
     if (key in MODIFIER_TOKENS) {
-      const state = held.get(key);
+      const state = held.get(identity);
       if (state === undefined) {
         // A straggler: capture began while this modifier was already down, so its
         // press belongs to whatever happened before the sample started. Holding Shift
@@ -160,15 +171,20 @@ export function eventsToTokens(events: KeyEvent[]): TimedResult | ScriptFailure 
         // dropped rather than allowed to void a sample the user typed correctly.
         continue;
       }
-      held.delete(key);
+      held.delete(identity);
       if (!state.used) {
-        // Down and up with nothing in between: a deliberate phantom keystroke.
-        tokens.push({ token: MODIFIER_TOKENS[key] as Token, downT: state.downT, upT: event.t });
+        // Down and up with nothing in between: a deliberate phantom keystroke. The
+        // token comes from the key seen at press time, not release time.
+        tokens.push({
+          token: MODIFIER_TOKENS[state.key] as Token,
+          downT: state.downT,
+          upT: event.t,
+        });
       }
       continue;
     }
 
-    const queue = pending.get(key);
+    const queue = pending.get(identity);
     const index = queue?.shift();
     if (index === undefined) {
       // An Enter terminator produces no token, so its keyup has nothing to close.
@@ -176,7 +192,7 @@ export function eventsToTokens(events: KeyEvent[]): TimedResult | ScriptFailure 
       // Never pressed during this sample: a straggler from before capture began, same
       // as the modifier case above. A key we *did* see pressed but whose presses are
       // all accounted for is a genuine double-release, and that is still malformed.
-      if (!pending.has(key)) continue;
+      if (!pending.has(identity)) continue;
       return { error: 'malformed', detail: `${key} released more times than it was pressed` };
     }
     const token = tokens[index] as TimedToken;

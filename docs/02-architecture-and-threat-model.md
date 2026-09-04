@@ -294,6 +294,8 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 **Definition.** The *script* is the ordered sequence of key tokens physically typed into the passphrase field, corrections included. The *resolved passphrase* is the text a normal form would receive. Phantom Keys are the tokens in the script that don't survive into the resolved text (an extra letter and the Backspace that removes it, a lone Escape, a tap of Ctrl).
 
 **Token rules (A-14.1).** A keydown produces a token when all three hold: (1) it has an ASCII code, (2) it does not move focus, (3) it is not a chord.
+
+**Pair on the physical key, not the character (learned the hard way, M1-18 follow-up).** `KeyboardEvent.key` is the character produced *at that instant*, so a passphrase like `Proleteri@te$` breaks a naive implementation three times over: press Shift, press P, release **Shift first**, and the keyup reports `p` while the keydown reported `P`. Paired on `key` the two never meet, the `P` looks pressed-and-never-released, and a correctly typed sample is voided. Capture therefore records `KeyboardEvent.code` and pairing uses it, while tokenization still uses `key` — the character is what reaches the field, the physical key is what identifies the keystroke. Left and right Shift are tracked separately for the same reason.
 | Token class | Encoding | Notes |
 |---|---|---|
 | Printable ASCII 0x20–0x7E | the character | Shift held to produce a capital yields the uppercase character; Shift is not a separate token in that case |
