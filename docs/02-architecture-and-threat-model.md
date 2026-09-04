@@ -187,7 +187,7 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 
 | Table | Key columns |
 |---|---|
-| `users` | id, username(unique), email, user_salt, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
+| `users` | id, username(unique), email, user_salt, argon_params, auth_hash (argon2), wrapped_vault_key (wraps `vaultShare`), recovery_wrapped_vault_key (wraps the full `vaultKey`), server_share, key_version, biometric_enabled, biometric_paused_until, thresholds_json, consent_at, consent_policy_version, created_at |
 | `devices` | id, user_id, public_key, name, platform, trusted_at, last_seen_at, revoked_at |
 | `biometric_profiles` | user_id, script_len, means[], stds[], weights[], script_commitments, sample_count, version, updated_at |
 | `enrollment_samples` | id, user_id, feature_vector (deleted on build), created_at |

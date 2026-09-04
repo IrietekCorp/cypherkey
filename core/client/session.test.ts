@@ -133,6 +133,15 @@ describe('signup (A-5 handshake, A-2 key hierarchy)', () => {
     expect(server.state.calls.map((c) => c.path)).toEqual(['/auth/signup', '/auth/recovery-key']);
   });
 
+  test('signs the recovery-key call — that write must never be anonymous', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const call = server.state.calls.find((c) => c.path === '/auth/recovery-key');
+    expect(call?.headers['x-cypherkey-signature']).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(call?.headers['x-cypherkey-device']).toBe(server.state.stored.devicePub as string);
+  });
+
   test('registers the recovery blob in a second call, because serverShare is not known before the 201', async () => {
     const session = makeSession(server, storage);
     await session.signup(SIGNUP);

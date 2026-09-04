@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ARGON_PARAMS, type ArgonParams } from '../../core/crypto/kdf';
 
 /** Thrown when the environment is unusable. Never carries a secret or a connection string. */
 export class ConfigError extends Error {
@@ -14,6 +15,12 @@ export type Config = {
   port: number;
   db: DbConfig;
   jwtSecret: string;
+  /**
+   * A-2: Argon2id cost is recorded per account at signup and returned by `/auth/salt`.
+   * The server is authoritative — it records its own defaults rather than trusting a
+   * client-supplied cost, which a malicious client could set low.
+   */
+  argonParams: ArgonParams;
   enrollmentSamples: number;
   scorePass: number;
   scoreGrey: number;
@@ -88,6 +95,7 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
     port: e.PORT,
     db: parseDatabaseUrl(e.DATABASE_URL),
     jwtSecret,
+    argonParams: ARGON_PARAMS,
     enrollmentSamples: e.ENROLLMENT_SAMPLES,
     scorePass: e.SCORE_PASS,
     scoreGrey: e.SCORE_GREY,

@@ -33,6 +33,9 @@ export const users = table('users', {
   username: txt('username').notNull().unique(),
   email: txt('email').notNull(),
   userSalt: txt('user_salt').notNull(),
+  /** A-2: Argon2id cost is recorded per account and returned by `GET /auth/salt`,
+   *  so raising the global default never locks an existing user out. */
+  argonParams: json<{ m: number; t: number; p: number }>('argon_params').notNull(),
   authHash: txt('auth_hash').notNull(),
   wrappedVaultKey: json<WrappedKey>('wrapped_vault_key').notNull(),
   recoveryWrappedVaultKey: json<WrappedKey>('recovery_wrapped_vault_key'),

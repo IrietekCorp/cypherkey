@@ -234,6 +234,7 @@ export function createSession(deps: SessionDeps): Session {
       const userSalt = randomBytes(SALT_BYTES);
       const { authKey, wrapKey: wrap } = await deriveBranches(input.kdfInput, userSalt);
       const device = await generateDeviceKey();
+      const deviceId = toBase64Url(device.pub);
 
       // Leg one: the client wraps a random share; only the server can complete the key.
       const vaultShare = randomBytes(KEY_BYTES);
@@ -270,9 +271,15 @@ export function createSession(deps: SessionDeps): Session {
       const recoveryKey = await recoveryKeyFromCode(recoveryCode);
       const recoveryWrapped = await wrapKey(vault, recoveryKey, 'cypherkey/wrap/vault-key/v1');
       recoveryKey.fill(0);
-      const registered = await request('POST', '/auth/recovery-key', {
-        recoveryWrappedVaultKey: sealedToJson(recoveryWrapped),
-      });
+      // Signed with the device key registered a moment ago (A-3). An anonymous write
+      // here would let anyone swap the Recovery Kit for one they control.
+      const registered = await request(
+        'POST',
+        '/auth/recovery-key',
+        { recoveryWrappedVaultKey: sealedToJson(recoveryWrapped) },
+        device.priv,
+        deviceId,
+      );
       if (registered.status !== 200) {
         vault.fill(0);
         wrap.fill(0);
@@ -281,7 +288,6 @@ export function createSession(deps: SessionDeps): Session {
 
       const devicePrivWrapped = await wrapKey(device.priv, wrap, 'cypherkey/wrap/device-key/v1');
       device.priv.fill(0);
-      const deviceId = toBase64Url(device.pub);
       await deps.storage.set(KEYS.deviceId, deviceId);
       await deps.storage.set(KEYS.devicePub, toBase64Url(device.pub));
       await deps.storage.set(

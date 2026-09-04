@@ -39,6 +39,7 @@ function sampleUser(username: string): NewUser {
     username,
     email: `${username}@example.test`,
     userSalt: 'c2FsdA',
+    argonParams: { m: 65536, t: 3, p: 1 },
     authHash: '$argon2id$v=19$m=65536,t=3,p=1$c2FsdA$aGFzaA',
     wrappedVaultKey: { ct: 'Y3Q', nonce: 'bm9uY2U' },
     serverShare: 'c2hhcmU',
