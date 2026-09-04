@@ -183,6 +183,106 @@ export function score(profile: Profile, sample: FeatureVector, alignment?: Align
 
 Use **WXT** (MV3, Chrome + Firefox, React + TypeScript). One ticket per screen or subsystem.
 
+### M2-00d · Reunite `core/client` with the server, and make the e2e prove it · M · deps: all M1 · **approved**
+
+**The gap.** `core/client/session.ts` was written in M1-07 against the pre-commitment wire format. M1-17b then made `commitments` a required field on `/auth/login` and `/enroll/sample`, and nothing forced the two back together. Driving the real session against the real server today:
+
+```
+session.signup → OK
+session.login  → THREW: login failed with status 400
+```
+
+The shipped client library cannot log in to the server it ships with.
+
+**Why M1 did not catch it.** `scripts/e2e.ts` has its own `call()` helper hitting `app.request` directly; it never imports `core/client`. The M1 exit test therefore proved the *routes* work and said nothing about the client. That is the underlying bug, and it is worth more than the drift it hid.
+
+**Files:** modify `core/client/session.ts` (+test), `scripts/e2e.ts`; create `core/client/enroll.ts` (+test), `core/client/sync.ts` (+test).
+
+**Interfaces** — additions, alongside the existing `Session` surface recorded below:
+```ts
+// core/client/session.ts — login and step-up must carry the script
+export type LoginInput = Credential & {
+  username: string;
+  featureVector: number[];
+  commitments: string[];      // base64url, one per script token (A-14.2)
+};
+export type StepUpInput = { method: 'retype'; featureVector: number[]; commitments: string[] };
+
+// core/client/enroll.ts — no client exists for /enroll/* at all
+export function createEnroller(deps: EnrollDeps): {
+  status(): Promise<{ required: number; submitted: number; remaining: number; built: boolean }>;
+  sample(input: { featureVector: number[]; commitments: string[] }): Promise<{ samplesRemaining: number }>;
+  build(): Promise<{ built: true; scriptLen: number; sampleCount: number }>;
+};
+
+// core/client/sync.ts — no client exists for /vault/changes either
+export function createSync(deps: SyncDeps): {
+  pull(since: number): Promise<{ items: VaultItemWire[]; cursor: number }>;
+  push(items: VaultItemWire[]): Promise<{ cursor: number; applied: Applied[]; conflicts: Conflict[] }>;
+};
+```
+
+**Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
+
+### The client surface as it actually is
+
+Verified against the source, not recalled. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.
+
+```ts
+// core/client/session.ts
+createSession(deps: SessionDeps): Session
+type Session = {
+  state(): SessionState;                      // 'locked' | 'unlocked' | 'step-up-required'
+  signup(input: SignupInput): Promise<SignupResult>;        // → { userId, recoveryCode }
+  login(input: LoginInput): Promise<LoginResult>;           // → pass | grey+stepUp | fail
+  stepUp(method: string, proof: string): Promise<LoginResult>;
+  unlockOffline(input: Credential): Promise<boolean>;
+  changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
+  lock(): void; touch(): void; checkIdle(): void;
+  vaultKey(): Uint8Array;                     // throws while locked
+};
+// NOT PRESENT: any enrollment method, any vault method. M2-00d creates both.
+
+// core/biometrics/capture.ts
+startCapture(
+  input: HTMLInputElement,
+  light: HTMLElement,
+  opts?: { onPulse?: () => void; onCancel?: (reason: ScriptError) => void },
+): { stop(): KeyEvent[]; cancel(): void }      // throws 'RhythmLightNotVisible'
+
+// core/biometrics/script.ts
+eventsToScript(events: KeyEvent[]): { script: string; resolved: string } | { error: ScriptError }
+eventsToTokens(events: KeyEvent[]): TimedResult | { error: ScriptError }
+scriptsEqual(a: string, b: string): boolean    // constant-time
+scriptLength(script: string): number           // code points, not characters
+resolveScript(script: string): string
+BACKSPACE '\u0008' · DELETE '\u007F' · ESCAPE '\u001B' · MODIFIER_TOKENS '\uE000'–'\uE004'
+
+// core/biometrics/features.ts / score.ts
+extractFeatures(events: KeyEvent[], expectedLen: number): FeatureVector | FeatureExtractionError
+getFeatureRanges(len: number)                  // vector length is 3n + 5
+buildProfile(samples) · score(profile, sample) · band(s, pass?, grey?) · adapt(profile, sample, alpha?)
+
+// core/crypto/phantom.ts
+kdfInput(resolved: string, script: string, level: Strictness): Uint8Array
+scriptCommitments(phantomKey: Uint8Array, script: string): Promise<Uint8Array[]>
+budget(level, canonLen): { maxInsertions: number; maxMissing: number }
+rhythmBands(level): { pass: number; grey: number }
+
+// core/crypto/recovery.ts
+generateRecoveryCode(): string                 // 33 chars: 32 data + 1 check symbol
+parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secret)
+```
+
+### Corrections to the rows below, from what M1 actually built
+
+- **M2-02** — `startCapture` now takes `onCancel(reason)` and records modifier keys and `blur`; `KeyEvent` is a union with a `blur` variant. The component must surface cancel reasons, and a submit control must not steal focus (see the M1-18 follow-up: `preventDefault` on `mousedown`).
+- **M2-03** — onboarding must capture the script **twice, token-identical** (A-14), show "12 keystrokes · 8 characters", default Strictness to Medium, and record the A-12 consent checkbox.
+- **M2-04** — the Recovery Kit code is **33 characters**, not 32.
+- **M2-05** — "backspace retry" is withdrawn: Backspace is a legitimate Phantom Key. The retry condition is a **script mismatch**, and every sample carries commitments.
+- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. Recovery-code step-up needs a server ticket first, or the row is unbuildable as written.
+- **M2-09** — the cache must honour `key_version`: a Strict re-key (M1-17c) invalidates every other device's offline blob.
+
 | ID | Title | Size | Notes |
 |---|---|---|---|
 | M2-01 | WXT scaffold, popup/options/background/content scripts, Tailwind, storage abstraction implementing `core/client` storage interface | M | Argon2/WASM requirements below |
