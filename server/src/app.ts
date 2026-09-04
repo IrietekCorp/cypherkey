@@ -5,6 +5,7 @@ import { authRoutes } from './routes/auth';
 import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
 import { loginRoutes } from './routes/login';
+import { sessionRoutes } from './routes/session';
 
 /** A-5: every auth response is padded to this floor. Tests pass 0. */
 const DEFAULT_TIMING_FLOOR_MS = 500;
@@ -40,6 +41,7 @@ export function createApp(deps: AppDeps): Hono {
         now: deps.now,
       }),
     );
+    app.route('/', sessionRoutes({ db: deps.db, config: deps.config, now: deps.now }));
   }
   return app;
 }

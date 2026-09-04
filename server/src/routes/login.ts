@@ -1,4 +1,3 @@
-import { sha256 } from '@noble/hashes/sha2';
 import { eq, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -6,16 +5,13 @@ import { getFeatureRanges } from '../../../core/biometrics/features';
 import { adapt, band as bandOf, score as scoreOf } from '../../../core/biometrics/score';
 import type { Profile } from '../../../core/biometrics/score';
 import { verifyRequest } from '../../../core/crypto/device';
-import { fromBase64Url, toBase64Url, utf8Encode } from '../../../core/crypto/encoding';
-import { randomBytes } from '../../../core/crypto/kdf';
-import { mintToken } from '../auth/token';
+import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
+import { issueSession } from '../auth/session-tokens';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
 
-const ACCESS_TTL_MS = 15 * 60_000;
-const REFRESH_TTL_MS = 30 * 24 * 60 * 60_000;
 /** A-3: ±30 s of clock skew. */
 const MAX_SKEW_MS = 30_000;
 /** X-3: five failures, then 15 minutes doubling each time. */
@@ -162,27 +158,6 @@ export function loginRoutes(deps: LoginDeps): Hono {
     else await db.drizzle.insert(pgSchema.authScoreHistory).values(row);
   }
 
-  /** Mints the pass payload and stores the refresh token as a hash, never raw. */
-  async function issueTokens(userId: string, deviceId: string | null) {
-    const accessToken = mintToken(
-      { sub: userId, scope: 'access' },
-      config.jwtSecret,
-      now(),
-      ACCESS_TTL_MS,
-    );
-    const refreshToken = toBase64Url(randomBytes(32));
-    const row = {
-      id: crypto.randomUUID(),
-      userId,
-      deviceId,
-      tokenHash: toBase64Url(sha256(utf8Encode(refreshToken))),
-      expiresAt: new Date(now() + REFRESH_TTL_MS),
-    };
-    if (db.dialect === 'sqlite') await db.drizzle.insert(sqliteSchema.refreshTokens).values(row);
-    else await db.drizzle.insert(pgSchema.refreshTokens).values(row);
-    return { accessToken, refreshToken };
-  }
-
   app.post('/auth/login', async (c) => {
     const rawBody = await c.req.text();
     const headers = c.req.raw.headers;
@@ -264,11 +239,18 @@ export function loginRoutes(deps: LoginDeps): Hono {
       // still had to hold, and no score is invented for the history.
       if (profile === undefined || !user.biometricEnabled || paused) {
         await upsertLockout(user.id, 0, null);
-        const tokens = await issueTokens(user.id, device.id);
+        const { accessToken, refreshToken } = await issueSession(
+          db,
+          config,
+          user.id,
+          device.id,
+          now(),
+        );
         return c.json({
           band: 'pass',
           enrolled: profile !== undefined,
-          ...tokens,
+          accessToken,
+          refreshToken,
           wrappedVaultKey: user.wrappedVaultKey,
           serverShare: user.serverShare,
         });
@@ -326,11 +308,18 @@ export function loginRoutes(deps: LoginDeps): Hono {
       }
 
       await upsertLockout(user.id, 0, null);
-      const tokens = await issueTokens(user.id, device.id);
+      const { accessToken, refreshToken } = await issueSession(
+        db,
+        config,
+        user.id,
+        device.id,
+        now(),
+      );
       return c.json({
         band: 'pass',
         enrolled: true,
-        ...tokens,
+        accessToken,
+        refreshToken,
         wrappedVaultKey: user.wrappedVaultKey,
         serverShare: user.serverShare,
       });
