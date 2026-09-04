@@ -1,7 +1,7 @@
 # CypherKey — Executive One-Pager
 
 **The open-source password manager where your password only works when *you* type it.**  
-*Web:* [cypherkey.io](https://cypherkey.io) · *Repository:* [github.com/cypherkey/cypherkey](https://github.com/cypherkey/cypherkey) · *Contact:* hello@cypherkey.io
+*Web:* [cypherkey.io](https://cypherkey.io) · *Repository:* [github.com/IrietekCorp/cypherkey](https://github.com/IrietekCorp/cypherkey) · *Contact:* hello@cypherkey.io
 
 ---
 
