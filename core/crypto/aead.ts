@@ -14,7 +14,12 @@ export type Sealed = { ct: Uint8Array; nonce: Uint8Array };
  * (A-2) and the device private key (A-3); binding each blob to its purpose stops one
  * being substituted for the other, since both are 32 opaque bytes.
  */
-export type WrapContext = 'cypherkey/wrap/vault-key/v1' | 'cypherkey/wrap/device-key/v1';
+export type WrapContext =
+  | 'cypherkey/wrap/vault-key/v1'
+  | 'cypherkey/wrap/device-key/v1'
+  /** A-7 offline cache. Wraps the FULL vaultKey, not the share — a distinct plaintext
+   *  under the same wrapKey, so it needs its own label or it could be substituted. */
+  | 'cypherkey/wrap/vault-key-offline/v1';
 
 /** Thrown when a ciphertext does not authenticate. Carries no detail about why. */
 export class DecryptionError extends Error {

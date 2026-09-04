@@ -1,0 +1,517 @@
+import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { decryptItem, encryptItem, unwrapKey, xor32 } from '../crypto/aead';
+import { fromBase64Url, toBase64Url, utf8Encode } from '../crypto/encoding';
+import { deriveMasterKey, deriveSubkey, randomBytes } from '../crypto/kdf';
+import { recoveryKeyFromCode } from '../crypto/recovery';
+import { type SessionStorage, createSession } from './session';
+
+const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+const FAST = { m: 256, t: 1, p: 1 } as const;
+const PASSPHRASE = utf8Encode('correct horse battery staple');
+
+/** In-memory storage double, so nothing here touches a real disk. */
+function memoryStorage(): SessionStorage & { dump(): Record<string, string> } {
+  const map = new Map<string, string>();
+  return {
+    get: async (k) => map.get(k) ?? null,
+    set: async (k, v) => void map.set(k, v),
+    remove: async (k) => void map.delete(k),
+    dump: () => Object.fromEntries(map),
+  };
+}
+
+type Recorded = { path: string; method: string; headers: Record<string, string>; body: unknown };
+
+/**
+ * A mock server that implements just enough of A-5 to drive the client:
+ * it holds a salt, a server share, and whatever the client registered.
+ */
+function mockServer(options: { band?: 'pass' | 'grey' | 'fail' } = {}) {
+  const state = {
+    userSalt: new Uint8Array(16).fill(3) as Uint8Array,
+    serverShare: new Uint8Array(32).fill(0x5a),
+    argonParams: FAST,
+    stored: {} as Record<string, unknown>,
+    calls: [] as Recorded[],
+    band: options.band ?? ('pass' as 'pass' | 'grey' | 'fail'),
+  };
+
+  const fetchLike = (async (url: string | URL, init?: RequestInit) => {
+    const path = new URL(String(url)).pathname + new URL(String(url)).search;
+    const headers = Object.fromEntries(
+      Object.entries((init?.headers ?? {}) as Record<string, string>),
+    );
+    const raw = typeof init?.body === 'string' ? init.body : undefined;
+    const body = raw === undefined ? undefined : JSON.parse(raw);
+    state.calls.push({ path, method: init?.method ?? 'GET', headers, body });
+
+    const json = (status: number, value: unknown) =>
+      new Response(JSON.stringify(value), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+
+    if (path.startsWith('/auth/salt')) {
+      return json(200, {
+        userSalt: toBase64Url(state.userSalt),
+        argonParams: state.argonParams,
+        deviceRegistered: state.stored.devicePub !== undefined,
+      });
+    }
+    if (path === '/auth/signup') {
+      Object.assign(state.stored, body);
+      // The client picks the salt at signup; /auth/salt must hand back that same one.
+      state.userSalt = fromBase64Url(String((body as Record<string, unknown>).userSalt));
+      return json(201, { userId: 'user-1', serverShare: toBase64Url(state.serverShare) });
+    }
+    if (path === '/auth/recovery-key') {
+      Object.assign(state.stored, body);
+      return json(200, { ok: true });
+    }
+    if (path === '/auth/login') {
+      if (state.band === 'fail') return json(401, { error: 'rhythm_mismatch' });
+      if (state.band === 'grey') return json(200, { stepUp: ['retype', 'recovery_code'] });
+      return json(200, {
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        wrappedVaultKey: state.stored.wrappedVaultKey,
+        serverShare: toBase64Url(state.serverShare),
+      });
+    }
+    if (path === '/auth/step-up') {
+      return json(200, {
+        accessToken: 'access-2',
+        refreshToken: 'refresh-2',
+        wrappedVaultKey: state.stored.wrappedVaultKey,
+        serverShare: toBase64Url(state.serverShare),
+      });
+    }
+    return json(404, { error: 'not_found' });
+  }) as unknown as typeof fetch;
+
+  return { state, fetchLike };
+}
+
+function makeSession(
+  server: ReturnType<typeof mockServer>,
+  storage: SessionStorage,
+  now = () => 1_788_000_000_000,
+) {
+  return createSession({
+    baseUrl: 'https://api.cypherkey.test',
+    fetch: server.fetchLike,
+    storage,
+    now,
+    argonParams: FAST,
+  });
+}
+
+const SIGNUP = {
+  username: 'shawn',
+  email: 'shawn@example.test',
+  kdfInput: PASSPHRASE,
+  consentPolicyVersion: '2026-09-01',
+  deviceName: 'Laptop',
+  devicePlatform: 'linux',
+};
+
+describe('signup (A-5 handshake, A-2 key hierarchy)', () => {
+  let server: ReturnType<typeof mockServer>;
+  let storage: ReturnType<typeof memoryStorage>;
+
+  beforeEach(() => {
+    server = mockServer();
+    storage = memoryStorage();
+  });
+
+  test('completes both legs and ends unlocked', async () => {
+    const session = makeSession(server, storage);
+    const result = await session.signup(SIGNUP);
+
+    expect(result.userId).toBe('user-1');
+    expect(session.state()).toBe('unlocked');
+    expect(server.state.calls.map((c) => c.path)).toEqual(['/auth/signup', '/auth/recovery-key']);
+  });
+
+  test('registers the recovery blob in a second call, because serverShare is not known before the 201', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    expect(server.state.calls[0]?.body).not.toHaveProperty('recoveryWrappedVaultKey');
+    expect(server.state.calls[1]?.body).toHaveProperty('recoveryWrappedVaultKey');
+  });
+
+  test('what is wrapped under wrapKey is the share, and it XORs back to the vault key', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const master = await deriveMasterKey(PASSPHRASE, server.state.userSalt, FAST);
+    const wrapKey = await deriveSubkey(master, 'cypherkey/wrap/v1');
+    const wrapped = server.state.stored.wrappedVaultKey as { ct: string; nonce: string };
+    const vaultShare = await unwrapKey(
+      { ct: fromBase64Url(wrapped.ct), nonce: fromBase64Url(wrapped.nonce) },
+      wrapKey,
+    );
+
+    expect(hex(xor32(vaultShare, server.state.serverShare))).toBe(hex(session.vaultKey()));
+    expect(hex(vaultShare)).not.toBe(hex(session.vaultKey()));
+  });
+
+  test('the Recovery Kit wraps the FULL vault key, so it opens the vault without the server share', async () => {
+    const session = makeSession(server, storage);
+    const { recoveryCode } = await session.signup(SIGNUP);
+
+    const recoveryKey = await recoveryKeyFromCode(recoveryCode);
+    const blob = server.state.stored.recoveryWrappedVaultKey as { ct: string; nonce: string };
+    const recovered = await unwrapKey(
+      { ct: fromBase64Url(blob.ct), nonce: fromBase64Url(blob.nonce) },
+      recoveryKey,
+    );
+
+    expect(hex(recovered)).toBe(hex(session.vaultKey()));
+  });
+
+  test('sends consent and the device public key, and never the passphrase or any derived key', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const body = server.state.calls[0]?.body as Record<string, unknown>;
+
+    expect(body.consentPolicyVersion).toBe('2026-09-01');
+    expect(typeof body.consentAt).toBe('number');
+    expect(typeof body.devicePub).toBe('string');
+
+    const master = await deriveMasterKey(PASSPHRASE, server.state.userSalt, FAST);
+    const wrapKey = await deriveSubkey(master, 'cypherkey/wrap/v1');
+    const wire = JSON.stringify(server.state.calls);
+    expect(wire).not.toContain('correct horse');
+    expect(wire).not.toContain(toBase64Url(master));
+    expect(wire).not.toContain(toBase64Url(wrapKey));
+    expect(wire).not.toContain(toBase64Url(session.vaultKey()));
+  });
+
+  test('stores the device private key wrapped, never in the clear', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const dump = JSON.stringify(storage.dump());
+    const master = await deriveMasterKey(PASSPHRASE, server.state.userSalt, FAST);
+    const wrapKey = await deriveSubkey(master, 'cypherkey/wrap/v1');
+    expect(dump).not.toContain(toBase64Url(wrapKey));
+    expect(dump).not.toContain(toBase64Url(session.vaultKey()));
+    expect(Object.keys(storage.dump())).toContain('cypherkey.device.privWrapped');
+  });
+});
+
+describe('login (A-5 online sequence)', () => {
+  test('pass: fetches salt, signs the request, unwraps and XORs to the vault key', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const first = makeSession(server, storage);
+    await first.signup(SIGNUP);
+    const vaultKey = hex(first.vaultKey());
+    first.lock();
+
+    const session = makeSession(server, storage);
+    const result = await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1, 2, 3],
+    });
+
+    expect(result.band).toBe('pass');
+    expect(session.state()).toBe('unlocked');
+    expect(hex(session.vaultKey())).toBe(vaultKey);
+
+    const saltCall = server.state.calls.find((c) => c.path.startsWith('/auth/salt'));
+    expect(saltCall?.path).toContain('username=shawn');
+  });
+
+  test('carries the A-3 signature in headers, never in the body', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+    const session = makeSession(server, storage);
+    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+
+    const login = server.state.calls.find((c) => c.path === '/auth/login');
+    expect(login?.headers['x-cypherkey-signature']).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(login?.headers['x-cypherkey-nonce']).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(login?.headers['x-cypherkey-ts']).toBe('1788000000000');
+    expect(login?.body).not.toHaveProperty('deviceSig');
+  });
+
+  test('a fresh nonce per login, so a replayed request is detectable', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+
+    const nonces = new Set<string>();
+    for (let i = 0; i < 5; i++) {
+      const s = makeSession(server, storage);
+      await s.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+      nonces.add(
+        server.state.calls.filter((c) => c.path === '/auth/login').at(-1)?.headers[
+          'x-cypherkey-nonce'
+        ] as string,
+      );
+    }
+    expect(nonces.size).toBe(5);
+  });
+
+  test('grey: reports the step-up options and stays locked', async () => {
+    const server = mockServer({ band: 'grey' });
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+
+    const session = makeSession(server, storage);
+    const result = await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+    });
+
+    expect(result).toEqual({ band: 'grey', stepUp: ['retype', 'recovery_code'] });
+    expect(session.state()).toBe('step-up-required');
+    expect(() => session.vaultKey()).toThrow(/locked/i);
+  });
+
+  test('step-up after grey releases the vault key', async () => {
+    const server = mockServer({ band: 'grey' });
+    const storage = memoryStorage();
+    const first = makeSession(server, storage);
+    await first.signup(SIGNUP);
+    const vaultKey = hex(first.vaultKey());
+
+    const session = makeSession(server, storage);
+    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+    const result = await session.stepUp('recovery_code', 'proof-123');
+
+    expect(result.band).toBe('pass');
+    expect(session.state()).toBe('unlocked');
+    expect(hex(session.vaultKey())).toBe(vaultKey);
+  });
+
+  test('fail: stays locked and holds no key', async () => {
+    const server = mockServer({ band: 'fail' });
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+
+    const session = makeSession(server, storage);
+    const result = await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+    });
+
+    expect(result).toEqual({ band: 'fail', error: 'rhythm_mismatch' });
+    expect(session.state()).toBe('locked');
+    expect(() => session.vaultKey()).toThrow(/locked/i);
+  });
+
+  test('a wrong passphrase cannot unwrap, even if the server were to answer pass', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+
+    const session = makeSession(server, storage);
+    await expect(
+      session.login({
+        username: 'shawn',
+        kdfInput: utf8Encode('wrong passphrase'),
+        featureVector: [1],
+      }),
+    ).rejects.toThrow();
+    expect(session.state()).toBe('locked');
+  });
+});
+
+describe('the vault key actually works', () => {
+  test('an item encrypted after signup decrypts after a later login', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const first = makeSession(server, storage);
+    await first.signup(SIGNUP);
+    const sealed = await encryptItem(utf8Encode('hunter2'), first.vaultKey(), 'item-1');
+    first.lock();
+
+    const session = makeSession(server, storage);
+    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+    const plaintext = await decryptItem(sealed, session.vaultKey(), 'item-1');
+
+    expect(new TextDecoder().decode(plaintext)).toBe('hunter2');
+  });
+});
+
+describe('lock() zeroes key material (AGENTS §7)', () => {
+  test('the vault key buffer is zero-filled, not merely dropped', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    await session.signup(SIGNUP);
+
+    const held = session.vaultKey();
+    expect(held.some((b) => b !== 0)).toBe(true);
+
+    session.lock();
+    expect(hex(held)).toBe('00'.repeat(32));
+    expect(session.state()).toBe('locked');
+    expect(() => session.vaultKey()).toThrow(/locked/i);
+  });
+
+  test('locking twice is safe', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    await session.signup(SIGNUP);
+    session.lock();
+    expect(() => session.lock()).not.toThrow();
+  });
+
+  test('idle past the timeout locks on the next check', async () => {
+    const server = mockServer();
+    let clock = 1_788_000_000_000;
+    const session = createSession({
+      baseUrl: 'https://api.cypherkey.test',
+      fetch: server.fetchLike,
+      storage: memoryStorage(),
+      now: () => clock,
+      argonParams: FAST,
+      idleTimeoutMs: 15 * 60_000,
+    });
+    await session.signup(SIGNUP);
+
+    clock += 14 * 60_000;
+    session.checkIdle();
+    expect(session.state()).toBe('unlocked');
+
+    clock += 2 * 60_000;
+    session.checkIdle();
+    expect(session.state()).toBe('locked');
+  });
+
+  test('activity postpones the idle lock', async () => {
+    const server = mockServer();
+    let clock = 1_788_000_000_000;
+    const session = createSession({
+      baseUrl: 'https://api.cypherkey.test',
+      fetch: server.fetchLike,
+      storage: memoryStorage(),
+      now: () => clock,
+      argonParams: FAST,
+      idleTimeoutMs: 15 * 60_000,
+    });
+    await session.signup(SIGNUP);
+
+    clock += 14 * 60_000;
+    session.touch();
+    clock += 14 * 60_000;
+    session.checkIdle();
+    expect(session.state()).toBe('unlocked');
+  });
+});
+
+describe('unlockOffline (A-7)', () => {
+  test('opens the vault from the cached blob with no network at all', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const first = makeSession(server, storage);
+    await first.signup(SIGNUP);
+    const vaultKey = hex(first.vaultKey());
+    first.lock();
+
+    const offlineFetch = (async () => {
+      throw new Error('network used during offline unlock');
+    }) as unknown as typeof fetch;
+    const session = createSession({
+      baseUrl: 'https://api.cypherkey.test',
+      fetch: offlineFetch,
+      storage,
+      now: () => 1_788_000_000_000,
+      argonParams: FAST,
+    });
+
+    expect(await session.unlockOffline({ kdfInput: PASSPHRASE })).toBe(true);
+    expect(hex(session.vaultKey())).toBe(vaultKey);
+  });
+
+  test('a wrong passphrase does not open it, and leaves the session locked', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    await makeSession(server, storage).signup(SIGNUP);
+
+    const session = makeSession(server, storage);
+    expect(await session.unlockOffline({ kdfInput: utf8Encode('wrong') })).toBe(false);
+    expect(session.state()).toBe('locked');
+  });
+
+  test('refuses when this device has never unlocked online', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    expect(await session.unlockOffline({ kdfInput: PASSPHRASE })).toBe(false);
+  });
+
+  test('the cached blob is bound to its own context, so it cannot stand in for the share', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const master = await deriveMasterKey(PASSPHRASE, server.state.userSalt, FAST);
+    const wrapKey = await deriveSubkey(master, 'cypherkey/wrap/v1');
+    const cached = JSON.parse(storage.dump()['cypherkey.vault.offline'] as string);
+    const blob = { ct: fromBase64Url(cached.ct), nonce: fromBase64Url(cached.nonce) };
+
+    await expect(unwrapKey(blob, wrapKey, 'cypherkey/wrap/vault-key/v1')).rejects.toThrow();
+    expect(hex(await unwrapKey(blob, wrapKey, 'cypherkey/wrap/vault-key-offline/v1'))).toBe(
+      hex(session.vaultKey()),
+    );
+  });
+});
+
+describe('nothing secret is logged or persisted in the clear', () => {
+  test('no session operation writes to the console', async () => {
+    const spies = (['log', 'info', 'warn', 'error', 'debug', 'trace'] as const).map((m) =>
+      spyOn(console, m).mockImplementation(() => {}),
+    );
+    try {
+      const server = mockServer();
+      const storage = memoryStorage();
+      const session = makeSession(server, storage);
+      await session.signup(SIGNUP);
+      session.lock();
+      await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+      await session.unlockOffline({ kdfInput: PASSPHRASE });
+      session.lock();
+      for (const s of spies) expect(s).not.toHaveBeenCalled();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+  });
+
+  test('storage holds no passphrase, master key, wrap key or vault key', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const vaultKey = toBase64Url(session.vaultKey());
+
+    const master = await deriveMasterKey(PASSPHRASE, server.state.userSalt, FAST);
+    const dump = JSON.stringify(storage.dump());
+    expect(dump).not.toContain('correct horse');
+    expect(dump).not.toContain(toBase64Url(master));
+    expect(dump).not.toContain(toBase64Url(await deriveSubkey(master, 'cypherkey/wrap/v1')));
+    expect(dump).not.toContain(toBase64Url(await deriveSubkey(master, 'cypherkey/auth/v1')));
+    expect(dump).not.toContain(vaultKey);
+  });
+
+  test('no request body or header ever carries a feature vector back out as a key', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    session.lock();
+    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [11, 22, 33] });
+
+    const login = server.state.calls.find((c) => c.path === '/auth/login');
+    expect((login?.body as Record<string, unknown>).featureVector).toEqual([11, 22, 33]);
+    expect(JSON.stringify(login?.headers)).not.toContain('11');
+  });
+});

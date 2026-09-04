@@ -35,6 +35,7 @@ vaultKey encrypts every vault item:  AES-256-GCM(item, vaultKey, nonce=random 12
 recoveryKey (32B random, shown once as Recovery Kit) → wraps the FULL vaultKey, not the share
 
 every wrapped key is AEAD-bound to its purpose:  aad = "cypherkey/wrap/vault-key/v1" | "cypherkey/wrap/device-key/v1"
+                                                     | "cypherkey/wrap/vault-key-offline/v1"   ← A-7 cache: wraps the FULL vaultKey, not the share
 ```
 
 Rationale for Argon2id over PBKDF2: memory-hard, resists GPU cracking, and the salt is random rather than the username.
@@ -65,6 +66,10 @@ signature = Ed25519.sign(devicePriv, UTF8(msg))
 ```
 
 Fields are newline-delimited and version-prefixed so no two different requests can produce the same signing string. An empty body hashes the empty byte string. `path-with-query` never includes scheme or host.
+
+**Transport (settled in M1-07).** The signature and its inputs travel in **headers**, never in the body:
+`x-cypherkey-device` (device id), `x-cypherkey-nonce` (base64url), `x-cypherkey-ts`, `x-cypherkey-signature` (base64url).
+This is forced, not stylistic: the signing string covers `sha256(body)`, so a `deviceSig` field *inside* the body would have to be signed before it exists. A-5 step 3 lists `deviceSig`, `nonce` and `ts` alongside the login fields — read that as what is transmitted, not as body members.
 
 Server verifies against the registered device public key, checks nonce uniqueness (60s window) and timestamp skew (±30s). This replaces the HMAC-with-passphrase-key design; the server holds no symmetric secret that could forge a client.
 
@@ -122,7 +127,7 @@ vaultShare = wrapKeyUnwrap(wrappedVaultKey)
 vaultKey   = vaultShare XOR serverShare
 ```
 
-**Signup handshake (v1.2).** The client generates a random `vaultShare`, wraps it under `wrapKey`, and posts it. The server generates `serverShare` (32B random) and returns it in the **201**. The client XORs to get `vaultKey`, wraps that full key under `recoveryKey`, and registers `recoveryWrappedVaultKey` in a second call. **Enrollment cannot begin until that blob is registered** — otherwise a user could get a vault they can never recover.
+**Signup handshake (v1.2).** The client generates a random `vaultShare`, wraps it under `wrapKey`, and posts it. The server generates `serverShare` (32B random) and returns it in the **201**. The client XORs to get `vaultKey`, wraps that full key under `recoveryKey`, and registers `recoveryWrappedVaultKey` via **`POST /auth/recovery-key`** (added to A-10 in M1-07; the original single-call signup body could not carry it, because the client cannot know `serverShare` until the 201 arrives). **Enrollment cannot begin until that blob is registered** — otherwise a user could get a vault they can never recover.
 
 - `wrappedVaultKey` lives on the server (ciphertext, wrapped by client `wrapKey`); its plaintext is `vaultShare`, never `vaultKey`.
 - `serverShare` (32B random) is stored server-side in plaintext but **released only after passphrase + rhythm (or step-up) succeed**.
@@ -201,7 +206,8 @@ Removed from original: `credentials` (replaced by `vault_items`, no server-side 
 
 ```
 GET   /auth/salt
-POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,recoveryWrappedVaultKey,devicePub}
+POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,devicePub,consentAt,consentPolicyVersion}  → 201 {userId, serverShare}
+POST  /auth/recovery-key      {recoveryWrappedVaultKey}   ← second leg of signup (A-5); enrollment refused until it exists
 POST  /auth/login
 POST  /auth/step-up           {method, proof}
 POST  /auth/refresh
