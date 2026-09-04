@@ -2,7 +2,7 @@ import './styles.css';
 
 import { startCapture } from '../core/biometrics/capture';
 import { extractFeatures } from '../core/biometrics/features';
-import { band, buildProfile, score } from '../core/biometrics/score';
+import { buildProfile, score } from '../core/biometrics/score';
 import type { Profile } from '../core/biometrics/score';
 import {
   describeEvents,
@@ -12,6 +12,7 @@ import {
   scriptsEqual,
 } from '../core/biometrics/script';
 import type { FeatureVector, KeyEvent } from '../core/biometrics/types';
+import { type Strictness, rhythmBands } from '../core/crypto/phantom';
 
 type DemoState = 'idle' | 'enrolling' | 'built' | 'challenge_friend' | 'challenge_you' | 'results';
 
@@ -36,6 +37,16 @@ let canonicalScript: string | null = null;
 
 /** Live keystroke count for the current sample, since the field only shows characters. */
 let keystrokesTyped = 0;
+
+/** X-3 lets the friend try more than once; an attacker would. Best score is what counts. */
+const FRIEND_ATTEMPTS = 3;
+let friendAttempts: number[] = [];
+
+/**
+ * A-16 Strictness, adjustable live. Bands are derived from the recorded scores, so
+ * moving the control re-judges the same attempts without anyone typing again.
+ */
+let strictness: Strictness = 'medium';
 
 /** Which of the two setup options is active. Nothing else decides the phrase. */
 let setupChoice: 'random' | 'own' = 'random';
@@ -75,6 +86,18 @@ const rhythmLight = document.getElementById('rhythm-light') as HTMLElement;
 const optionRandom = document.getElementById('option-random') as HTMLButtonElement;
 const optionOwn = document.getElementById('option-own') as HTMLButtonElement;
 const randomPhraseDisplay = document.getElementById('random-phrase-display') as HTMLElement;
+const friendAttemptCounter = document.getElementById('friend-attempt-counter') as HTMLElement;
+const friendAttemptHistory = document.getElementById('friend-attempt-history') as HTMLElement;
+const friendAttemptList = document.getElementById('friend-attempt-list') as HTMLElement;
+const btnFriendGiveUp = document.getElementById('btn-friend-give-up') as HTMLButtonElement;
+const btnTestAnotherFriend = document.getElementById(
+  'btn-test-another-friend',
+) as HTMLButtonElement;
+const youTargetPhrase = document.getElementById('you-target-phrase') as HTMLElement;
+const strictnessHintYou = document.getElementById('strictness-hint-you') as HTMLElement;
+const strictnessHintResults = document.getElementById('strictness-hint-results') as HTMLElement;
+const friendOutcome = document.getElementById('friend-outcome') as HTMLElement;
+const youOutcome = document.getElementById('you-outcome') as HTMLElement;
 const debugPanel = document.getElementById('debug-panel') as HTMLElement;
 const debugRows = document.getElementById('debug-rows') as HTMLElement;
 const phantomReadout = document.getElementById('phantom-script-readout') as HTMLElement;
@@ -119,7 +142,6 @@ const friendExplanation = document.getElementById('friend-explanation') as HTMLE
 const youScoreDisplay = document.getElementById('you-score-display') as HTMLElement;
 const youBandBadge = document.getElementById('you-band-badge') as HTMLElement;
 const youExplanation = document.getElementById('you-explanation') as HTMLElement;
-const btnRetestFriend = document.getElementById('btn-retest-friend') as HTMLButtonElement;
 const btnRetestYou = document.getElementById('btn-retest-you') as HTMLButtonElement;
 const btnNewPassphrase = document.getElementById('btn-new-passphrase') as HTMLButtonElement;
 
@@ -192,16 +214,23 @@ function setState(newState: DemoState) {
     case 'challenge_friend':
       stepChallengeFriend.classList.remove('hidden');
       friendTargetPhrase.textContent = targetPassphrase;
+      renderFriendAttempts();
+      renderStrictness();
       prepareChallengeFriend();
       break;
 
     case 'challenge_you':
       stepChallengeYou.classList.remove('hidden');
+      // Shown again on purpose: after watching someone else type it, nobody should
+      // have to remember the phrase they were handed minutes ago.
+      youTargetPhrase.textContent = targetPassphrase;
+      renderStrictness();
       prepareChallengeYou();
       break;
 
     case 'results':
       stepResults.classList.remove('hidden');
+      renderStrictness();
       renderResults();
       break;
   }
@@ -289,6 +318,14 @@ function prepareEnrollSample(keepFeedback = false) {
  * be the wrong control there: it would have to be stripped at build time.
  */
 const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
+
+/** Bands a score at the current Strictness (A-16), not at a hardcoded default. */
+function bandFor(value: number): 'pass' | 'grey' | 'fail' {
+  const { pass, grey } = rhythmBands(strictness);
+  if (value >= pass) return 'pass';
+  if (value >= grey) return 'grey';
+  return 'fail';
+}
 
 /** Renders control tokens so a phantom is visible rather than invisible. */
 function readableScript(script: string): string {
@@ -524,21 +561,42 @@ function handleFriendSubmit() {
       'warn',
       'Right passphrase, wrong keystrokes. Their attempt is missing your Phantom Keys — on the real server this never even reaches the rhythm check.',
     );
-    friendScoreResult = { score: 0, band: 'fail' };
+    // A wrong script never reaches scoring, so it does not consume an attempt.
     rhythmLightFriend.className = 'rhythm-light-dot fail';
+    prepareChallengeFriend(true);
+    return;
+  }
+
+  const s = score(userProfile, attempt.features);
+  friendAttempts.push(s);
+  const b = bandFor(s);
+  debugNote(
+    'friend',
+    b === 'fail' ? 'rejected' : 'accepted',
+    `attempt ${friendAttempts.length} scored ${s.toFixed(3)} → ${b}`,
+  );
+
+  rhythmLightFriend.className = `rhythm-light-dot ${b}`;
+  recordFriendBest();
+
+  // An attacker would not stop at one go, so neither does the demo.
+  if (friendAttempts.length >= FRIEND_ATTEMPTS) {
+    showFeedback(
+      friendFeedback,
+      'ok',
+      `That was attempt ${FRIEND_ATTEMPTS} of ${FRIEND_ATTEMPTS}. Handing the keyboard back.`,
+    );
     setTimeout(() => setState('challenge_you'), 900);
     return;
   }
 
-  const result = attempt.features;
-  const s = score(userProfile, result);
-  const b = band(s);
-  friendScoreResult = { score: s, band: b };
-
-  // Show color reaction on dot
-  rhythmLightFriend.className = `rhythm-light-dot ${b}`;
-
-  setTimeout(() => setState('challenge_you'), 500);
+  showFeedback(
+    friendFeedback,
+    b === 'pass' ? 'warn' : 'ok',
+    `Attempt ${friendAttempts.length}: ${s.toFixed(2)} — ${b}. ${FRIEND_ATTEMPTS - friendAttempts.length} ${FRIEND_ATTEMPTS - friendAttempts.length === 1 ? 'try' : 'tries'} left, or hand the keyboard back.`,
+  );
+  renderFriendAttempts();
+  prepareChallengeFriend(true);
 }
 
 /**
@@ -597,76 +655,137 @@ function handleYouSubmit() {
     return;
   }
 
-  const result = attempt.features;
-  const s = score(userProfile, result);
-  const b = band(s);
+  const s = score(userProfile, attempt.features);
+  const b = bandFor(s);
   youScoreResult = { score: s, band: b };
+  debugNote('you', b === 'fail' ? 'rejected' : 'accepted', `scored ${s.toFixed(3)} → ${b}`);
 
   rhythmLightYou.className = `rhythm-light-dot ${b}`;
-
   setTimeout(() => setState('results'), 500);
 }
 
 /**
  * Renders the side-by-side comparison in the results section.
  */
+/** The friend's best attempt is what matters: an attacker keeps whichever worked. */
+function recordFriendBest() {
+  if (friendAttempts.length === 0) {
+    friendScoreResult = null;
+    friendAttempts = [];
+    return;
+  }
+  const best = Math.max(...friendAttempts);
+  friendScoreResult = { score: best, band: bandFor(best) };
+}
+
+function renderFriendAttempts() {
+  friendAttemptCounter.textContent = `Attempt ${Math.min(friendAttempts.length + 1, FRIEND_ATTEMPTS)} of ${FRIEND_ATTEMPTS}`;
+  friendAttemptHistory.textContent = friendAttempts.length
+    ? friendAttempts.map((v, i) => `#${i + 1} ${v.toFixed(2)}`).join('   ')
+    : '';
+}
+
+/** Paints the segmented control and the sentence under it. */
+function renderStrictness() {
+  const { pass, grey } = rhythmBands(strictness);
+  const hint = `Passes at ${pass.toFixed(2)} and above · grey from ${grey.toFixed(2)} · below that it fails.`;
+  for (const el of [strictnessHintYou, strictnessHintResults]) el.textContent = hint;
+  for (const button of Array.from(document.querySelectorAll('.strictness-option'))) {
+    const value = (button as HTMLElement).dataset.strictness;
+    (button as HTMLElement).setAttribute('aria-pressed', String(value === strictness));
+  }
+}
+
 function renderResults() {
   if (!friendScoreResult || !youScoreResult) return;
 
-  // Render Friend Card
+  const { pass } = rhythmBands(strictness);
+
+  // Every attempt, so a single lucky try is visible rather than hidden behind a best.
+  friendAttemptList.innerHTML = '';
+  if (friendAttempts.length > 0) {
+    const heading = document.createElement('div');
+    heading.className = 'font-semibold text-slate-700';
+    heading.textContent = `Friend's attempts (best counts, as it would for an attacker):`;
+    friendAttemptList.appendChild(heading);
+    for (const [i, value] of friendAttempts.entries()) {
+      const row = document.createElement('div');
+      const b = bandFor(value);
+      row.className = b === 'pass' ? 'text-rose-700' : 'text-slate-600';
+      row.textContent = `  #${i + 1}  ${value.toFixed(2)}  ${b}`;
+      friendAttemptList.appendChild(row);
+    }
+  }
+
   const fScore = friendScoreResult.score;
   const fBand = friendScoreResult.band;
   friendScoreDisplay.textContent = fScore.toFixed(2);
 
+  // The badge, the sentence and the outcome line all come from the same band, so the
+  // card cannot say PASS and "neutralized" at once — which is exactly what it did.
+  const badge = (el: HTMLElement, text: string, tone: 'good' | 'warn' | 'bad') => {
+    el.textContent = text;
+    const palette = {
+      good: 'bg-teal-100 text-teal-800 border-teal-300',
+      warn: 'bg-amber-100 text-amber-800 border-amber-300',
+      bad: 'bg-rose-200/80 text-rose-800 border-rose-300',
+    }[tone];
+    el.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${palette}`;
+  };
+
   if (fBand === 'pass') {
-    friendBandBadge.textContent = 'PASS';
-    friendBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-teal-100 text-teal-800 border border-teal-300';
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-teal-700 font-mono';
-    friendExplanation.textContent =
-      'Rhythm showed high similarity. In edge cases with close cadences, step-up factors guarantee defense.';
+    // Do not dress this up. They got in, and the honest lesson is the lever above.
+    badge(friendBandBadge, 'PASS', 'bad');
+    friendScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
+    friendExplanation.textContent = `They cleared ${pass.toFixed(2)} on this setting, so at Strictness "${strictness}" this attempt would have opened the vault. Close cadences do happen — try Strict above and watch the same attempt re-judged, or add a Phantom Key they never saw.`;
+    friendOutcome.textContent = 'Outcome: passphrase alone was enough — raise Strictness';
+    friendOutcome.className =
+      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
   } else if (fBand === 'grey') {
-    friendBandBadge.textContent = 'GREY';
-    friendBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300';
+    badge(friendBandBadge, 'GREY', 'warn');
     friendScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
     friendExplanation.textContent =
-      'Rhythm fell in the grey threshold (0.45 - 0.62). Server demands step-up verification before releasing keys.';
+      'Close, but not close enough to pass on its own. A real login would stop here and demand a second factor before releasing anything.';
+    friendOutcome.textContent = 'Outcome: step-up required — no keys released';
+    friendOutcome.className =
+      'mt-5 pt-4 border-t border-amber-200 text-[11px] font-mono font-semibold text-amber-800';
   } else {
-    friendBandBadge.textContent = 'FAIL';
-    friendBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-rose-200/80 text-rose-800 border border-rose-300';
+    badge(friendBandBadge, 'FAIL', 'bad');
     friendScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
     friendExplanation.textContent =
-      'Rhythm significantly diverged from your baseline profile. Server refuses to release the secret share; vault remains locked.';
+      'Their rhythm diverged from your baseline. The server refuses to release its share of the vault key, so the passphrase on its own bought nothing.';
+    friendOutcome.textContent = 'Outcome: stolen password neutralized';
+    friendOutcome.className =
+      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
   }
 
-  // Render You Card
   const yScore = youScoreResult.score;
   const yBand = youScoreResult.band;
   youScoreDisplay.textContent = yScore.toFixed(2);
 
   if (yBand === 'pass') {
-    youBandBadge.textContent = 'PASS';
-    youBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-teal-200/80 text-teal-800 border border-teal-300';
+    badge(youBandBadge, 'PASS', 'good');
     youScoreDisplay.className = 'text-5xl font-extrabold text-teal-700 font-mono';
     youExplanation.textContent =
-      'Rhythm verified seamlessly against your profile. Vault key unwrapped instantly with zero extra steps or dongles.';
+      'Your rhythm matched the profile you enrolled. The vault key is released with nothing extra to carry and nothing extra to type.';
+    youOutcome.textContent = 'Outcome: vault unlocked seamlessly';
+    youOutcome.className =
+      'mt-5 pt-4 border-t border-teal-200 text-[11px] font-mono font-semibold text-teal-800';
   } else if (yBand === 'grey') {
-    youBandBadge.textContent = 'GREY';
-    youBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300';
+    badge(youBandBadge, 'GREY', 'warn');
     youScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
     youExplanation.textContent =
-      'Your rhythm looks slightly different today (speed or posture variance). Step-up fallback allows graceful entry.';
+      'Your own rhythm read as slightly off today — a different chair, a different keyboard, a different hour. You are asked to confirm rather than turned away, and those samples then teach the profile.';
+    youOutcome.textContent = 'Outcome: step-up, then in';
+    youOutcome.className =
+      'mt-5 pt-4 border-t border-amber-200 text-[11px] font-mono font-semibold text-amber-800';
   } else {
-    youBandBadge.textContent = 'FAIL';
-    youBandBadge.className =
-      'px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-rose-200/80 text-rose-800 border border-rose-300';
+    badge(youBandBadge, 'FAIL', 'bad');
     youScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
-    youExplanation.textContent =
-      'Rhythm did not match baseline. Our graceful degradation ladder offers passkey fallback so you are never locked out.';
+    youExplanation.textContent = `That did not match your baseline at Strictness "${strictness}". Nobody is locked out by their own hands: a step-up factor gets you in, and Relaxed above re-judges this same attempt.`;
+    youOutcome.textContent = 'Outcome: step-up required';
+    youOutcome.className =
+      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
   }
 }
 
@@ -742,6 +861,7 @@ function initEventListeners() {
     canonicalScript = null;
     userProfile = null;
     friendScoreResult = null;
+    friendAttempts = [];
     youScoreResult = null;
     setState('enrolling');
   });
@@ -779,7 +899,32 @@ function initEventListeners() {
   btnSubmitYouChallenge.addEventListener('click', handleYouSubmit);
 
   // Retest action buttons
-  btnRetestFriend.addEventListener('click', () => setState('challenge_friend'));
+  // A fresh friend starts a fresh set of attempts; the previous person's best is
+  // discarded rather than quietly carried forward as if it were theirs.
+  btnTestAnotherFriend.addEventListener('click', () => {
+    friendAttempts = [];
+    friendScoreResult = null;
+    friendAttempts = [];
+    setState('challenge_friend');
+  });
+
+  btnFriendGiveUp.addEventListener('click', () => {
+    recordFriendBest();
+    setState('challenge_you');
+  });
+
+  for (const button of Array.from(document.querySelectorAll('.strictness-option'))) {
+    button.addEventListener('click', () => {
+      const value = (button as HTMLElement).dataset.strictness;
+      if (value !== 'strict' && value !== 'medium' && value !== 'relaxed') return;
+      strictness = value;
+      // Re-judge what was already recorded; nobody has to type again.
+      recordFriendBest();
+      if (youScoreResult !== null) youScoreResult.band = bandFor(youScoreResult.score);
+      renderStrictness();
+      if (currentState === 'results') renderResults();
+    });
+  }
   btnRetestYou.addEventListener('click', () => setState('challenge_you'));
   btnNewPassphrase.addEventListener('click', () => setState('idle'));
 
@@ -789,6 +934,7 @@ function initEventListeners() {
     canonicalScript = null;
     userProfile = null;
     friendScoreResult = null;
+    friendAttempts = [];
     youScoreResult = null;
     setState('idle');
   });
