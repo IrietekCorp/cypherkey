@@ -152,6 +152,7 @@ export type Strictness = 'strict' | 'medium' | 'relaxed';
 export function kdfInput(resolved: string, script: string, level: Strictness): Uint8Array; // resolved, or resolved||0x00||script for strict
 export async function scriptCommitments(phantomKey: Uint8Array, script: string): Promise<Uint8Array[]>; // 16-byte HMAC-SHA256 per token
 export function budget(level: Strictness, canonLen: number): { maxInsertions: number; maxMissing: number }; // per A-16 table
+export function rhythmBands(level: Strictness): { pass: number; grey: number };                            // the other half of the same A-16 row
 ```
 **Tests:** commitments differ per token, equal for repeated tokens, differ per key; `kdfInput` differs for strict vs medium on the same inputs; `budget` table (A-16, v1.2 — insertions and deletions are budgeted separately): (medium,10)={2,0}, (medium,25)={4,0}, (relaxed,10)={4,1}, (relaxed,25)={8,1}, (strict,*)={0,0}.
 
