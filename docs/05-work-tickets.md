@@ -442,7 +442,7 @@ Ticket M2-10 prompt guidance: "Implement detection for `input[type=password]` pl
 
 # M3+ (summary; ticket out when you get there)
 
-**M3:** adaptive thresholds (per-user pass/grey from score history percentiles), per-device profiles, passkey and TOTP step-up (`@simplewebauthn`, `otpauth`), Rhythm Signature view, Precision Mode flag, Firefox build, docs site (Astro Starlight), SECURITY review fixes, launch checklist.
+**M3:** adaptive thresholds (per-user pass/grey from score history percentiles), per-device profiles (keyed on the Ed25519 `device_id`; no within-device rhythm clustering — see the keyboard ticket), passkey and TOTP step-up (`@simplewebauthn`, `otpauth`), **M2-00g** (adapt after a verified step-up — deferred here because it cannot be built until step-up exists), Rhythm Signature view, Precision Mode flag, Firefox build, docs site (Astro Starlight), SECURITY review fixes, launch checklist.
 **M4:** Stripe, HIBP, CLI (Bun compiled binary; raw-mode capture via `readline`/`tty` with `process.hrtime`), passkey items, SSE push, emergency access.
 **M5:** `@cypherkey/sdk` (consent-enforced capture, enrollment status, verify), service dashboard, Teams, rhythm-gated passkeys, Redis, load test.
 **M6:** OIDC provider (`oidc-provider` or hand-rolled minimal), mobile read-only, SOC 2 checklist.

@@ -31,7 +31,7 @@ The rule: **the user should never be locked out by their own body.** A bad day, 
 |---|---|---|
 | **Pass** | Light blooms, vault opens | Profile adapts (EMA) if score ≥ 0.70 |
 | **Grey** (0.45–0.62) | Amber light. "Your rhythm looks different today. Type it once more." | Second sample scored. If the average clears the pass band → in. If not → step-up |
-| **Step-up** | "Confirm it's you" with the user's configured factor: passkey (device biometric), TOTP, or one Backup Code | On success: in, **and** the two samples are added to the profile (this is how the profile learns your new keyboard) |
+| **Step-up** | "Confirm it's you" with the user's configured factor: passkey (device biometric), TOTP, or one Backup Code | On success: in, **and** the two samples are added to the profile (this is how the profile learns your new keyboard). **Not yet implemented** — A-4.5 says never adapt on grey and the code followed A-4.5; M2-00g corrects this. Measured, it is the only route back for a user whose drift puts them under the pass band, who otherwise recovers 0% of the time and is step-upped on every login forever |
 | **Fail** (< 0.45) | Red light. "That didn't match your rhythm." Step-up offered after a 2s delay | Counts toward lockout (5 fails → 15 min, exponential). Email: "Someone typed your passphrase but didn't match your rhythm" — that email is a *feature*: it's the dark-web email inverted |
 | **New device** | "New device — confirm it's you" | Always requires step-up regardless of score; registers device key on success |
 
