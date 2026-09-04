@@ -1,5 +1,6 @@
 import { ed25519 } from '@noble/curves/ed25519';
 import { sha256 } from '@noble/hashes/sha2';
+import { fromBase64Url, toBase64Url, utf8Encode } from './encoding';
 import { randomBytes } from './kdf';
 
 /** An Ed25519 device identity: a 32-byte private seed and its 32-byte public key. */
@@ -21,31 +22,10 @@ const SEED_BYTES = 32;
 const PUBLIC_BYTES = 32;
 const SIGNATURE_BYTES = 64;
 
-const utf8 = new TextEncoder();
-
 function toHex(b: Uint8Array): string {
   let s = '';
   for (const byte of b) s += byte.toString(16).padStart(2, '0');
   return s;
-}
-
-/** Base64url, unpadded — the transport encoding for every binary value on the wire. */
-function toBase64Url(b: Uint8Array): string {
-  return btoa(String.fromCharCode(...b))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-/** Reverses `toBase64Url`. Returns undefined for anything that is not valid base64url. */
-function fromBase64Url(s: string): Uint8Array | undefined {
-  if (s.length === 0 || !/^[A-Za-z0-9_-]+$/.test(s)) return undefined;
-  try {
-    const binary = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
-    return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -81,7 +61,7 @@ export async function signRequest(priv: Uint8Array, req: RequestToSign): Promise
   if (priv.length !== SEED_BYTES) {
     throw new Error(`signRequest: priv must be ${SEED_BYTES} bytes, got ${priv.length}`);
   }
-  return toBase64Url(ed25519.sign(utf8.encode(signingString(req)), priv));
+  return toBase64Url(ed25519.sign(utf8Encode(signingString(req)), priv));
 }
 
 /**
@@ -95,10 +75,10 @@ export async function verifyRequest(
   req: RequestToSign,
 ): Promise<boolean> {
   if (pub.length !== PUBLIC_BYTES) return false;
-  const sig = fromBase64Url(signature);
-  if (sig === undefined || sig.length !== SIGNATURE_BYTES) return false;
   try {
-    return ed25519.verify(sig, utf8.encode(signingString(req)), pub);
+    const sig = fromBase64Url(signature);
+    if (sig.length !== SIGNATURE_BYTES) return false;
+    return ed25519.verify(sig, utf8Encode(signingString(req)), pub);
   } catch {
     return false;
   }

@@ -7,6 +7,7 @@ import {
   signingString,
   verifyRequest,
 } from './device';
+import { fromBase64Url } from './encoding';
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
 const fromHex = (s: string) => Uint8Array.from(Buffer.from(s, 'hex'));
@@ -166,8 +167,10 @@ describe('known-answer vectors', () => {
     const key = await crypto.subtle.importKey('raw', pub as BufferSource, 'Ed25519', false, [
       'verify',
     ]);
-    const raw = Uint8Array.from(Buffer.from(sig.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
-    expect(await crypto.subtle.verify('Ed25519', key, raw, bytes(signingString(REQ)))).toBe(true);
+    const raw = fromBase64Url(sig);
+    expect(
+      await crypto.subtle.verify('Ed25519', key, raw as BufferSource, bytes(signingString(REQ))),
+    ).toBe(true);
   });
 
   test('WebCrypto produces byte-identical signatures', async () => {
@@ -182,9 +185,7 @@ describe('known-answer vectors', () => {
     const theirs = new Uint8Array(
       await crypto.subtle.sign('Ed25519', key, bytes(signingString(REQ))),
     );
-    const ours = Uint8Array.from(
-      Buffer.from((await signRequest(priv, REQ)).replace(/-/g, '+').replace(/_/g, '/'), 'base64'),
-    );
+    const ours = fromBase64Url(await signRequest(priv, REQ));
     expect(hex(ours)).toBe(hex(theirs));
   });
 });
