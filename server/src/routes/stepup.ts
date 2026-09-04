@@ -8,6 +8,7 @@ import { verifyRequest } from '../../../core/crypto/device';
 import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { budget } from '../../../core/crypto/phantom';
 import type { Strictness } from '../../../core/crypto/phantom';
+import { clearLockout, recordFailure } from '../auth/lockout';
 import { issueSession } from '../auth/session-tokens';
 import { scoreAligned } from '../biometrics/score';
 import type { Config } from '../config';
@@ -15,6 +16,7 @@ import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
 import { MAX_SEQUENCE, alignCommitments } from '../phantom/align';
+import { consumeBackupCode } from './backup-codes';
 
 const MAX_SKEW_MS = 30_000;
 /** How long a grey attempt stays open for its retype (X-3: "type it once more"). */
@@ -29,13 +31,23 @@ function decodeCommitment(value: string): Uint8Array {
   }
 }
 
-const stepUpSchema = z.object({
+const retypeSchema = z.object({
   username: z.string().min(1).max(64),
   authHash: z.string().min(1).max(512),
   method: z.literal('retype'),
   featureVector: z.array(z.number().finite()).min(1).max(4096),
   commitments: z.array(z.string().min(1).max(64)).min(1).max(MAX_SEQUENCE),
 });
+
+/** X-3: one of the ten one-time Backup Codes. It opens a session, never the vault. */
+const backupCodeSchema = z.object({
+  username: z.string().min(1).max(64),
+  authHash: z.string().min(1).max(512),
+  method: z.literal('backup_code'),
+  proof: z.string().min(1).max(64),
+});
+
+const stepUpSchema = z.discriminatedUnion('method', [retypeSchema, backupCodeSchema]);
 
 export type StepUpDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
 
@@ -50,10 +62,16 @@ async function withFloor<T>(floorMs: number, work: () => Promise<T>): Promise<T>
 /**
  * `POST /auth/step-up` — the second half of X-3's ladder.
  *
- * Only the `retype` factor exists in M1: it is the one thing the server can verify
- * on its own. Recovery codes cannot be checked server-side without breaking
- * zero-knowledge, and passkey/TOTP are M3. The route rejects any other method
- * rather than pretending to support it.
+ * Two factors exist: `retype`, a second scored sample, and `backup_code`, one of the
+ * ten one-time codes from X-3. Passkey and TOTP are M3. The route rejects any other
+ * method rather than pretending to support it.
+ *
+ * An earlier note here claimed a code "cannot be checked server-side without breaking
+ * zero-knowledge". That conflated two different objects. The **Recovery Kit** derives
+ * `recoveryKey` and unwraps the vault, so the server must hold nothing that helps guess
+ * it. A **Backup Code** derives nothing and unwraps nothing — it only proves "it is me"
+ * to the server, and the vault still needs the passphrase. Verifying one server-side
+ * costs no confidentiality.
  *
  * Like `/auth/refresh`, this cannot require an access token — a grey login issues
  * none. It re-proves the passphrase and the device signature instead.
@@ -166,10 +184,23 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
         return deny();
       }
 
+      const fail = async () => {
+        // M2-00e: a failed step-up now counts toward lockout. It did not before, so a
+        // bearer secret was guessable at the rate limit's ten a minute.
+        await recordFailure(db, user.id, now());
+      };
+
       const profile = await q.profile(user.id);
       let combined: number | null = null;
 
-      if (profile !== undefined && user.biometricEnabled) {
+      if (input.method === 'backup_code') {
+        // X-3: a one-time code clears the band on its own. There is no sample to score
+        // and nothing to fold into the profile — the code proves identity, not rhythm.
+        if (!(await consumeBackupCode(db, user.id, input.proof, now()))) {
+          await fail();
+          return c.json({ band: 'fail', error: 'step_up_failed' }, 401);
+        }
+      } else if (profile !== undefined && user.biometricEnabled) {
         const loginLen = input.commitments.length;
         if (input.featureVector.length !== getFeatureRanges(loginLen).totalLength) {
           return deny();
@@ -187,6 +218,7 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
           alignment.insertions > allowed.maxInsertions ||
           alignment.deletions + alignment.substitutions > allowed.maxMissing
         ) {
+          await fail();
           return c.json({ band: 'fail', error: 'phantom_mismatch' }, 401);
         }
 
@@ -223,6 +255,7 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
         else await db.drizzle.insert(pgSchema.authScoreHistory).values(row);
 
         if (combined < config.scorePass) {
+          await fail();
           return c.json({ band: 'fail', error: 'step_up_failed' }, 401);
         }
 
@@ -268,18 +301,7 @@ export function stepUpRoutes(deps: StepUpDeps): Hono {
         else await db.drizzle.insert(pgSchema.devices).values(row);
       }
 
-      const lockoutReset = { failedCount: 0, lockedUntil: null };
-      if (db.dialect === 'sqlite') {
-        await db.drizzle
-          .update(sqliteSchema.lockouts)
-          .set(lockoutReset)
-          .where(eq(sqliteSchema.lockouts.userId, user.id));
-      } else {
-        await db.drizzle
-          .update(pgSchema.lockouts)
-          .set(lockoutReset)
-          .where(eq(pgSchema.lockouts.userId, user.id));
-      }
+      await clearLockout(db, user.id);
 
       const issued = await issueSession(db, config, user.id, deviceId, now(), now());
       return c.json({

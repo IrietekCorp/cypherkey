@@ -26,10 +26,11 @@ describe('dialect parity', () => {
     expect(shape(sqlite.tables)).toEqual(shape(pg.tables));
   });
 
-  test('covers exactly the thirteen tables of A-9', () => {
+  test('covers exactly the fourteen tables of A-9', () => {
     expect(Object.keys(shape(sqlite.tables)).sort()).toEqual([
       'audit_log',
       'auth_score_history',
+      'backup_codes',
       'biometric_profiles',
       'devices',
       'enrollment_samples',

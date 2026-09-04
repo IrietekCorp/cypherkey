@@ -250,7 +250,7 @@ Pinned by a `spyOn(kdf, 'deriveMasterKey')` test asserting exactly one call per 
 
 **Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
 
-### M2-00e · Server support for Backup Code step-up · M · deps: M1-13a · **approved**
+### M2-00e · Server support for Backup Code step-up · M · deps: M1-13a · **DONE**
 
 **Why.** M2-07 says step-up with backup codes. The server accepts `retype` only, and `step_up_factors` is a table no route touches, so M2-07 cannot be built until this exists.
 
@@ -283,6 +283,13 @@ POST /auth/step-up         → gains { method: 'backup_code', proof: string }
 **Tests:** signup returns ten distinct codes and stores ten hashes, never a code in the clear; a valid code clears step-up and issues a token carrying `stepUpAt`; the same code fails the second time (`used_at` set); an unknown code fails; a code belonging to another account fails; failures increment the lockout counter and five of them lock; regeneration invalidates the whole previous set; `GET` returns a count and no code; the response and every table are asserted free of any code after storage.
 
 **Acceptance:** enrol, force a grey login, clear it with a Backup Code rather than a retype, and confirm the second use of that code is refused. No response body or table row anywhere contains a code in the clear.
+
+**As built.** 23 tests in `backup-codes.test.ts`, covering all of the above.
+
+- One extra file was needed: **`server/src/auth/lockout.ts`**. `recordFailure` was private to `login.ts`, and both doors have to count against the same budget — duplicating the doubling policy across two routes is how they drift apart. `login.ts` and `stepup.ts` now share it.
+- The lockout test initially read 4 failures instead of 5: with a frozen clock, the A-8 account bucket (ten a minute) refuses the tenth request before lockout is reached. The test now advances the clock between attempts, which is also the realistic shape of the attack. Worth remembering that **the rate limit hides lockout bugs in any test with a frozen clock.**
+- The client cannot yet drive `backup_code` — `core/client`'s `StepUpInput` is retype-only — so the e2e does not cover this path. That is M2-07's job and should be part of it.
+- Corrected a stale claim in `stepup.ts`'s header comment, which still said a code "cannot be checked server-side without breaking zero-knowledge". Same conflation this ticket exists to undo.
 
 ### M2-00f · Server-authenticated recovery · L · deps: M2-00e · **approved**
 

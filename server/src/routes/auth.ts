@@ -11,6 +11,7 @@ import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import { replaceBackupCodes } from './backup-codes';
 
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
@@ -218,7 +219,10 @@ export function authRoutes(deps: AuthDeps): Hono {
         now(),
         ENROLLMENT_TOKEN_TTL_MS,
       );
-      return c.json({ userId, serverShare, enrollmentToken }, 201);
+      // X-3: the first set of Backup Codes is shown once, here. They are the fallback
+      // when the rhythm cannot clear a step-up, and they open a session, not the vault.
+      const backupCodes = await replaceBackupCodes(db, userId, now());
+      return c.json({ userId, serverShare, enrollmentToken, backupCodes }, 201);
     });
   });
 

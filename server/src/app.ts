@@ -4,6 +4,7 @@ import type { Db } from './db/client';
 import { auditLog } from './middleware/audit';
 import { rateLimit } from './middleware/rate-limit';
 import { authRoutes } from './routes/auth';
+import { backupCodeRoutes } from './routes/backup-codes';
 import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
 import { loginRoutes } from './routes/login';
@@ -55,6 +56,7 @@ export function createApp(deps: AppDeps): Hono {
     app.route('/', sessionRoutes({ db: deps.db, config: deps.config, now: deps.now }));
     app.route('/', vaultRoutes({ db: deps.db, config: deps.config, now: deps.now }));
     app.route('/', userRoutes({ db: deps.db, config: deps.config, now: deps.now }));
+    app.route('/', backupCodeRoutes({ db: deps.db, config: deps.config, now: deps.now }));
     app.route(
       '/',
       stepUpRoutes({

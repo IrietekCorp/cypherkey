@@ -8,6 +8,13 @@
       "when": 1788494776281,
       "tag": "0000_unique_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788565102924,
+      "tag": "0001_mature_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

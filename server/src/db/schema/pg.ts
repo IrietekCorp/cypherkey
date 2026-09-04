@@ -141,6 +141,26 @@ export const stepUpFactors = table('step_up_factors', {
   createdAt: ts('created_at').notNull(),
 });
 
+/**
+ * X-3 Backup Codes: ten one-time codes that clear a step-up when the rhythm cannot.
+ *
+ * Deliberately not `step_up_factors`, whose `secret_enc` holds a *reversible* secret
+ * (A-17). A one-time code needs a one-way hash instead, and it is never recoverable
+ * from this table. Stored as `base64url(sha256(normalized))` — the same treatment as
+ * refresh tokens and for the same reason: these are high-entropy secrets the server
+ * generated, so a fast hash is right and Argon2id is for low-entropy human input.
+ *
+ * A Backup Code opens a *session*, never the vault; the Recovery Kit is the object
+ * that opens a vault, and the two are never called by the same name.
+ */
+export const backupCodes = table('backup_codes', {
+  id: txt('id').primaryKey(),
+  userId: userRef('user_id').notNull(),
+  codeHash: txt('code_hash').notNull().unique(),
+  usedAt: ts('used_at'),
+  createdAt: ts('created_at').notNull(),
+});
+
 export const lockouts = table('lockouts', {
   userId: userRef('user_id').primaryKey(),
   failedCount: int('failed_count').notNull().default(0),
@@ -179,6 +199,7 @@ export const tables = {
   refreshTokens,
   nonces,
   stepUpFactors,
+  backupCodes,
   lockouts,
   rateLimits,
   auditLog,

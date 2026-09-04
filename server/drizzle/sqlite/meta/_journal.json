@@ -8,6 +8,13 @@
       "when": 1788494775907,
       "tag": "0000_even_owl",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788565093655,
+      "tag": "0001_omniscient_the_order",
+      "breakpoints": true
     }
   ]
 }

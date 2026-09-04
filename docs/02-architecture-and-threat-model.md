@@ -124,7 +124,7 @@ After a **pass** with score ≥ 0.70, update profile via EMA (`α = 0.1`) toward
 | 12% slower | 0.627 | 1.3% | 47% | 42 |
 | 14% slower | 0.572 | 0.0% | **0%** | never |
 
-So adaptation self-heals everything down to about 0.65. The real failure is *below* the pass band: a user at 0.572 never produces an adaptable sample, is sent to step-up on every login, and stays there permanently — the profile can never learn the drift that is causing the step-ups. **A-4.5's "never adapt on grey" is the actual defect**, because a grey attempt followed by a *successful step-up* is a more strongly verified user than a bare 0.70 pass, and is currently the one verified event we refuse to learn from.
+So adaptation self-heals everything down to about 0.65. The real failure is *below* the pass band: a user at 0.572 never produces an adaptable sample, is sent to step-up on every login, and stays there permanently — the profile can never learn the drift that is causing the step-ups. **A-4.5's "never adapt on grey" is the actual defect**, because a grey attempt followed by a *successful step-up* is a more strongly verified user than a bare 0.70 pass. Note the precise shape of the gap: `/auth/step-up` **already** folds a cleared *retype* into the profile, but only when the averaged score reaches the pass band — so the 0.572 user fails the retype too and never reaches it. The factors that clear a step-up *without* a rhythm score — a Backup Code today, passkey or TOTP in M3 — are the ones that can rescue them, and those paths currently learn nothing at all.
 
 This also resolves a standing contradiction: **docs/03 X-3 already specifies the correct behaviour** — "on success: in, *and* the two samples are added to the profile (this is how the profile learns your new keyboard)" — and A-4.5 contradicted it. The implementation followed A-4.5, so the shipped behaviour is the wrong one. Where the two disagree here, X-3 is right and this section is being corrected to match it, rather than the usual direction.
 
@@ -224,7 +224,8 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 | `vault_cursors` | user_id, cursor |
 | `refresh_tokens` | id, user_id, device_id, token_hash, expires_at, revoked_at, replaced_by |
 | `nonces` | nonce, user_id, seen_at (pruned > 5 min) |
-| `step_up_factors` | id, user_id, type (totp/recovery_codes/passkey), secret_enc, created_at |
+| `step_up_factors` | id, user_id, type (totp/passkey), secret_enc, created_at — see A-17 for what `secret_enc` holds per type. Backup Codes are **not** here: a one-time code needs a one-way hash, not a reversible secret |
+| `backup_codes` | id, user_id, code_hash (unique), used_at, created_at — X-3's ten one-time codes, stored as `base64url(sha256(normalized))`. A Backup Code opens a **session**; the Recovery Kit opens a **vault**, and the two are never named alike |
 | `lockouts` | user_id, failed_count, locked_until |
 | `rate_limits` | key (HMAC of scope+value under the server secret), tokens, updated_at — the DB token buckets A-8 calls for; neither an IP nor a username is stored in the clear |
 | `audit_log` | id, user_id, event, ip_hash, device_id, created_at |
@@ -235,7 +236,7 @@ Removed from original: `credentials` (replaced by `vault_items`, no server-side 
 
 ```
 GET   /auth/salt
-POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,devicePub,consentAt,consentPolicyVersion}  → 201 {userId, serverShare}
+POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,devicePub,consentAt,consentPolicyVersion}  → 201 {userId, serverShare, enrollmentToken, backupCodes[10]}
 POST  /auth/recovery-key      {recoveryWrappedVaultKey, recoveryAuthHash}   ← second leg of signup (A-5);
                               one-shot, both land together; enrollment refused until it exists
 POST  /auth/recover/begin     {username, recoveryAuthHash} → {recoveryWrappedVaultKey, serverShare}
@@ -245,7 +246,9 @@ POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserS
                               rotates authHash/salt/wrappedVaultKey, drops the profile — all in one transaction.
                               Same 500 ms floor and lockout as /auth/login. Backup Codes survive.
 POST  /auth/login
-POST  /auth/step-up           {username, authHash, method:'retype', featureVector}   ← M1 supports `retype` only
+POST  /auth/step-up           {username, authHash, method:'retype', featureVector, commitments}
+                              {username, authHash, method:'backup_code', proof}       ← M2-00e; passkey/TOTP are M3.
+                              A failed attempt of either kind counts toward lockout (M2-00e closed that hole).
                               Like /auth/refresh it takes no access token — a grey login issues none —
                               and re-proves the passphrase plus the A-3 device signature instead.
                               On success the access token carries `stepUpAt`, which PATCH /user/settings requires.
@@ -263,6 +266,9 @@ POST  /user/rekey             {strictness, authHash, wrappedVaultKey, commitment
                               Crossing into or out of Strict changes kdfInput and so masterKey (A-16). vaultKey itself
                               does not change, so recoveryWrappedVaultKey stays valid. Bumps users.key_version, which is
                               how other devices learn their A-7 offline cache is stale.
+GET   /user/backup-codes      → {remaining}   ← a count, never the codes
+POST  /user/backup-codes      {authHash}  → {backupCodes[10]}   ← regenerate; invalidates every previous
+                              code. A-17: the passphrase travels in this request, not a flag minted earlier.
 GET   /user/devices
 DELETE /user/devices/:id
 GET   /user/rhythm            {sampleCount, recentScores[], consistency}
