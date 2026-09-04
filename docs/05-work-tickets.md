@@ -185,7 +185,7 @@ export function score(profile: Profile, sample: FeatureVector, alignment?: Align
 
 Use **WXT** (MV3, Chrome + Firefox, React + TypeScript). One ticket per screen or subsystem.
 
-### M2-00d · Reunite `core/client` with the server, and make the e2e prove it · M · deps: all M1 · **approved**
+### M2-00d · Reunite `core/client` with the server, and make the e2e prove it · M · deps: all M1 · **DONE**
 
 **The gap.** `core/client/session.ts` was written in M1-07 against the pre-commitment wire format. M1-17b then made `commitments` a required field on `/auth/login` and `/enroll/sample`, and nothing forced the two back together. Driving the real session against the real server today:
 
@@ -223,6 +223,18 @@ export function createSync(deps: SyncDeps): {
   push(items: VaultItemWire[]): Promise<{ cursor: number; applied: Applied[]; conflicts: Conflict[] }>;
 };
 ```
+
+**What it actually found.** The known `commitments` drift was one of five defects; the other four were invisible until the e2e drove the real client:
+
+1. `/auth/login` was missing `commitments` — the known one.
+2. `/auth/step-up` was sent `{ method, proof, username }`; the server requires `{ username, authHash, method: 'retype', featureVector, commitments }`. The client's idea of step-up was an opaque proof string, which the server has never accepted.
+3. `signup` discarded the `enrollmentToken` from the 201, so enrollment was unreachable from the client library at all.
+4. **No second device could ever be provisioned.** Only `signup` generated a device key, so a fresh install could not sign anything, and the server registers a device from the public key in the signature header at step-up. `login` now mints a provisional key when the install has none and persists it once step-up clears.
+5. **A wrong passphrase crashed the client.** It derives a different `wrapKey`, so unwrapping the stored device key threw `DecryptionError` out of `login` instead of returning `invalid_credentials` — an unhandled exception on the single most ordinary user error there is. `loadDevice` now treats an unwrap failure as "wrong passphrase", signs nothing, and lets the server answer 401.
+
+Items 4 and 5 were both reached only because step 11 and step 13 of the e2e now run through the client. Neither had a route bug; both were client bugs that no route test could see.
+
+**Also added:** `session.refresh()`, `session.logout()`, `session.tokens()` and `session.authed()` — the last being the device-signed transport that `createEnroller` and `createSync` consume, so neither holds key material of its own.
 
 **Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
 

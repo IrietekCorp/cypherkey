@@ -50,9 +50,38 @@ export type SignupInput = Credential & {
 };
 
 /** The recovery code is returned once and never stored (X-2 step 3). */
-export type SignupResult = { userId: string; recoveryCode: string };
+export type SignupResult = {
+  userId: string;
+  recoveryCode: string;
+  /** Scope-`enroll` bearer token from A-9. Enrollment cannot start without it. */
+  enrollmentToken: string;
+};
 
-export type LoginInput = Credential & { username: string; featureVector: number[] };
+export type LoginInput = Credential & {
+  username: string;
+  featureVector: number[];
+  /** A-14.2: one commitment per script token, in order. Required by the server since M1-17b. */
+  commitments: string[];
+};
+
+/**
+ * A-4.4 grey-band resolution. The only method the server accepts today is `retype`
+ * (M2-00e adds Backup Codes); passkey and TOTP are M3. A retype is a second scored
+ * sample, so it carries a vector and commitments exactly as a login does.
+ */
+export type StepUpInput = { method: 'retype'; featureVector: number[]; commitments: string[] };
+
+/**
+ * A device-signed, token-bearing request. Handed to the enrollment and sync clients so
+ * they never need the device private key themselves — it stays wrapped under `wrapKey`
+ * inside the session, and is unwrapped per call and zeroed straight afterwards.
+ */
+export type AuthedRequest = (
+  method: string,
+  path: string,
+  body?: unknown,
+  token?: string,
+) => Promise<{ status: number; body: unknown }>;
 
 export type LoginResult =
   | { band: 'pass' }
@@ -76,7 +105,15 @@ export type Session = {
   state(): SessionState;
   signup(input: SignupInput): Promise<SignupResult>;
   login(input: LoginInput): Promise<LoginResult>;
-  stepUp(method: string, proof: string): Promise<LoginResult>;
+  stepUp(input: StepUpInput): Promise<LoginResult>;
+  /** Session tokens from the last pass. Null while locked or awaiting step-up. */
+  tokens(): { accessToken: string; refreshToken: string } | null;
+  /** A-9 rotation: exchanges the refresh token for a new pair. */
+  refresh(): Promise<boolean>;
+  /** Revokes the refresh family server-side, then locks. */
+  logout(): Promise<boolean>;
+  /** Device-signed request helper for `createEnroller` and `createSync`. */
+  authed(): AuthedRequest;
   unlockOffline(input: Credential): Promise<boolean>;
   changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
   lock(): void;
@@ -130,8 +167,20 @@ export function createSession(deps: SessionDeps): Session {
   let lastActivity = now();
   /** Held while unlocked so a re-key can re-wrap it without another round trip. */
   let vaultShareBytes: Uint8Array | null = null;
-  /** Held between a grey login and the step-up that resolves it. */
-  let pending: { username: string } | null = null;
+  /**
+   * Held between a grey login and the step-up that resolves it. `/auth/step-up`
+   * re-verifies the passphrase, so the hash has to survive the round trip. It lives in
+   * memory only for the length of the grey band and is dropped by `lock()`.
+   */
+  let pending: { username: string; authHash: string } | null = null;
+  let sessionTokens: { accessToken: string; refreshToken: string } | null = null;
+  /**
+   * X-3: a device the server does not know is generated here, used to sign the login,
+   * and only persisted once the step-up clears — which is also when the server
+   * registers it, from the public key in the signature header. Until then it is
+   * provisional and a failed attempt simply discards it.
+   */
+  let provisionalDevice: { id: string; priv: Uint8Array } | null = null;
 
   /** Derives the A-2 branches, zeroing the master key as soon as its children exist. */
   async function deriveBranches(kdfInput: Uint8Array, salt: Uint8Array, params?: ArgonParams) {
@@ -189,12 +238,19 @@ export function createSession(deps: SessionDeps): Session {
     const id = await deps.storage.get(KEYS.deviceId);
     const stored = await deps.storage.get(KEYS.devicePrivWrapped);
     if (id === null || stored === null) return null;
-    const priv = await unwrapKey(
-      sealedFromJson(JSON.parse(stored)),
-      wrap,
-      'cypherkey/wrap/device-key/v1',
-    );
-    return { id, priv };
+    try {
+      const priv = await unwrapKey(
+        sealedFromJson(JSON.parse(stored)),
+        wrap,
+        'cypherkey/wrap/device-key/v1',
+      );
+      return { id, priv };
+    } catch {
+      // The stored key will not unwrap under this wrap key, which means the passphrase
+      // is wrong. Sign nothing and let the server answer 401 — the alternative is an
+      // unhandled decryption error on every typo.
+      return null;
+    }
   }
 
   /** A-7: cache the full vault key wrapped under wrapKey, under its own context label. */
@@ -224,6 +280,24 @@ export function createSession(deps: SessionDeps): Session {
     unlockWith(vault, wrap);
     // Kept so a Strictness re-key can re-wrap it without another round trip.
     vaultShareBytes = vaultShare;
+    if (provisionalDevice !== null) {
+      const sealedPriv = await wrapKey(
+        provisionalDevice.priv,
+        wrap,
+        'cypherkey/wrap/device-key/v1',
+      );
+      await deps.storage.set(KEYS.deviceId, provisionalDevice.id);
+      await deps.storage.set(KEYS.devicePub, provisionalDevice.id);
+      await deps.storage.set(KEYS.devicePrivWrapped, JSON.stringify(sealedToJson(sealedPriv)));
+      provisionalDevice.priv.fill(0);
+      provisionalDevice = null;
+    }
+    const access = payload.accessToken;
+    const refresh = payload.refreshToken;
+    sessionTokens =
+      typeof access === 'string' && typeof refresh === 'string'
+        ? { accessToken: access, refreshToken: refresh }
+        : null;
   }
 
   async function fetchSalt(username: string) {
@@ -248,6 +322,73 @@ export function createSession(deps: SessionDeps): Session {
       }
       lastActivity = now();
       return vaultKeyBytes;
+    },
+
+    tokens: () => sessionTokens,
+
+    /**
+     * Signs with this device's key and attaches a bearer token. The private key is
+     * unwrapped per call and zeroed immediately, so the enrollment and sync clients
+     * never hold key material of their own.
+     */
+    authed(): AuthedRequest {
+      return async (method, path, body, token) => {
+        if (wrapKeyBytes === null) throw new Error('session is locked');
+        const device = await loadDevice(wrapKeyBytes);
+        if (device === null) throw new Error('this device has no registered key');
+        try {
+          return await request(method, path, body, device.priv, device.id, token);
+        } finally {
+          device.priv.fill(0);
+        }
+      };
+    },
+
+    /**
+     * A-9: refresh tokens rotate, and reuse of a spent one revokes the whole family.
+     * The route is device-signed but takes no bearer token — the refresh token is the
+     * credential.
+     */
+    async refresh() {
+      if (sessionTokens === null || wrapKeyBytes === null) return false;
+      const device = await loadDevice(wrapKeyBytes);
+      const response = await request(
+        'POST',
+        '/auth/refresh',
+        { refreshToken: sessionTokens.refreshToken },
+        device?.priv,
+        device?.id,
+      );
+      device?.priv.fill(0);
+      if (response.status !== 200) return false;
+
+      const payload = asRecord(response.body);
+      sessionTokens = {
+        accessToken: requireString(payload.accessToken, 'accessToken'),
+        refreshToken: requireString(payload.refreshToken, 'refreshToken'),
+      };
+      lastActivity = now();
+      return true;
+    },
+
+    async logout() {
+      if (sessionTokens === null || wrapKeyBytes === null) {
+        this.lock();
+        return false;
+      }
+      const device = await loadDevice(wrapKeyBytes);
+      const response = await request(
+        'POST',
+        '/auth/logout',
+        {},
+        device?.priv,
+        device?.id,
+        sessionTokens.accessToken,
+      );
+      device?.priv.fill(0);
+      // Whatever the server said, this client is done holding key material.
+      this.lock();
+      return response.status === 200;
     },
 
     async signup(input) {
@@ -318,7 +459,11 @@ export function createSession(deps: SessionDeps): Session {
       unlockWith(vault, wrap);
       vaultShareBytes = vaultShare;
 
-      return { userId: requireString(payload.userId, 'userId'), recoveryCode };
+      return {
+        userId: requireString(payload.userId, 'userId'),
+        recoveryCode,
+        enrollmentToken: requireString(payload.enrollmentToken, 'enrollmentToken'),
+      };
     },
 
     async login(input) {
@@ -330,19 +475,34 @@ export function createSession(deps: SessionDeps): Session {
       );
       await deps.storage.set(KEYS.userSalt, toBase64Url(userSalt));
 
-      const device = await loadDevice(wrap);
+      let device = await loadDevice(wrap);
+      // Only a genuinely unprovisioned install mints a key. A device record that failed
+      // to unwrap means a wrong passphrase, not a new device.
+      const provisioned = (await deps.storage.get(KEYS.deviceId)) !== null;
+      if (device === null && !provisioned) {
+        // A first login on a new install: the server learns this device's public key
+        // from the signature header, and registers it when step-up clears.
+        const generated = await generateDeviceKey();
+        provisionalDevice = { id: toBase64Url(generated.pub), priv: generated.priv };
+        device = { id: provisionalDevice.id, priv: provisionalDevice.priv };
+      }
+      const authHash = toBase64Url(authKey);
       const body = {
         username: input.username,
-        authHash: toBase64Url(authKey),
+        authHash,
         featureVector: input.featureVector,
+        commitments: input.commitments,
         deviceId: device?.id ?? null,
       };
       const response = await request('POST', '/auth/login', body, device?.priv, device?.id);
       authKey.fill(0);
-      device?.priv.fill(0);
+      // A provisional key is still needed to sign the step-up that registers it.
+      if (provisionalDevice === null) device?.priv.fill(0);
 
       if (response.status === 401) {
         wrap.fill(0);
+        provisionalDevice?.priv.fill(0);
+        provisionalDevice = null;
         state = 'locked';
         const error = asRecord(response.body).error;
         return { band: 'fail', error: typeof error === 'string' ? error : 'unauthorized' };
@@ -360,7 +520,7 @@ export function createSession(deps: SessionDeps): Session {
         wrapKeyBytes?.fill(0);
         wrapKeyBytes = wrap;
         state = 'step-up-required';
-        pending = { username: input.username };
+        pending = { username: input.username, authHash };
         return {
           band: 'grey',
           stepUp: payload.stepUp.filter((m): m is string => typeof m === 'string'),
@@ -377,22 +537,29 @@ export function createSession(deps: SessionDeps): Session {
       return { band: 'pass' };
     },
 
-    async stepUp(method, proof) {
+    async stepUp(input) {
       if (state !== 'step-up-required' || wrapKeyBytes === null || pending === null) {
         throw new Error('no step-up is pending');
       }
       const wrap = wrapKeyBytes;
-      const device = await loadDevice(wrap);
+      const device = provisionalDevice ?? (await loadDevice(wrap));
       const response = await request(
         'POST',
         '/auth/step-up',
-        { method, proof, username: pending.username },
+        {
+          username: pending.username,
+          authHash: pending.authHash,
+          method: input.method,
+          featureVector: input.featureVector,
+          commitments: input.commitments,
+        },
         device?.priv,
         device?.id,
       );
-      device?.priv.fill(0);
 
       if (response.status !== 200) {
+        device?.priv.fill(0);
+        provisionalDevice = null;
         const error = asRecord(response.body).error;
         return { band: 'fail', error: typeof error === 'string' ? error : 'step_up_failed' };
       }
@@ -545,6 +712,9 @@ export function createSession(deps: SessionDeps): Session {
       wrapKeyBytes = null;
       vaultShareBytes = null;
       pending = null;
+      sessionTokens = null;
+      provisionalDevice?.priv.fill(0);
+      provisionalDevice = null;
       state = 'locked';
     },
 

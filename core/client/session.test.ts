@@ -62,7 +62,12 @@ function mockServer(options: { band?: 'pass' | 'grey' | 'fail' } = {}) {
       Object.assign(state.stored, body);
       // The client picks the salt at signup; /auth/salt must hand back that same one.
       state.userSalt = fromBase64Url(String((body as Record<string, unknown>).userSalt));
-      return json(201, { userId: 'user-1', serverShare: toBase64Url(state.serverShare) });
+      // A-9: signup mints a scope-`enroll` token, without which /enroll/* is a 401.
+      return json(201, {
+        userId: 'user-1',
+        serverShare: toBase64Url(state.serverShare),
+        enrollmentToken: 'enroll-token-1',
+      });
     }
     if (path === '/auth/recovery-key') {
       Object.assign(state.stored, body);
@@ -225,6 +230,7 @@ describe('login (A-5 online sequence)', () => {
       username: 'shawn',
       kdfInput: PASSPHRASE,
       featureVector: [1, 2, 3],
+      commitments: ['c0', 'c1', 'c2'],
     });
 
     expect(result.band).toBe('pass');
@@ -240,7 +246,12 @@ describe('login (A-5 online sequence)', () => {
     const storage = memoryStorage();
     await makeSession(server, storage).signup(SIGNUP);
     const session = makeSession(server, storage);
-    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+      commitments: ['c0'],
+    });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
     expect(login?.headers['x-cypherkey-signature']).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -257,7 +268,12 @@ describe('login (A-5 online sequence)', () => {
     const nonces = new Set<string>();
     for (let i = 0; i < 5; i++) {
       const s = makeSession(server, storage);
-      await s.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+      await s.login({
+        username: 'shawn',
+        kdfInput: PASSPHRASE,
+        featureVector: [1],
+        commitments: ['c0'],
+      });
       nonces.add(
         server.state.calls.filter((c) => c.path === '/auth/login').at(-1)?.headers[
           'x-cypherkey-nonce'
@@ -277,6 +293,7 @@ describe('login (A-5 online sequence)', () => {
       username: 'shawn',
       kdfInput: PASSPHRASE,
       featureVector: [1],
+      commitments: ['c0'],
     });
 
     expect(result).toEqual({ band: 'grey', stepUp: ['retype', 'recovery_code'] });
@@ -292,8 +309,17 @@ describe('login (A-5 online sequence)', () => {
     const vaultKey = hex(first.vaultKey());
 
     const session = makeSession(server, storage);
-    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
-    const result = await session.stepUp('recovery_code', 'proof-123');
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+      commitments: ['c0'],
+    });
+    const result = await session.stepUp({
+      method: 'retype',
+      featureVector: [1],
+      commitments: ['c0'],
+    });
 
     expect(result.band).toBe('pass');
     expect(session.state()).toBe('unlocked');
@@ -310,6 +336,7 @@ describe('login (A-5 online sequence)', () => {
       username: 'shawn',
       kdfInput: PASSPHRASE,
       featureVector: [1],
+      commitments: ['c0'],
     });
 
     expect(result).toEqual({ band: 'fail', error: 'rhythm_mismatch' });
@@ -328,6 +355,7 @@ describe('login (A-5 online sequence)', () => {
         username: 'shawn',
         kdfInput: utf8Encode('wrong passphrase'),
         featureVector: [1],
+        commitments: ['c0'],
       }),
     ).rejects.toThrow();
     expect(session.state()).toBe('locked');
@@ -344,7 +372,12 @@ describe('the vault key actually works', () => {
     first.lock();
 
     const session = makeSession(server, storage);
-    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+      commitments: ['c0'],
+    });
     const plaintext = await decryptItem(sealed, session.vaultKey(), 'item-1');
 
     expect(new TextDecoder().decode(plaintext)).toBe('hunter2');
@@ -486,7 +519,12 @@ describe('nothing secret is logged or persisted in the clear', () => {
       const session = makeSession(server, storage);
       await session.signup(SIGNUP);
       session.lock();
-      await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [1] });
+      await session.login({
+        username: 'shawn',
+        kdfInput: PASSPHRASE,
+        featureVector: [1],
+        commitments: ['c0'],
+      });
       await session.unlockOffline({ kdfInput: PASSPHRASE });
       session.lock();
       for (const s of spies) expect(s).not.toHaveBeenCalled();
@@ -517,10 +555,158 @@ describe('nothing secret is logged or persisted in the clear', () => {
     const session = makeSession(server, storage);
     await session.signup(SIGNUP);
     session.lock();
-    await session.login({ username: 'shawn', kdfInput: PASSPHRASE, featureVector: [11, 22, 33] });
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [11, 22, 33],
+      commitments: ['c0', 'c1', 'c2'],
+    });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
     expect((login?.body as Record<string, unknown>).featureVector).toEqual([11, 22, 33]);
     expect(JSON.stringify(login?.headers)).not.toContain('11');
+  });
+});
+
+/**
+ * M2-00d. The client library shipped through all of M1 unable to log in to the server
+ * it ships with, because `commitments` became required on `/auth/login` in M1-17b and
+ * nothing checked that the two agreed. These tests pin the wire format itself.
+ */
+describe('wire format agreement with the server (M2-00d)', () => {
+  let server: ReturnType<typeof mockServer>;
+  let storage: ReturnType<typeof memoryStorage>;
+
+  beforeEach(() => {
+    server = mockServer();
+    storage = memoryStorage();
+  });
+
+  test('login sends the commitments the server requires', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1, 2, 3],
+      commitments: ['c0', 'c1', 'c2'],
+    });
+
+    const login = server.state.calls.find((c) => c.path === '/auth/login');
+    expect((login?.body as Record<string, unknown>).commitments).toEqual(['c0', 'c1', 'c2']);
+  });
+
+  test('step-up posts a scored retype, not an opaque proof', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, storage);
+    await session.signup(SIGNUP);
+    const result = await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+      commitments: ['c0'],
+    });
+    expect(result.band).toBe('grey');
+
+    await session.stepUp({ method: 'retype', featureVector: [9], commitments: ['c0'] });
+
+    const stepUp = grey.state.calls.find((c) => c.path === '/auth/step-up');
+    // The server's schema is username + authHash + method + featureVector + commitments.
+    expect(Object.keys(stepUp?.body as object).sort()).toEqual([
+      'authHash',
+      'commitments',
+      'featureVector',
+      'method',
+      'username',
+    ]);
+    expect((stepUp?.body as Record<string, unknown>).method).toBe('retype');
+  });
+
+  test('signup returns the enrollment token, without which enrollment cannot start', async () => {
+    const session = makeSession(server, storage);
+    const result = await session.signup(SIGNUP);
+    expect(result.enrollmentToken).toBe('enroll-token-1');
+  });
+
+  test('tokens are held after a pass and dropped on lock', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    await session.login({
+      username: 'shawn',
+      kdfInput: PASSPHRASE,
+      featureVector: [1],
+      commitments: ['c0'],
+    });
+
+    expect(session.tokens()).toEqual({ accessToken: 'access-1', refreshToken: 'refresh-1' });
+    session.lock();
+    expect(session.tokens()).toBeNull();
+  });
+
+  test('authed() signs with the device key and carries the bearer token', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const request = session.authed();
+
+    await request('GET', '/enroll/status', undefined, 'enroll-token-1');
+
+    const call = server.state.calls.find((c) => c.path === '/enroll/status');
+    expect(call?.headers.authorization).toBe('Bearer enroll-token-1');
+    // A-3: the device signature and its inputs travel in headers, never in the body.
+    expect(call?.headers['x-cypherkey-signature']).toBeDefined();
+    expect(call?.headers['x-cypherkey-device']).toBeDefined();
+    expect(call?.headers['x-cypherkey-nonce']).toBeDefined();
+  });
+
+  test('authed() refuses to sign while locked', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const request = session.authed();
+    session.lock();
+
+    expect(request('GET', '/enroll/status', undefined, 'tok')).rejects.toThrow('locked');
+  });
+});
+
+describe('a wrong passphrase is a 401, not a crash (M2-00d)', () => {
+  test('a device key that will not unwrap does not throw out of login', async () => {
+    const server = mockServer({ band: 'fail' });
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    session.lock();
+
+    // The wrong passphrase derives a different wrapKey, so the stored device private
+    // key cannot be unwrapped. That must surface as a rejected login, because a user
+    // mistyping their passphrase is the most ordinary event there is.
+    const result = await session.login({
+      username: 'shawn',
+      kdfInput: utf8Encode('not the right passphrase at all'),
+      featureVector: [1],
+      commitments: ['c0'],
+    });
+
+    expect(result.band).toBe('fail');
+    expect(session.state()).toBe('locked');
+  });
+
+  test('an unsigned login is still sent, so the server decides', async () => {
+    const server = mockServer({ band: 'fail' });
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    session.lock();
+
+    await session.login({
+      username: 'shawn',
+      kdfInput: utf8Encode('not the right passphrase at all'),
+      featureVector: [1],
+      commitments: ['c0'],
+    });
+
+    const login = server.state.calls.filter((c) => c.path === '/auth/login').at(-1);
+    expect(login).toBeDefined();
+    // Nothing was signed, because nothing could be: no signature headers went out.
+    expect(login?.headers['x-cypherkey-signature']).toBeUndefined();
   });
 });

@@ -1,6 +1,7 @@
+import { eq } from 'drizzle-orm';
 /**
- * The M1 exit test (docs/04). Drives the real HTTP surface with real client crypto,
- * against whatever `DATABASE_URL` names — SQLite by default, Postgres in CI.
+ * The M1 exit test (docs/04). Drives the real HTTP surface through the real client
+ * library, against whatever `DATABASE_URL` names — SQLite by default, Postgres in CI.
  *
  * Sequence: signup → register Recovery Kit → enroll 8 samples → build profile →
  * login with a good sample (pass) → login with a bad sample (fail) → vault write →
@@ -9,20 +10,28 @@
  * The enrolled script carries two Phantom Keys, so the sequence also covers what
  * docs/04 asks of them: one extra lone-Escape slip still passes, typing only the
  * resolved passphrase fails, and a wrong passphrase fails before alignment runs.
+ *
+ * M2-00d: every step goes through `core/client`. The only place the Hono app is
+ * touched directly is the injected `fetch` below, so any drift between the client
+ * library and the routes it talks to fails here instead of surfacing a milestone later.
  */
 import { extractFeatures } from '../core/biometrics/features';
 import { eventsToScript } from '../core/biometrics/script';
 import type { KeyEvent } from '../core/biometrics/types';
-import { decryptItem, encryptItem, unwrapKey, wrapKey, xor32 } from '../core/crypto/aead';
-import { generateDeviceKey, signRequest } from '../core/crypto/device';
+import { createEnroller } from '../core/client/enroll';
+import { type SessionStorage, createSession } from '../core/client/session';
+import { createSync } from '../core/client/sync';
+import { decryptItem, encryptItem, unwrapKey } from '../core/crypto/aead';
 import { fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from '../core/crypto/encoding';
-import { deriveMasterKey, deriveSubkey, randomBytes } from '../core/crypto/kdf';
+import { deriveMasterKey, deriveSubkey } from '../core/crypto/kdf';
 import { kdfInput, scriptCommitments } from '../core/crypto/phantom';
-import { generateRecoveryCode, recoveryKeyFromCode } from '../core/crypto/recovery';
+import { recoveryKeyFromCode } from '../core/crypto/recovery';
 import { createApp } from '../server/src/app';
 import { loadConfigOrExit } from '../server/src/config';
 import { createDb } from '../server/src/db/client';
 import { migrateDb } from '../server/src/db/migrate';
+import * as pgSchema from '../server/src/db/schema/pg';
+import * as sqliteSchema from '../server/src/db/schema/sqlite';
 
 /**
  * The enrolled script: "passw0rd!" typed with two Phantom Keys — a doubled `s` that is
@@ -60,6 +69,16 @@ async function sampleFor(keys: string[], phantomKey: Uint8Array, dwell = 80, gap
   };
 }
 
+/** Per-device key/value store. The extension backs this with `chrome.storage` (M2-01). */
+function memoryStorage(): SessionStorage & { get(key: string): Promise<string | null> } {
+  const map = new Map<string, string>();
+  return {
+    get: async (k) => map.get(k) ?? null,
+    set: async (k, v) => void map.set(k, v),
+    remove: async (k) => void map.delete(k),
+  };
+}
+
 let stepNumber = 0;
 function ok(label: string): void {
   stepNumber++;
@@ -82,12 +101,28 @@ async function main(): Promise<void> {
   // The timing floor is a production defence, not something to sit through here.
   const app = createApp({ db, config, timingFloorMs: 0 });
 
+  /**
+   * The single seam between the client library and the server. Everything below goes
+   * through `core/client`, which reaches the app only through this.
+   */
+  const fetchLike = (async (url: string | URL, init?: RequestInit) => {
+    const parsed = new URL(String(url));
+    return await app.request(parsed.pathname + parsed.search, init);
+  }) as unknown as typeof fetch;
+
+  const clientFor = (storage: SessionStorage) =>
+    createSession({
+      baseUrl: 'https://e2e.cypherkey.test',
+      fetch: fetchLike,
+      storage,
+      argonParams: config.argonParams,
+    });
+
   console.log(`\ncypherkey e2e — ${db.dialect}\n`);
 
   const username = `e2e-${Date.now()}`;
-  const userSalt = randomBytes(16);
 
-  // ---- client-side key hierarchy (A-2, A-14.2) -----------------------------
+  // ---- the script and its key hierarchy (A-2, A-14.2) -----------------------
   const enrolledScript = eventsToScript(typeKeys(ENROLLED_KEYS));
   if ('error' in enrolledScript) throw new Error(enrolledScript.error);
   assert(enrolledScript.resolved === 'passw0rd!', 'the script must resolve to the passphrase');
@@ -97,328 +132,160 @@ async function main(): Promise<void> {
 
   // Medium strictness: the KDF sees the resolved text, and the script is verified
   // separately through commitments (A-14.2).
-  const masterKey = await deriveMasterKey(
-    kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium'),
-    userSalt,
-    config.argonParams,
-  );
-  const authKey = await deriveSubkey(masterKey, 'cypherkey/auth/v1');
-  const wrapKeyBytes = await deriveSubkey(masterKey, 'cypherkey/wrap/v1');
-  const phantomKey = await deriveSubkey(masterKey, 'cypherkey/phantom/v1');
-  masterKey.fill(0);
+  const credential = kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium');
+
+  // ---- signup: both legs of A-5, through the client -------------------------
+  const storageOne = memoryStorage();
+  const sessionOne = clientFor(storageOne);
+  const signup = await sessionOne.signup({
+    username,
+    email: `${username}@example.test`,
+    kdfInput: credential,
+    consentPolicyVersion: '2026-09-01',
+    deviceName: 'e2e device one',
+    devicePlatform: 'ci',
+  });
+  assert(sessionOne.state() === 'unlocked', 'signup should leave the session unlocked');
+  ok('signup returned serverShare; vaultKey reconstructed from both halves');
+  // signup's second leg wraps the FULL vaultKey under the Recovery Kit and registers it.
+  ok('Recovery Kit registered — it wraps the full vaultKey, not the share');
+
+  // The phantom branch is not held by the session, so derive it from the salt the
+  // session stored. A real client does exactly this to commit its script.
+  const storedSalt = await storageOne.get('cypherkey.user.salt');
+  assert(storedSalt !== null, 'signup must persist the user salt');
+  const master = await deriveMasterKey(credential, fromBase64Url(storedSalt), config.argonParams);
+  const phantomKey = await deriveSubkey(master, 'cypherkey/phantom/v1');
+  master.fill(0);
   ok('derived masterKey, authKey, wrapKey and phantomKey');
 
   const enrolled = await sampleFor(ENROLLED_KEYS, phantomKey);
 
-  const deviceOne = await generateDeviceKey();
-  const deviceOneId = toBase64Url(deviceOne.pub);
-
-  const call = async (
-    method: string,
-    path: string,
-    body: unknown,
-    signer: { priv: Uint8Array; id: string } | null,
-    token?: string,
-  ) => {
-    const serialized = body === undefined ? undefined : JSON.stringify(body);
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (token !== undefined) headers.authorization = `Bearer ${token}`;
-    if (signer !== null) {
-      const nonce = randomBytes(16);
-      const ts = Date.now();
-      headers['x-cypherkey-device'] = signer.id;
-      headers['x-cypherkey-nonce'] = toBase64Url(nonce);
-      headers['x-cypherkey-ts'] = String(ts);
-      headers['x-cypherkey-signature'] = await signRequest(signer.priv, {
-        nonce,
-        ts,
-        method,
-        path,
-        body: utf8Encode(serialized ?? ''),
-      });
-    }
-    const res = await app.request(path, {
-      method,
-      headers,
-      ...(serialized === undefined ? {} : { body: serialized }),
-    });
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
-  };
-
-  // ---- signup (A-5 handshake) ----------------------------------------------
-  const vaultShare = randomBytes(32);
-  const wrappedVaultKey = await wrapKey(vaultShare, wrapKeyBytes, 'cypherkey/wrap/vault-key/v1');
-  const signup = await call(
-    'POST',
-    '/auth/signup',
-    {
-      username,
-      email: `${username}@example.test`,
-      authHash: toBase64Url(authKey),
-      userSalt: toBase64Url(userSalt),
-      wrappedVaultKey: {
-        ct: toBase64Url(wrappedVaultKey.ct),
-        nonce: toBase64Url(wrappedVaultKey.nonce),
-      },
-      devicePub: deviceOneId,
-      deviceName: 'e2e device one',
-      devicePlatform: 'ci',
-      consentAt: Date.now(),
-      consentPolicyVersion: '2026-09-01',
-    },
-    null,
-  );
-  assert(signup.status === 201, `signup expected 201, got ${signup.status}`);
-  const serverShare = fromBase64Url(signup.body.serverShare as string);
-  const enrollmentToken = signup.body.enrollmentToken as string;
-  const vaultKey = xor32(vaultShare, serverShare);
-  ok('signup returned serverShare; vaultKey reconstructed from both halves');
-
-  // ---- Recovery Kit (second leg of signup) ---------------------------------
-  const recoveryCode = generateRecoveryCode();
-  const recoveryKey = await recoveryKeyFromCode(recoveryCode);
-  const recoveryWrapped = await wrapKey(vaultKey, recoveryKey, 'cypherkey/wrap/vault-key/v1');
-  const recovery = await call(
-    'POST',
-    '/auth/recovery-key',
-    {
-      recoveryWrappedVaultKey: {
-        ct: toBase64Url(recoveryWrapped.ct),
-        nonce: toBase64Url(recoveryWrapped.nonce),
-      },
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
-  assert(recovery.status === 200, `recovery-key expected 200, got ${recovery.status}`);
-  ok('Recovery Kit registered — it wraps the full vaultKey, not the share');
-
-  // ---- enrollment (A-4.3) ---------------------------------------------------
+  // ---- enrollment (A-4.3), through core/client/enroll.ts --------------------
+  const enroller = createEnroller({
+    request: sessionOne.authed(),
+    token: signup.enrollmentToken,
+  });
   for (let i = 0; i < config.enrollmentSamples; i++) {
-    const res = await call(
-      'POST',
-      '/enroll/sample',
-      { featureVector: enrolled.featureVector, commitments: enrolled.commitments },
-      { priv: deviceOne.priv, id: deviceOneId },
-      enrollmentToken,
-    );
-    assert(res.status === 200, `enroll sample ${i} expected 200, got ${res.status}`);
+    await enroller.sample({
+      featureVector: enrolled.featureVector,
+      commitments: enrolled.commitments,
+    });
   }
-  const built = await call(
-    'POST',
-    '/enroll/build',
-    {},
-    { priv: deviceOne.priv, id: deviceOneId },
-    enrollmentToken,
-  );
-  assert(built.status === 200, `enroll build expected 200, got ${built.status}`);
+  const built = await enroller.build();
+  assert(built.built && built.sampleCount === config.enrollmentSamples, 'profile should build');
   ok(`enrolled ${config.enrollmentSamples} samples and built the profile`);
 
-  const samplesLeft = await call(
-    'GET',
-    '/enroll/status',
-    undefined,
-    { priv: deviceOne.priv, id: deviceOneId },
-    enrollmentToken,
-  );
-  assert(
-    samplesLeft.body.built === true && samplesLeft.body.submitted === 0,
-    'samples must be deleted after build',
-  );
+  const status = await enroller.status();
+  assert(status.built && status.submitted === 0, 'samples must be deleted after build');
   ok('enrollment samples deleted after build (A-4.6)');
 
   // ---- login with a good sample --------------------------------------------
-  const good = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      featureVector: enrolled.featureVector,
-      commitments: enrolled.commitments,
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
-  assert(
-    good.status === 200 && good.body.band === 'pass',
-    `good login expected pass, got ${good.status} ${good.body.band}`,
-  );
-  const accessToken = good.body.accessToken as string;
-  const refreshToken = good.body.refreshToken as string;
+  const login = (featureVector: number[], commitments: string[], cred = credential) =>
+    sessionOne.login({ username, kdfInput: cred, featureVector, commitments });
+
+  const good = await login(enrolled.featureVector, enrolled.commitments);
+  assert(good.band === 'pass', `good login expected pass, got ${JSON.stringify(good)}`);
   ok('login with a good sample → pass');
 
   // ---- login with a bad sample ---------------------------------------------
   // Same script, typed at nearly twice the speed: the rhythm is what fails here.
-  const slowSample = await sampleFor(ENROLLED_KEYS, phantomKey, 150, 240);
-  const bad = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      featureVector: slowSample.featureVector,
-      commitments: enrolled.commitments,
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
-  assert(
-    bad.status === 401 && bad.body.band === 'fail',
-    `bad login expected fail, got ${bad.status}`,
-  );
+  const slow = await sampleFor(ENROLLED_KEYS, phantomKey, 150, 240);
+  const bad = await login(slow.featureVector, enrolled.commitments);
+  assert(bad.band === 'fail', `bad login expected fail, got ${JSON.stringify(bad)}`);
   ok('login with a bad sample → fail');
 
   // ---- Phantom Keys acceptance (docs/04, A-14.3) ----------------------------
   const slip = await sampleFor(ONE_SLIP_KEYS, phantomKey);
-  const slipLogin = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      featureVector: slip.featureVector,
-      commitments: slip.commitments,
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
+  const slipLogin = await login(slip.featureVector, slip.commitments);
   assert(
-    slipLogin.status === 200 && slipLogin.body.band === 'pass',
-    `one lone-Escape slip should pass, got ${slipLogin.status} ${String(slipLogin.body.band ?? slipLogin.body.error)}`,
+    slipLogin.band === 'pass',
+    `one lone-Escape slip should pass, got ${JSON.stringify(slipLogin)}`,
   );
   ok('login with one extra lone-Escape slip → pass (Medium forgives insertions)');
 
   // The same resolved text with the phantoms left out: what a leaked password buys.
   const resolvedOnly = await sampleFor(RESOLVED_ONLY_KEYS, phantomKey);
   assert(resolvedOnly.resolved === enrolledScript.resolved, 'same resolved text, no phantoms');
-  const resolvedLogin = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      featureVector: resolvedOnly.featureVector,
-      commitments: resolvedOnly.commitments,
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
+  const resolvedLogin = await login(resolvedOnly.featureVector, resolvedOnly.commitments);
   assert(
-    resolvedLogin.status === 401 && resolvedLogin.body.error === 'phantom_mismatch',
-    `resolved passphrase alone should fail, got ${resolvedLogin.status} ${String(resolvedLogin.body.error)}`,
+    resolvedLogin.band === 'fail' && resolvedLogin.error === 'phantom_mismatch',
+    `resolved passphrase alone should fail, got ${JSON.stringify(resolvedLogin)}`,
   );
   ok('login with the resolved passphrase only → phantom_mismatch');
 
   // A wrong passphrase never reaches alignment: authHash is checked first.
-  const wrongPass = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(randomBytes(32)),
-      featureVector: enrolled.featureVector,
-      commitments: enrolled.commitments,
-    },
-    { priv: deviceOne.priv, id: deviceOneId },
+  const wrongPass = await login(
+    enrolled.featureVector,
+    enrolled.commitments,
+    utf8Encode('a completely different passphrase'),
   );
   assert(
-    wrongPass.status === 401 && wrongPass.body.error === 'invalid_credentials',
-    `a wrong passphrase should fail before alignment, got ${String(wrongPass.body.error)}`,
+    wrongPass.band === 'fail' && wrongPass.error === 'invalid_credentials',
+    `a wrong passphrase should fail before alignment, got ${JSON.stringify(wrongPass)}`,
   );
   ok('wrong passphrase → rejected before alignment runs');
 
-  // ---- vault write ----------------------------------------------------------
+  // ---- vault write, through core/client/sync.ts -----------------------------
+  const back = await login(enrolled.featureVector, enrolled.commitments);
+  assert(back.band === 'pass', 'should be able to log back in after the failures');
+  const vaultKey = sessionOne.vaultKey();
+  const tokensOne = sessionOne.tokens();
+  assert(tokensOne !== null, 'a pass must yield session tokens');
+
   const plaintext = utf8Encode(JSON.stringify({ title: 'GitHub', password: 'hunter2' }));
   const sealed = await encryptItem(plaintext, vaultKey, 'item-1');
-  const write = await call(
-    'POST',
-    '/vault/changes',
+  const syncOne = createSync({ request: sessionOne.authed(), token: tokensOne.accessToken });
+  const pushed = await syncOne.push([
     {
-      items: [
-        {
-          id: 'item-1',
-          version: 0,
-          ciphertext: toBase64Url(sealed.ct),
-          nonce: toBase64Url(sealed.nonce),
-          updatedAt: Date.now(),
-        },
-      ],
+      id: 'item-1',
+      version: 0,
+      ciphertext: toBase64Url(sealed.ct),
+      nonce: toBase64Url(sealed.nonce),
+      updatedAt: Date.now(),
     },
-    { priv: deviceOne.priv, id: deviceOneId },
-    accessToken,
-  );
-  assert(write.status === 200, `vault write expected 200, got ${write.status}`);
+  ]);
+  assert(pushed.conflicts.length === 0 && pushed.applied.length === 1, 'vault write should apply');
   ok('vault write accepted');
 
   // ---- second device: new-device step-up, then read -------------------------
-  const deviceTwo = await generateDeviceKey();
-  const deviceTwoId = toBase64Url(deviceTwo.pub);
-
-  const newDevice = await call(
-    'POST',
-    '/auth/login',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      featureVector: enrolled.featureVector,
-      commitments: enrolled.commitments,
-    },
-    { priv: deviceTwo.priv, id: deviceTwoId },
+  const storageTwo = memoryStorage();
+  const sessionTwo = clientFor(storageTwo);
+  const newDevice = await sessionTwo.login({
+    username,
+    kdfInput: credential,
+    featureVector: enrolled.featureVector,
+    commitments: enrolled.commitments,
+  });
+  assert(
+    newDevice.band === 'grey',
+    `an unknown device must be sent to step-up (X-3), got ${JSON.stringify(newDevice)}`,
   );
-  assert(newDevice.body.newDevice === true, 'an unknown device must be sent to step-up (X-3)');
   ok('second device met the new-device step-up (X-3)');
 
-  const cleared = await call(
-    'POST',
-    '/auth/step-up',
-    {
-      username,
-      authHash: toBase64Url(authKey),
-      method: 'retype',
-      featureVector: enrolled.featureVector,
-      commitments: enrolled.commitments,
-    },
-    { priv: deviceTwo.priv, id: deviceTwoId },
-  );
-  assert(cleared.status === 200, `step-up expected 200, got ${cleared.status}`);
-  const twoAccess = cleared.body.accessToken as string;
+  const cleared = await sessionTwo.stepUp({
+    method: 'retype',
+    featureVector: enrolled.featureVector,
+    commitments: enrolled.commitments,
+  });
+  assert(cleared.band === 'pass', `step-up expected pass, got ${JSON.stringify(cleared)}`);
+  assert(sessionTwo.state() === 'unlocked', 'a cleared step-up should unlock');
   ok('second device cleared step-up and was registered');
 
-  // The second device derives the vault key from the passphrase alone plus what
-  // the server released — it never saw device one's memory.
-  const twoWrapped = cleared.body.wrappedVaultKey as { ct: string; nonce: string };
-  const twoShare = fromBase64Url(cleared.body.serverShare as string);
-  const twoMaster = await deriveMasterKey(
-    kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium'),
-    userSalt,
-    config.argonParams,
-  );
-  const twoWrapKey = await deriveSubkey(twoMaster, 'cypherkey/wrap/v1');
-  twoMaster.fill(0);
-  const twoVaultKey = xor32(
-    await unwrapKey(
-      { ct: fromBase64Url(twoWrapped.ct), nonce: fromBase64Url(twoWrapped.nonce) },
-      twoWrapKey,
-    ),
-    twoShare,
-  );
-
-  const read = await call(
-    'GET',
-    '/vault/changes?since=0',
-    undefined,
-    { priv: deviceTwo.priv, id: deviceTwoId },
-    twoAccess,
-  );
-  assert(read.status === 200, `vault read expected 200, got ${read.status}`);
-  const items = read.body.items as Array<{ id: string; ciphertext: string; nonce: string }>;
-  assert(
-    items.length === 1 && items[0]?.id === 'item-1',
-    'second device should see exactly the one item',
-  );
+  // The second device derived the vault key from the passphrase alone plus what the
+  // server released — it never saw device one's memory.
+  const tokensTwo = sessionTwo.tokens();
+  assert(tokensTwo !== null, 'step-up must yield session tokens');
+  const syncTwo = createSync({ request: sessionTwo.authed(), token: tokensTwo.accessToken });
+  const read = await syncTwo.pull(0);
+  assert(read.items.length === 1 && read.items[0]?.id === 'item-1', 'should see exactly one item');
 
   const recovered = await decryptItem(
     {
-      ct: fromBase64Url(items[0]?.ciphertext as string),
-      nonce: fromBase64Url(items[0]?.nonce as string),
+      ct: fromBase64Url(read.items[0]?.ciphertext as string),
+      nonce: fromBase64Url(read.items[0]?.nonce as string),
     },
-    twoVaultKey,
+    sessionTwo.vaultKey(),
     'item-1',
   );
   assert(
@@ -428,61 +295,71 @@ async function main(): Promise<void> {
   ok('vault read and decrypted on a second device');
 
   // ---- refresh --------------------------------------------------------------
-  const refreshed = await call(
-    'POST',
-    '/auth/refresh',
-    { refreshToken },
-    { priv: deviceOne.priv, id: deviceOneId },
+  const beforeRefresh = tokensOne.refreshToken;
+  assert(await sessionOne.refresh(), 'refresh should succeed');
+  const afterRefresh = sessionOne.tokens();
+  assert(
+    afterRefresh !== null && afterRefresh.refreshToken !== beforeRefresh,
+    'refresh must rotate the token',
   );
-  assert(refreshed.status === 200, `refresh expected 200, got ${refreshed.status}`);
-  assert(refreshed.body.refreshToken !== refreshToken, 'refresh must rotate the token');
   ok('refresh rotated the token');
 
-  const reused = await call(
-    'POST',
-    '/auth/refresh',
-    { refreshToken },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
-  assert(reused.status === 401, 'a rotated refresh token must not work twice');
+  // A-9: replaying the spent token revokes the family. Drive it through the same
+  // signed transport the client uses, with the token the client has already retired.
+  const replay = await sessionOne.authed()('POST', '/auth/refresh', {
+    refreshToken: beforeRefresh,
+  });
+  assert(replay.status === 401, 'a rotated refresh token must not work twice');
   ok('the rotated token is dead (family revoked on reuse)');
 
   // ---- logout ---------------------------------------------------------------
-  const loggedOut = await call(
-    'POST',
-    '/auth/logout',
-    {},
-    { priv: deviceOne.priv, id: deviceOneId },
-    accessToken,
-  );
-  assert(loggedOut.status === 200, `logout expected 200, got ${loggedOut.status}`);
-  const afterLogout = await call(
-    'POST',
-    '/auth/refresh',
-    { refreshToken: refreshed.body.refreshToken },
-    { priv: deviceOne.priv, id: deviceOneId },
-  );
+  const deadRefresh = afterRefresh.refreshToken;
+  assert(await sessionOne.logout(), 'logout should succeed');
+  assert(sessionOne.state() === 'locked', 'logout must lock the session');
+  const afterLogout = await sessionTwo.authed()('POST', '/auth/refresh', {
+    refreshToken: deadRefresh,
+  });
   assert(afterLogout.status === 401, 'logout must kill the refresh token');
   ok('logout revoked the session');
 
   // ---- the Recovery Kit really is the escape hatch (A-5, X-5) ---------------
+  // The blob is write-only until M2-00f adds `/auth/recover`, so read it back from
+  // storage directly; that step replaces this with the real verified route.
+  const row =
+    db.dialect === 'sqlite'
+      ? (
+          await db.drizzle
+            .select()
+            .from(sqliteSchema.users)
+            .where(eq(sqliteSchema.users.username, username))
+        )[0]
+      : (
+          await db.drizzle
+            .select()
+            .from(pgSchema.users)
+            .where(eq(pgSchema.users.username, username))
+        )[0];
+  const blob = row?.recoveryWrappedVaultKey as { ct: string; nonce: string } | null | undefined;
+  assert(blob != null, 'the Recovery Kit blob must be registered');
+
+  const recoveryKey = await recoveryKeyFromCode(signup.recoveryCode);
   const viaKit = await unwrapKey(
-    { ct: recoveryWrapped.ct, nonce: recoveryWrapped.nonce },
-    await recoveryKeyFromCode(recoveryCode),
+    { ct: fromBase64Url(blob.ct), nonce: fromBase64Url(blob.nonce) },
+    recoveryKey,
+    'cypherkey/wrap/vault-key/v1',
   );
-  assert(
-    toBase64Url(viaKit) === toBase64Url(vaultKey),
-    'the Recovery Kit must open the vault without the server share',
+  const fromKit = await decryptItem(
+    {
+      ct: fromBase64Url(read.items[0]?.ciphertext as string),
+      nonce: fromBase64Url(read.items[0]?.nonce as string),
+    },
+    viaKit,
+    'item-1',
   );
+  assert(utf8Decode(fromKit).includes('hunter2'), 'the Recovery Kit must open the vault');
   ok('Recovery Kit opens the vault with no help from the server');
 
-  await db.close();
-  console.log(
-    `\n  ${stepNumber} steps passed on ${db.dialect}. The M1 exit sequence is complete.\n`,
-  );
+  console.log(`\n  ${stepNumber} steps passed on ${db.dialect}\n`);
 }
 
-main().catch(async (error) => {
-  console.error(`\ne2e failed: ${(error as Error).message}\n`);
-  process.exit(1);
-});
+await main();
