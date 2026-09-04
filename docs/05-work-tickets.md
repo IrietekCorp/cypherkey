@@ -80,6 +80,10 @@ Tests: roundtrip; altered body fails; altered path fails.
 ### M1-06 · `core/crypto/recovery.ts` — Recovery Kit · S · deps: M1-03, M1-04
 32-char Crockford base32 code (160 bits) → HKDF → recovery wrap key. `generateRecoveryCode()`, `recoveryKeyFromCode(code)`, format/parse with checksum char. Tests: checksum catches single-char typos; case-insensitive.
 
+**Length conflict, resolved in favour of entropy (M1-06).** "32 characters" and "160 bits" and "a checksum char" cannot all hold at once: 160 bits *is* 32 Crockford symbols, leaving no room for a check symbol inside 32. The code is therefore **33 characters — 32 data + 1 check** — and `03` X-2 step 3 is updated to match. The alternative, had display length mattered more, was 31 data symbols (155 bits) plus a check inside 32 characters; 160 bits was judged the property worth keeping. X-2's "re-enter 4 characters" is unaffected, and the code is grouped in fours.
+
+Crockford's check is the secret read as a big-endian integer mod 37. Because 37 is prime and no single-symbol delta is divisible by it, this provably catches **every** single-symbol substitution and every adjacent transposition — both are tested exhaustively rather than sampled. HKDF, not Argon2id, derives the wrap key: the input is already 160 uniform random bits, not a passphrase.
+
 ### M1-06b · `core/crypto/encoding.ts` · S · deps: M1-05 · **done**
 **Files:** create `core/crypto/encoding.ts`, `core/crypto/encoding.test.ts`; modify `core/crypto/device.ts` (replace its private helpers with imports). DO NOT TOUCH anything else.
 **Interfaces:**
