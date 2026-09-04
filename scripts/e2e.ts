@@ -19,7 +19,7 @@ import { extractFeatures } from '../core/biometrics/features';
 import { eventsToScript } from '../core/biometrics/script';
 import type { KeyEvent } from '../core/biometrics/types';
 import { createEnroller } from '../core/client/enroll';
-import { type SessionStorage, createSession } from '../core/client/session';
+import { type Credential, type SessionStorage, createSession } from '../core/client/session';
 import { createSync } from '../core/client/sync';
 import { decryptItem, encryptItem, unwrapKey } from '../core/crypto/aead';
 import { fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from '../core/crypto/encoding';
@@ -55,18 +55,18 @@ function typeKeys(keys: string[], dwell = 80, gap = 120): KeyEvent[] {
   return events;
 }
 
-/** The script, its resolved text, its feature vector and its commitments. */
-async function sampleFor(keys: string[], phantomKey: Uint8Array, dwell = 80, gap = 120) {
+/**
+ * The script, its resolved text and its feature vector. Commitments are deliberately
+ * absent: M2-00d.1 moved them into the session, which already holds `phantomKey` from
+ * the unlock, so a caller never pays for a second Argon2id pass to produce them.
+ */
+function sampleFor(keys: string[], dwell = 80, gap = 120) {
   const events = typeKeys(keys, dwell, gap);
   const script = eventsToScript(events);
   if ('error' in script) throw new Error(`tokenization failed: ${script.error}`);
   const features = extractFeatures(events, keys.length);
   if ('error' in features) throw new Error(`extraction failed: ${features.error}`);
-  return {
-    ...script,
-    featureVector: features.values,
-    commitments: (await scriptCommitments(phantomKey, script.script)).map(toBase64Url),
-  };
+  return { ...script, featureVector: features.values };
 }
 
 /** Per-device key/value store. The extension backs this with `chrome.storage` (M2-01). */
@@ -132,7 +132,11 @@ async function main(): Promise<void> {
 
   // Medium strictness: the KDF sees the resolved text, and the script is verified
   // separately through commitments (A-14.2).
-  const credential = kdfInput(enrolledScript.resolved, enrolledScript.script, 'medium');
+  const credential: Credential = {
+    resolved: enrolledScript.resolved,
+    script: enrolledScript.script,
+    strictness: 'medium',
+  };
 
   // ---- signup: both legs of A-5, through the client -------------------------
   const storageOne = memoryStorage();
@@ -140,7 +144,7 @@ async function main(): Promise<void> {
   const signup = await sessionOne.signup({
     username,
     email: `${username}@example.test`,
-    kdfInput: credential,
+    ...credential,
     consentPolicyVersion: '2026-09-01',
     deviceName: 'e2e device one',
     devicePlatform: 'ci',
@@ -150,16 +154,15 @@ async function main(): Promise<void> {
   // signup's second leg wraps the FULL vaultKey under the Recovery Kit and registers it.
   ok('Recovery Kit registered — it wraps the full vaultKey, not the share');
 
-  // The phantom branch is not held by the session, so derive it from the salt the
-  // session stored. A real client does exactly this to commit its script.
-  const storedSalt = await storageOne.get('cypherkey.user.salt');
-  assert(storedSalt !== null, 'signup must persist the user salt');
-  const master = await deriveMasterKey(credential, fromBase64Url(storedSalt), config.argonParams);
-  const phantomKey = await deriveSubkey(master, 'cypherkey/phantom/v1');
-  master.fill(0);
-  ok('derived masterKey, authKey, wrapKey and phantomKey');
-
-  const enrolled = await sampleFor(ENROLLED_KEYS, phantomKey);
+  // All three A-2 branches came from the one Argon2id pass inside signup, so the
+  // commitments below cost nothing beyond an HMAC.
+  const enrolled = sampleFor(ENROLLED_KEYS);
+  const commitments = await sessionOne.commitmentsFor(enrolled.script);
+  assert(
+    commitments.length === [...enrolled.script].length,
+    'one commitment per script token (A-14.2)',
+  );
+  ok('derived masterKey, authKey, wrapKey and phantomKey in one Argon2id pass');
 
   // ---- enrollment (A-4.3), through core/client/enroll.ts --------------------
   const enroller = createEnroller({
@@ -167,10 +170,7 @@ async function main(): Promise<void> {
     token: signup.enrollmentToken,
   });
   for (let i = 0; i < config.enrollmentSamples; i++) {
-    await enroller.sample({
-      featureVector: enrolled.featureVector,
-      commitments: enrolled.commitments,
-    });
+    await enroller.sample({ featureVector: enrolled.featureVector, commitments });
   }
   const built = await enroller.build();
   assert(built.built && built.sampleCount === config.enrollmentSamples, 'profile should build');
@@ -181,23 +181,23 @@ async function main(): Promise<void> {
   ok('enrollment samples deleted after build (A-4.6)');
 
   // ---- login with a good sample --------------------------------------------
-  const login = (featureVector: number[], commitments: string[], cred = credential) =>
-    sessionOne.login({ username, kdfInput: cred, featureVector, commitments });
+  const login = (featureVector: number[], script = enrolledScript.script, cred = credential) =>
+    sessionOne.login({ ...cred, script, username, featureVector });
 
-  const good = await login(enrolled.featureVector, enrolled.commitments);
+  const good = await login(enrolled.featureVector);
   assert(good.band === 'pass', `good login expected pass, got ${JSON.stringify(good)}`);
   ok('login with a good sample → pass');
 
   // ---- login with a bad sample ---------------------------------------------
   // Same script, typed at nearly twice the speed: the rhythm is what fails here.
-  const slow = await sampleFor(ENROLLED_KEYS, phantomKey, 150, 240);
-  const bad = await login(slow.featureVector, enrolled.commitments);
+  const slow = sampleFor(ENROLLED_KEYS, 150, 240);
+  const bad = await login(slow.featureVector);
   assert(bad.band === 'fail', `bad login expected fail, got ${JSON.stringify(bad)}`);
   ok('login with a bad sample → fail');
 
   // ---- Phantom Keys acceptance (docs/04, A-14.3) ----------------------------
-  const slip = await sampleFor(ONE_SLIP_KEYS, phantomKey);
-  const slipLogin = await login(slip.featureVector, slip.commitments);
+  const slip = sampleFor(ONE_SLIP_KEYS);
+  const slipLogin = await login(slip.featureVector, slip.script);
   assert(
     slipLogin.band === 'pass',
     `one lone-Escape slip should pass, got ${JSON.stringify(slipLogin)}`,
@@ -205,9 +205,9 @@ async function main(): Promise<void> {
   ok('login with one extra lone-Escape slip → pass (Medium forgives insertions)');
 
   // The same resolved text with the phantoms left out: what a leaked password buys.
-  const resolvedOnly = await sampleFor(RESOLVED_ONLY_KEYS, phantomKey);
+  const resolvedOnly = sampleFor(RESOLVED_ONLY_KEYS);
   assert(resolvedOnly.resolved === enrolledScript.resolved, 'same resolved text, no phantoms');
-  const resolvedLogin = await login(resolvedOnly.featureVector, resolvedOnly.commitments);
+  const resolvedLogin = await login(resolvedOnly.featureVector, resolvedOnly.script);
   assert(
     resolvedLogin.band === 'fail' && resolvedLogin.error === 'phantom_mismatch',
     `resolved passphrase alone should fail, got ${JSON.stringify(resolvedLogin)}`,
@@ -215,11 +215,10 @@ async function main(): Promise<void> {
   ok('login with the resolved passphrase only → phantom_mismatch');
 
   // A wrong passphrase never reaches alignment: authHash is checked first.
-  const wrongPass = await login(
-    enrolled.featureVector,
-    enrolled.commitments,
-    utf8Encode('a completely different passphrase'),
-  );
+  const wrongPass = await login(enrolled.featureVector, enrolledScript.script, {
+    ...credential,
+    resolved: 'a completely different passphrase',
+  });
   assert(
     wrongPass.band === 'fail' && wrongPass.error === 'invalid_credentials',
     `a wrong passphrase should fail before alignment, got ${JSON.stringify(wrongPass)}`,
@@ -227,7 +226,7 @@ async function main(): Promise<void> {
   ok('wrong passphrase → rejected before alignment runs');
 
   // ---- vault write, through core/client/sync.ts -----------------------------
-  const back = await login(enrolled.featureVector, enrolled.commitments);
+  const back = await login(enrolled.featureVector);
   assert(back.band === 'pass', 'should be able to log back in after the failures');
   const vaultKey = sessionOne.vaultKey();
   const tokensOne = sessionOne.tokens();
@@ -253,9 +252,8 @@ async function main(): Promise<void> {
   const sessionTwo = clientFor(storageTwo);
   const newDevice = await sessionTwo.login({
     username,
-    kdfInput: credential,
+    ...credential,
     featureVector: enrolled.featureVector,
-    commitments: enrolled.commitments,
   });
   assert(
     newDevice.band === 'grey',
@@ -265,8 +263,8 @@ async function main(): Promise<void> {
 
   const cleared = await sessionTwo.stepUp({
     method: 'retype',
+    script: enrolledScript.script,
     featureVector: enrolled.featureVector,
-    commitments: enrolled.commitments,
   });
   assert(cleared.band === 'pass', `step-up expected pass, got ${JSON.stringify(cleared)}`);
   assert(sessionTwo.state() === 'unlocked', 'a cleared step-up should unlock');

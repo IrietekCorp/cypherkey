@@ -35,11 +35,22 @@ export type SessionDeps = {
 };
 
 /**
- * Bytes fed to Argon2id. Per A-14.2 this is the resolved passphrase, or
- * `resolved ‖ 0x00 ‖ script` in Strict. M1-17 builds it; the session never
- * needs to know which, which is why it takes bytes rather than a passphrase.
+ * What a capture produced, which is everything the A-2 hierarchy needs.
+ *
+ * The session takes this rather than pre-built KDF bytes because `phantomKey` is a
+ * sibling of `authKey` and `wrapKey` under the same `masterKey`. A caller holding only
+ * `kdfInput` cannot commit its script (A-14.2) without running Argon2id a second time
+ * at m=64 MiB — doubling the cost of every unlock on the device least able to afford
+ * it. Deriving all three branches from one Argon2id pass is the whole point.
  */
-export type Credential = { kdfInput: Uint8Array };
+export type Credential = {
+  /** The resolved passphrase text (A-14.1). */
+  resolved: string;
+  /** The script: one token per keystroke, phantoms included (A-14.1). */
+  script: string;
+  /** A-16. In Strict the script is folded into the KDF input; otherwise it is not. */
+  strictness: Strictness;
+};
 
 export type SignupInput = Credential & {
   username: string;
@@ -57,19 +68,19 @@ export type SignupResult = {
   enrollmentToken: string;
 };
 
-export type LoginInput = Credential & {
-  username: string;
-  featureVector: number[];
-  /** A-14.2: one commitment per script token, in order. Required by the server since M1-17b. */
-  commitments: string[];
-};
+export type LoginInput = Credential & { username: string; featureVector: number[] };
 
 /**
  * A-4.4 grey-band resolution. The only method the server accepts today is `retype`
  * (M2-00e adds Backup Codes); passkey and TOTP are M3. A retype is a second scored
  * sample, so it carries a vector and commitments exactly as a login does.
  */
-export type StepUpInput = { method: 'retype'; featureVector: number[]; commitments: string[] };
+export type StepUpInput = {
+  method: 'retype';
+  /** The retyped script, which may legitimately differ from the first attempt. */
+  script: string;
+  featureVector: number[];
+};
 
 /**
  * A device-signed, token-bearing request. Handed to the enrollment and sync clients so
@@ -114,6 +125,12 @@ export type Session = {
   logout(): Promise<boolean>;
   /** Device-signed request helper for `createEnroller` and `createSync`. */
   authed(): AuthedRequest;
+  /**
+   * A-14.2 commitments for a script, using the `phantomKey` already derived by the
+   * unlock. Enrollment needs these and is not a login, so it cannot get them any other
+   * way without paying for Argon2id again.
+   */
+  commitmentsFor(script: string): Promise<string[]>;
   unlockOffline(input: Credential): Promise<boolean>;
   changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
   lock(): void;
@@ -164,6 +181,12 @@ export function createSession(deps: SessionDeps): Session {
   let state: SessionState = 'locked';
   let vaultKeyBytes: Uint8Array | null = null;
   let wrapKeyBytes: Uint8Array | null = null;
+  /**
+   * A-14.2. Memory only, for the life of the unlock — never stored, never sent. It is
+   * held so enrollment and a grey-band retype can commit a script without a second
+   * Argon2id pass.
+   */
+  let phantomKeyBytes: Uint8Array | null = null;
   let lastActivity = now();
   /** Held while unlocked so a re-key can re-wrap it without another round trip. */
   let vaultShareBytes: Uint8Array | null = null;
@@ -182,13 +205,22 @@ export function createSession(deps: SessionDeps): Session {
    */
   let provisionalDevice: { id: string; priv: Uint8Array } | null = null;
 
-  /** Derives the A-2 branches, zeroing the master key as soon as its children exist. */
-  async function deriveBranches(kdfInput: Uint8Array, salt: Uint8Array, params?: ArgonParams) {
-    const master = await deriveMasterKey(kdfInput, salt, params ?? deps.argonParams);
+  /**
+   * Derives all three A-2 branches from a single Argon2id pass, zeroing the master key
+   * as soon as its children exist. `phantomKey` is derived here rather than on demand
+   * because re-deriving it later would mean a second Argon2id at m=64 MiB.
+   */
+  async function deriveBranches(cred: Credential, salt: Uint8Array, params?: ArgonParams) {
+    const master = await deriveMasterKey(
+      kdfInput(cred.resolved, cred.script, cred.strictness),
+      salt,
+      params ?? deps.argonParams,
+    );
     try {
       return {
         authKey: await deriveSubkey(master, 'cypherkey/auth/v1'),
         wrapKey: await deriveSubkey(master, 'cypherkey/wrap/v1'),
+        phantomKey: await deriveSubkey(master, 'cypherkey/phantom/v1'),
       };
     } finally {
       master.fill(0);
@@ -260,11 +292,15 @@ export function createSession(deps: SessionDeps): Session {
   }
 
   /** Takes ownership of the derived keys and moves to unlocked. */
-  function unlockWith(vault: Uint8Array, wrap: Uint8Array): void {
+  function unlockWith(vault: Uint8Array, wrap: Uint8Array, phantom?: Uint8Array): void {
     vaultKeyBytes?.fill(0);
     wrapKeyBytes?.fill(0);
     vaultKeyBytes = vault;
     wrapKeyBytes = wrap;
+    if (phantom !== undefined) {
+      phantomKeyBytes?.fill(0);
+      phantomKeyBytes = phantom;
+    }
     state = 'unlocked';
     pending = null;
     lastActivity = now();
@@ -391,9 +427,16 @@ export function createSession(deps: SessionDeps): Session {
       return response.status === 200;
     },
 
+    async commitmentsFor(script) {
+      if (phantomKeyBytes === null) {
+        throw new Error('session is locked');
+      }
+      return (await scriptCommitments(phantomKeyBytes, script)).map(toBase64Url);
+    },
+
     async signup(input) {
       const userSalt = randomBytes(SALT_BYTES);
-      const { authKey, wrapKey: wrap } = await deriveBranches(input.kdfInput, userSalt);
+      const { authKey, wrapKey: wrap, phantomKey: phantom } = await deriveBranches(input, userSalt);
       const device = await generateDeviceKey();
       const deviceId = toBase64Url(device.pub);
 
@@ -417,6 +460,7 @@ export function createSession(deps: SessionDeps): Session {
       if (created.status !== 201) {
         vaultShare.fill(0);
         wrap.fill(0);
+        phantom.fill(0);
         throw new Error(`signup failed with status ${created.status}`);
       }
 
@@ -443,6 +487,7 @@ export function createSession(deps: SessionDeps): Session {
       if (registered.status !== 200) {
         vault.fill(0);
         wrap.fill(0);
+        phantom.fill(0);
         throw new Error(`recovery-key registration failed with status ${registered.status}`);
       }
 
@@ -456,7 +501,7 @@ export function createSession(deps: SessionDeps): Session {
       );
       await deps.storage.set(KEYS.userSalt, toBase64Url(userSalt));
       await cacheForOffline(vault, wrap);
-      unlockWith(vault, wrap);
+      unlockWith(vault, wrap, phantom);
       vaultShareBytes = vaultShare;
 
       return {
@@ -468,11 +513,11 @@ export function createSession(deps: SessionDeps): Session {
 
     async login(input) {
       const { userSalt, argonParams } = await fetchSalt(input.username);
-      const { authKey, wrapKey: wrap } = await deriveBranches(
-        input.kdfInput,
-        userSalt,
-        argonParams,
-      );
+      const {
+        authKey,
+        wrapKey: wrap,
+        phantomKey: phantom,
+      } = await deriveBranches(input, userSalt, argonParams);
       await deps.storage.set(KEYS.userSalt, toBase64Url(userSalt));
 
       let device = await loadDevice(wrap);
@@ -487,11 +532,13 @@ export function createSession(deps: SessionDeps): Session {
         device = { id: provisionalDevice.id, priv: provisionalDevice.priv };
       }
       const authHash = toBase64Url(authKey);
+      // A-14.2: computed here from the branch we already hold, not asked of the caller.
+      const commitments = (await scriptCommitments(phantom, input.script)).map(toBase64Url);
       const body = {
         username: input.username,
         authHash,
         featureVector: input.featureVector,
-        commitments: input.commitments,
+        commitments,
         deviceId: device?.id ?? null,
       };
       const response = await request('POST', '/auth/login', body, device?.priv, device?.id);
@@ -501,6 +548,7 @@ export function createSession(deps: SessionDeps): Session {
 
       if (response.status === 401) {
         wrap.fill(0);
+        phantom.fill(0);
         provisionalDevice?.priv.fill(0);
         provisionalDevice = null;
         state = 'locked';
@@ -509,6 +557,7 @@ export function createSession(deps: SessionDeps): Session {
       }
       if (response.status !== 200) {
         wrap.fill(0);
+        phantom.fill(0);
         state = 'locked';
         throw new Error(`login failed with status ${response.status}`);
       }
@@ -519,6 +568,8 @@ export function createSession(deps: SessionDeps): Session {
         // re-deriving, but release nothing until it does.
         wrapKeyBytes?.fill(0);
         wrapKeyBytes = wrap;
+        phantomKeyBytes?.fill(0);
+        phantomKeyBytes = phantom;
         state = 'step-up-required';
         pending = { username: input.username, authHash };
         return {
@@ -529,8 +580,11 @@ export function createSession(deps: SessionDeps): Session {
 
       try {
         await acceptPass(payload, wrap);
+        phantomKeyBytes?.fill(0);
+        phantomKeyBytes = phantom;
       } catch (err) {
         wrap.fill(0);
+        phantom.fill(0);
         state = 'locked';
         throw err;
       }
@@ -551,7 +605,7 @@ export function createSession(deps: SessionDeps): Session {
           authHash: pending.authHash,
           method: input.method,
           featureVector: input.featureVector,
-          commitments: input.commitments,
+          commitments: await this.commitmentsFor(input.script),
         },
         device?.priv,
         device?.id,
@@ -615,25 +669,17 @@ export function createSession(deps: SessionDeps): Session {
       const saltRaw = await deps.storage.get(KEYS.userSalt);
       if (saltRaw === null) return { error: 'unknown_salt' };
 
-      const master = await deriveMasterKey(
-        kdfInput(input.resolved, input.script, input.level),
+      const {
+        authKey,
+        wrapKey: nextWrap,
+        phantomKey: nextPhantom,
+      } = await deriveBranches(
+        { resolved: input.resolved, script: input.script, strictness: input.level },
         fromBase64Url(saltRaw),
-        deps.argonParams,
       );
-      let authKey: Uint8Array;
-      let nextWrap: Uint8Array;
-      let phantomKey: Uint8Array;
-      try {
-        authKey = await deriveSubkey(master, 'cypherkey/auth/v1');
-        nextWrap = await deriveSubkey(master, 'cypherkey/wrap/v1');
-        phantomKey = await deriveSubkey(master, 'cypherkey/phantom/v1');
-      } finally {
-        master.fill(0);
-      }
 
       const rewrapped = await wrapKey(vaultShareBytes, nextWrap, 'cypherkey/wrap/vault-key/v1');
-      const commitments = (await scriptCommitments(phantomKey, input.script)).map(toBase64Url);
-      phantomKey.fill(0);
+      const commitments = (await scriptCommitments(nextPhantom, input.script)).map(toBase64Url);
 
       const device = await loadDevice(wrapKeyBytes);
       const response = await request(
@@ -654,6 +700,7 @@ export function createSession(deps: SessionDeps): Session {
       if (response.status !== 200) {
         device?.priv.fill(0);
         nextWrap.fill(0);
+        nextPhantom.fill(0);
         return { error: `rekey_${response.status}` };
       }
 
@@ -673,6 +720,10 @@ export function createSession(deps: SessionDeps): Session {
       await cacheForOffline(vaultKeyBytes as Uint8Array, nextWrap);
       wrapKeyBytes.fill(0);
       wrapKeyBytes = nextWrap;
+      // Strictness changed the master key, so every commitment made from here on must
+      // use the new branch.
+      phantomKeyBytes?.fill(0);
+      phantomKeyBytes = nextPhantom;
 
       return { keyVersion: Number(asRecord(response.body).keyVersion ?? 0) };
     },
@@ -683,10 +734,11 @@ export function createSession(deps: SessionDeps): Session {
       // A-7: offline unlock is only for a device that already unlocked online once.
       if (saltRaw === null || cached === null) return false;
 
-      const { authKey, wrapKey: wrap } = await deriveBranches(
-        input.kdfInput,
-        fromBase64Url(saltRaw),
-      );
+      const {
+        authKey,
+        wrapKey: wrap,
+        phantomKey: phantom,
+      } = await deriveBranches(input, fromBase64Url(saltRaw));
       authKey.fill(0);
       try {
         const vault = await unwrapKey(
@@ -694,11 +746,12 @@ export function createSession(deps: SessionDeps): Session {
           wrap,
           'cypherkey/wrap/vault-key-offline/v1',
         );
-        unlockWith(vault, wrap);
+        unlockWith(vault, wrap, phantom);
         return true;
       } catch {
         // Wrong passphrase, or a tampered cache. Say nothing more than "no".
         wrap.fill(0);
+        phantom.fill(0);
         state = 'locked';
         return false;
       }
@@ -708,9 +761,11 @@ export function createSession(deps: SessionDeps): Session {
       vaultKeyBytes?.fill(0);
       wrapKeyBytes?.fill(0);
       vaultShareBytes?.fill(0);
+      phantomKeyBytes?.fill(0);
       vaultKeyBytes = null;
       wrapKeyBytes = null;
       vaultShareBytes = null;
+      phantomKeyBytes = null;
       pending = null;
       sessionTokens = null;
       provisionalDevice?.priv.fill(0);

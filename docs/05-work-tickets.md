@@ -236,6 +236,18 @@ Items 4 and 5 were both reached only because step 11 and step 13 of the e2e now 
 
 **Also added:** `session.refresh()`, `session.logout()`, `session.tokens()` and `session.authed()` — the last being the device-signed transport that `createEnroller` and `createSync` consume, so neither holds key material of its own.
 
+**M2-00d.1, done in the same pass — commitments cost a second Argon2id.** The interface above asked the caller for `commitments`, but computing them needs `phantomKey`, which needs `masterKey`, which the session derives internally and discards. Every caller therefore had to run Argon2id a second time at m=64 MiB purely to commit its own script — and needed the salt to do it, so the e2e was reaching into session storage to get one.
+
+Fixed by making the session derive all three A-2 branches from its single Argon2id pass and hold `phantomKey` for the life of the unlock:
+
+- `Credential` is now `{ resolved, script, strictness }` rather than `{ kdfInput }`. The session builds the KDF input itself, which it must anyway to honour A-16.
+- `LoginInput` and `StepUpInput` no longer carry `commitments`; `StepUpInput` carries the retyped `script`, since a retype may legitimately differ from the first attempt.
+- New `session.commitmentsFor(script)` serves enrollment, which is not a login and had no other way to get them.
+- A grey login now holds the phantom branch alongside the wrap key, so the retype is committed without re-deriving.
+- `changeStrictness` re-keys the held branch, which it previously discarded — a stale `phantomKey` after a Strict crossing would have produced commitments the server rejects.
+
+Pinned by a `spyOn(kdf, 'deriveMasterKey')` test asserting exactly one call per unlock and zero per commitment, plus an absence test that `phantomKey` never reaches storage.
+
 **Acceptance (this is the point of the ticket).** `scripts/e2e.ts` is rewritten to drive *every* step through `core/client` — `session.ts` for signup/login/step-up/refresh/logout, `enroll.ts` for enrollment, `sync.ts` for the vault legs. No `app.request` call survives outside the injected `fetch`. From then on any drift between client and server fails CI on the next push instead of surfacing a milestone later.
 
 ### M2-00e · Server support for Backup Code step-up · M · deps: M1-13a · **approved**

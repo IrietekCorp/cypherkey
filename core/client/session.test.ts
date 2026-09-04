@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { decryptItem, encryptItem, unwrapKey, xor32 } from '../crypto/aead';
 import { fromBase64Url, toBase64Url, utf8Encode } from '../crypto/encoding';
+import * as kdf from '../crypto/kdf';
 import { deriveMasterKey, deriveSubkey, randomBytes } from '../crypto/kdf';
 import { recoveryKeyFromCode } from '../crypto/recovery';
 import { type SessionStorage, createSession } from './session';
@@ -8,6 +9,13 @@ import { type SessionStorage, createSession } from './session';
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
 const FAST = { m: 256, t: 1, p: 1 } as const;
 const PASSPHRASE = utf8Encode('correct horse battery staple');
+/** A Medium-strictness credential: the KDF sees the resolved text, the script is committed. */
+const CREDENTIAL = {
+  resolved: 'correct horse battery staple',
+  script: 'correct horse battery staple',
+  strictness: 'medium',
+} as const;
+const WRONG_CREDENTIAL = { ...CREDENTIAL, resolved: 'not the right passphrase at all' };
 
 /** In-memory storage double, so nothing here touches a real disk. */
 function memoryStorage(): SessionStorage & { dump(): Record<string, string> } {
@@ -114,7 +122,7 @@ function makeSession(
 const SIGNUP = {
   username: 'shawn',
   email: 'shawn@example.test',
-  kdfInput: PASSPHRASE,
+  ...CREDENTIAL,
   consentPolicyVersion: '2026-09-01',
   deviceName: 'Laptop',
   devicePlatform: 'linux',
@@ -228,9 +236,8 @@ describe('login (A-5 online sequence)', () => {
     const session = makeSession(server, storage);
     const result = await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1, 2, 3],
-      commitments: ['c0', 'c1', 'c2'],
     });
 
     expect(result.band).toBe('pass');
@@ -248,9 +255,8 @@ describe('login (A-5 online sequence)', () => {
     const session = makeSession(server, storage);
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
@@ -270,9 +276,8 @@ describe('login (A-5 online sequence)', () => {
       const s = makeSession(server, storage);
       await s.login({
         username: 'shawn',
-        kdfInput: PASSPHRASE,
+        ...CREDENTIAL,
         featureVector: [1],
-        commitments: ['c0'],
       });
       nonces.add(
         server.state.calls.filter((c) => c.path === '/auth/login').at(-1)?.headers[
@@ -291,9 +296,8 @@ describe('login (A-5 online sequence)', () => {
     const session = makeSession(server, storage);
     const result = await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     expect(result).toEqual({ band: 'grey', stepUp: ['retype', 'recovery_code'] });
@@ -311,14 +315,13 @@ describe('login (A-5 online sequence)', () => {
     const session = makeSession(server, storage);
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
     const result = await session.stepUp({
       method: 'retype',
+      script: CREDENTIAL.script,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     expect(result.band).toBe('pass');
@@ -334,9 +337,8 @@ describe('login (A-5 online sequence)', () => {
     const session = makeSession(server, storage);
     const result = await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     expect(result).toEqual({ band: 'fail', error: 'rhythm_mismatch' });
@@ -353,9 +355,8 @@ describe('login (A-5 online sequence)', () => {
     await expect(
       session.login({
         username: 'shawn',
-        kdfInput: utf8Encode('wrong passphrase'),
+        ...WRONG_CREDENTIAL,
         featureVector: [1],
-        commitments: ['c0'],
       }),
     ).rejects.toThrow();
     expect(session.state()).toBe('locked');
@@ -374,9 +375,8 @@ describe('the vault key actually works', () => {
     const session = makeSession(server, storage);
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
     const plaintext = await decryptItem(sealed, session.vaultKey(), 'item-1');
 
@@ -470,7 +470,7 @@ describe('unlockOffline (A-7)', () => {
       argonParams: FAST,
     });
 
-    expect(await session.unlockOffline({ kdfInput: PASSPHRASE })).toBe(true);
+    expect(await session.unlockOffline({ ...CREDENTIAL })).toBe(true);
     expect(hex(session.vaultKey())).toBe(vaultKey);
   });
 
@@ -480,14 +480,14 @@ describe('unlockOffline (A-7)', () => {
     await makeSession(server, storage).signup(SIGNUP);
 
     const session = makeSession(server, storage);
-    expect(await session.unlockOffline({ kdfInput: utf8Encode('wrong') })).toBe(false);
+    expect(await session.unlockOffline(WRONG_CREDENTIAL)).toBe(false);
     expect(session.state()).toBe('locked');
   });
 
   test('refuses when this device has never unlocked online', async () => {
     const server = mockServer();
     const session = makeSession(server, memoryStorage());
-    expect(await session.unlockOffline({ kdfInput: PASSPHRASE })).toBe(false);
+    expect(await session.unlockOffline({ ...CREDENTIAL })).toBe(false);
   });
 
   test('the cached blob is bound to its own context, so it cannot stand in for the share', async () => {
@@ -521,11 +521,10 @@ describe('nothing secret is logged or persisted in the clear', () => {
       session.lock();
       await session.login({
         username: 'shawn',
-        kdfInput: PASSPHRASE,
+        ...CREDENTIAL,
         featureVector: [1],
-        commitments: ['c0'],
       });
-      await session.unlockOffline({ kdfInput: PASSPHRASE });
+      await session.unlockOffline({ ...CREDENTIAL });
       session.lock();
       for (const s of spies) expect(s).not.toHaveBeenCalled();
     } finally {
@@ -557,9 +556,8 @@ describe('nothing secret is logged or persisted in the clear', () => {
     session.lock();
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [11, 22, 33],
-      commitments: ['c0', 'c1', 'c2'],
     });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
@@ -587,13 +585,18 @@ describe('wire format agreement with the server (M2-00d)', () => {
     await session.signup(SIGNUP);
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1, 2, 3],
-      commitments: ['c0', 'c1', 'c2'],
     });
 
     const login = server.state.calls.find((c) => c.path === '/auth/login');
-    expect((login?.body as Record<string, unknown>).commitments).toEqual(['c0', 'c1', 'c2']);
+    const sent = (login?.body as Record<string, unknown>).commitments as string[];
+    // A-14.2: one commitment per script token, computed by the session from the
+    // phantomKey it already derived — the caller never supplies these.
+    expect(sent).toHaveLength([...CREDENTIAL.script].length);
+    expect(sent.every((c) => typeof c === 'string' && c.length > 0)).toBe(true);
+    // Repeated tokens commit identically; that equality pattern is the disclosed leak.
+    expect(new Set(sent).size).toBe(new Set([...CREDENTIAL.script]).size);
   });
 
   test('step-up posts a scored retype, not an opaque proof', async () => {
@@ -602,13 +605,12 @@ describe('wire format agreement with the server (M2-00d)', () => {
     await session.signup(SIGNUP);
     const result = await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
     expect(result.band).toBe('grey');
 
-    await session.stepUp({ method: 'retype', featureVector: [9], commitments: ['c0'] });
+    await session.stepUp({ method: 'retype', script: CREDENTIAL.script, featureVector: [9] });
 
     const stepUp = grey.state.calls.find((c) => c.path === '/auth/step-up');
     // The server's schema is username + authHash + method + featureVector + commitments.
@@ -633,9 +635,8 @@ describe('wire format agreement with the server (M2-00d)', () => {
     await session.signup(SIGNUP);
     await session.login({
       username: 'shawn',
-      kdfInput: PASSPHRASE,
+      ...CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     expect(session.tokens()).toEqual({ accessToken: 'access-1', refreshToken: 'refresh-1' });
@@ -681,9 +682,8 @@ describe('a wrong passphrase is a 401, not a crash (M2-00d)', () => {
     // mistyping their passphrase is the most ordinary event there is.
     const result = await session.login({
       username: 'shawn',
-      kdfInput: utf8Encode('not the right passphrase at all'),
+      ...WRONG_CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     expect(result.band).toBe('fail');
@@ -699,14 +699,92 @@ describe('a wrong passphrase is a 401, not a crash (M2-00d)', () => {
 
     await session.login({
       username: 'shawn',
-      kdfInput: utf8Encode('not the right passphrase at all'),
+      ...WRONG_CREDENTIAL,
       featureVector: [1],
-      commitments: ['c0'],
     });
 
     const login = server.state.calls.filter((c) => c.path === '/auth/login').at(-1);
     expect(login).toBeDefined();
     // Nothing was signed, because nothing could be: no signature headers went out.
     expect(login?.headers['x-cypherkey-signature']).toBeUndefined();
+  });
+});
+
+/**
+ * M2-00d.1. `phantomKey` is a sibling of `authKey` and `wrapKey` under one `masterKey`,
+ * so a caller asked to supply commitments had to run Argon2id a second time at
+ * m=64 MiB just to derive it. On a popup or a phone that is the difference between one
+ * unlock and two. The session derives all three at once and keeps the phantom branch
+ * in memory for as long as it is unlocked.
+ */
+describe('one Argon2id pass per unlock (M2-00d.1)', () => {
+  test('login runs the KDF exactly once, not once per branch', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    session.lock();
+
+    const spy = spyOn(kdf, 'deriveMasterKey');
+    await session.login({ ...CREDENTIAL, username: 'shawn', featureVector: [1] });
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  test('commitments need no further derivation once unlocked', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const spy = spyOn(kdf, 'deriveMasterKey');
+    const commitments = await session.commitmentsFor(CREDENTIAL.script);
+    expect(spy).not.toHaveBeenCalled();
+    expect(commitments).toHaveLength([...CREDENTIAL.script].length);
+    spy.mockRestore();
+  });
+
+  test('commitmentsFor refuses while locked rather than re-deriving silently', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    await session.signup(SIGNUP);
+    session.lock();
+
+    expect(session.commitmentsFor(CREDENTIAL.script)).rejects.toThrow('locked');
+  });
+
+  /** Absence test: the phantom branch is memory-only, like the vault key. */
+  test('phantomKey is never written to storage', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const stored = JSON.stringify(storage.dump());
+    expect(stored).not.toContain('phantom');
+    // Only the salt, the device identity and the offline vault blob may persist.
+    expect(Object.keys(storage.dump()).sort()).toEqual([
+      'cypherkey.device.id',
+      'cypherkey.device.privWrapped',
+      'cypherkey.device.pub',
+      'cypherkey.user.salt',
+      'cypherkey.vault.offline',
+    ]);
+  });
+
+  test('a grey login keeps the phantom branch so the retype can be committed', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, memoryStorage());
+    await session.signup(SIGNUP);
+    session.lock();
+
+    await session.login({ ...CREDENTIAL, username: 'shawn', featureVector: [1] });
+    expect(session.state()).toBe('step-up-required');
+
+    const spy = spyOn(kdf, 'deriveMasterKey');
+    await session.stepUp({ method: 'retype', script: CREDENTIAL.script, featureVector: [2] });
+    // The retype is committed from the branch the grey login already held.
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
