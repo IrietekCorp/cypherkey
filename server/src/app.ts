@@ -7,6 +7,7 @@ import { healthRoutes } from './routes/health';
 import { loginRoutes } from './routes/login';
 import { sessionRoutes } from './routes/session';
 import { stepUpRoutes } from './routes/stepup';
+import { userRoutes } from './routes/user';
 import { vaultRoutes } from './routes/vault';
 
 /** A-5: every auth response is padded to this floor. Tests pass 0. */
@@ -45,6 +46,7 @@ export function createApp(deps: AppDeps): Hono {
     );
     app.route('/', sessionRoutes({ db: deps.db, config: deps.config, now: deps.now }));
     app.route('/', vaultRoutes({ db: deps.db, config: deps.config, now: deps.now }));
+    app.route('/', userRoutes({ db: deps.db, config: deps.config, now: deps.now }));
     app.route(
       '/',
       stepUpRoutes({
