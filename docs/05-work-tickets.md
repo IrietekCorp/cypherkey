@@ -305,6 +305,64 @@ Returns `{ userId, serverShare, enrollmentToken }`. `vaultKey` itself never chan
 
 **Open question for you, not decided here:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
 
+### M2-00g · Adaptation that actually adapts · M · deps: M1-09 · **measured, awaiting your call**
+
+A-4.5 adaptation is implemented and, as measured, does not work in the case it exists for. Two defects.
+
+**A dead zone between passing and learning.** The pass band is 0.62 and adaptation requires 0.70, so a user whose rhythm drifts into `[0.62, 0.70)` is admitted every time while the profile never follows them. Simulating someone who permanently slows 15% — a new keyboard, a wrist injury, a different desk:
+
+```
+before            0.690  pass
+after 12 logins   0.695  pass     ← never adapted, and never will
+```
+
+They pass, they stay one bad day from the grey band, and nothing improves. This is the band where learning matters most and it is the one band where learning is switched off.
+
+**`adapt()` never updates `stds`.** It EMAs the means and copies the variance through untouched, so the profile's idea of how variable a user is, is frozen at enrolment forever. Enrolment happens in one sitting — one posture, one keyboard, one mood — so that frozen spread is systematically narrower than the user's real variability, and it can never widen no matter how many honest logins arrive.
+
+**Measured options, on a profile of 8 samples against a user drifted 15% and a stranger who knows the passphrase:**
+
+| Strategy | Drifted user | Stranger | Separation |
+|---|---|---|---|
+| Today: means only, adapt ≥ 0.70 | 0.695 | 0.453 | 0.242 |
+| Means only, adapt ≥ pass (0.62) | 0.954 | 0.647 | 0.307 |
+| Means + variance, adapt ≥ 0.62 | 0.968 | 0.665 | 0.302 |
+
+Separation improves, but look at the stranger crossing 0.62 in both adapted rows. That is A-4.5's "an attacker slowly walks the profile toward themselves" appearing in numbers rather than in prose, and it is why the 0.70 gap should not simply be lowered.
+
+**Proposed, not decided.** Keep 0.70 for ordinary adaptation, and add a *slow catch-up*: after N consecutive passes in `[pass, 0.70)` with an exact script match (distance 0), adapt once at a reduced α. A drifting user produces such a run naturally; an attacker cannot produce a long consecutive run without already being inside. Separately, EMA the variance with a floor so the frozen enrolment spread can widen toward reality. Both need a decision on N and α before implementation.
+
+**Tests:** the drift simulation above, as a regression — a user who slows 15% is tracked within X logins; a stranger's score does not rise above the pass band across the same run; variance widens toward the observed spread and never below the 8 ms floor; a grey or failed attempt still never adapts; the once-per-10-minutes cap still holds.
+
+**Do not, in any case, ask users to type deliberately slowly or quickly during enrolment.** It was measured and it is actively harmful: six natural samples plus one slow and one fast lifts the median feature std from 8 ms to 21.4 ms, and the stranger's score from **0.453 (fail) to 0.840 (comfortable pass)**. Widening the band cannot distinguish anyone; it only admits more people. Natural variability must be learned from real logins, which is what this ticket is for.
+
+### M2-00h · Capture without a DOM · M · deps: M1-16 · **approved in principle**
+
+`startCapture(input: HTMLInputElement, light: HTMLElement)` is DOM-bound and throws without a visible Rhythm Light element. A terminal has neither, and M4's CLI ticket walks straight into it; mobile and desktop interfaces will too.
+
+AGENTS already anticipates the split — "no DOM imports except `core/biometrics/capture.ts`" — but there is no non-DOM path today.
+
+**The division that must hold.** `core` owns the `KeyEvent` contract, the A-14.1 tokenizer, the feature layout and the *rule* that capture requires a visible consent indicator. Each platform supplies an adapter that proves it has one: a visible element in the browser, a rendered indicator line in a TTY, the platform equivalent elsewhere. The rule is not that a DOM node exists; it is that the person can see the light. X-1 says a service that hides the light gets no data, and that has to survive the move off the DOM rather than being quietly dropped as untestable.
+
+**Files:** create `core/biometrics/capture-contract.ts` (the adapter interface plus a `RhythmLight` proof type) and a test; refactor `core/biometrics/capture.ts` into the DOM adapter behind it. No behaviour change in the browser.
+
+### M3-xx · Per-keyboard profiles, and what "identify the keyboard" can honestly mean · M · **researched, see below**
+
+Answering directly: **a browser cannot identify a keyboard**, and the parts that look like they can should not be used as a security signal.
+
+- **WebHID / WebUSB** can read a vendor and product id, but only behind an explicit per-device permission prompt, only in Chromium, and a laptop's built-in keyboard does not necessarily enumerate at all. Asking for device-enumeration permission on an unlock screen is also the opposite of the posture in A-12.
+- **`navigator.keyboard.getLayoutMap()`** reports the *layout* — which character each physical key produces — not the device. Chromium only. It cannot distinguish a mechanical board from a laptop board on the same layout. *(API surface and availability to be confirmed against current documentation before implementation; it could not be tested in the build environment.)*
+- **Nothing exposes switch type, travel or actuation.** Those are the properties that actually change typing rhythm.
+
+**And anything the client reports about itself is attacker-controlled.** A device signature is Ed25519 and cannot be forged; a claimed keyboard id is a string in a JSON body. Keyboard identity may therefore inform *which profile to score against* — a usability decision — and must never be part of *whether to admit* — a security decision. That line should be explicit wherever this is built.
+
+**What does work, and needs no new signal.** Two layers:
+
+1. **Per device.** `devices` already carries an unforgeable Ed25519 identity, so "laptop versus desktop" is solved by keying the profile on `device_id`. This is the M3 per-device-profiles item already in the roadmap and it needs no keyboard detection whatsoever.
+2. **Per cluster, within a device.** The unhandled case is the real one: the same laptop, sometimes with a mechanical keyboard plugged in. Detect it from the rhythm itself. If a user's accepted samples separate into two stable clusters, hold a profile per cluster and score against the nearest, admitting on the best match. A new cluster may only be created behind a step-up, exactly as a new device is, so it cannot become a way to widen the profile by typing differently.
+
+**A free signal we already collect.** Every event carries `KeyboardEvent.code` since the M1-18 follow-up. If the same passphrase suddenly arrives via different codes, the *layout* changed — which changes rhythm far more than switch type does. Worth storing as a fingerprint of the enrolled layout and using to explain a rejection ("this looks like a different keyboard layout") rather than to grant anything.
+
 ### The client surface as it actually is
 
 Verified against the source, not recalled. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.

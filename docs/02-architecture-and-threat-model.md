@@ -115,6 +115,15 @@ Decision bands (per-user, adaptive after M3; defaults below):
 ### A-4.5 Adaptation
 After a **pass** with score ≥ 0.70, update profile via EMA (`α = 0.1`) toward the new sample. Never adapt on grey or fail. Cap adaptation to once per 10 minutes per user. This prevents an attacker from slowly walking the profile toward themselves while tracking natural drift.
 
+**Known defective as specified; see M2-00g.** Two measured problems. (1) Pass is 0.62 and adaptation is 0.70, so a user who drifts into `[0.62, 0.70)` is admitted forever while the profile never follows them — the band where adaptation matters most is the one band where it never runs. (2) The implementation EMAs the means and copies `stds` through unchanged, so a user's modelled variability is frozen at enrolment, which is one sitting on one keyboard and systematically narrower than reality. The 0.70 gap is nonetheless doing real work: lowering it to the pass threshold was measured to raise a stranger's score from 0.453 to 0.647, over the pass line. Any fix keeps a gap and earns crossings slowly.
+
+**Never widen the band deliberately.** Asking a user to contribute fast and slow enrolment samples raises per-feature `std`, and a wider band admits *everyone*: six natural samples plus one slow and one fast moved a stranger from 0.453 to 0.840 while median std went 8 ms → 21.4 ms. Real variability is learned from real logins, never injected at enrolment.
+
+### A-4.7 Signal provenance
+Every input to an auth decision is either **unforgeable** — a device Ed25519 signature, a server-generated nonce, a value derived from the passphrase — or **self-reported**: a claimed platform string, a user agent, a keyboard or layout identifier, a WebHID vendor id. Self-reported signals are attacker-controlled JSON and may inform *which profile to score against*, never *whether to admit*. A per-keyboard or per-device profile is a usability mechanism; the device signature remains the security boundary.
+
+Note also that the browser cannot identify a keyboard as hardware. WebHID exposes a vendor and product id only behind a per-device permission prompt, `navigator.keyboard.getLayoutMap()` reports layout rather than device, and nothing exposes switch type — the property that actually moves typing rhythm. Where distinguishing keyboards matters, cluster on the rhythm itself.
+
 ### A-4.6 What the server keeps
 | Kept | Not kept |
 |---|---|
