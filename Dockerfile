@@ -1,32 +1,36 @@
-# Build stage: install dependencies with a lockfile, nothing else.
-FROM oven/bun:1-alpine AS deps
+# Build the server as one self-contained binary (A-15). Built on the Bun image so the
+# binary is linked against the same glibc the runtime stage provides.
+FROM oven/bun:1 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
-
-# Runtime stage. A-15 budgets a single compiled binary in a distroless image;
-# that lands in M1-19. This is the honest interim: Bun, the source, no dev deps.
-FROM oven/bun:1-alpine AS runtime
-WORKDIR /app
-
-# Never root. The volume is chowned so a self-hosted SQLite file is writable.
-RUN addgroup -S cypherkey && adduser -S -G cypherkey cypherkey \
- && mkdir -p /data && chown -R cypherkey:cypherkey /data
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json bun.lock tsconfig.json ./
+RUN bun install --frozen-lockfile
+COPY tsconfig.json ./
 COPY core ./core
 COPY server ./server
+RUN bun build --compile --minify --target=bun server/src/index.ts --outfile /app/cypherkey \
+ && mkdir -p /empty-data
 
-USER cypherkey
+# Distroless: no shell, no package manager, no Bun — just the binary and libc.
+# `cc` rather than `base` because the Bun runtime needs libstdc++ and libgcc.
+FROM gcr.io/distroless/cc-debian12 AS runtime
+COPY --from=build /app/cypherkey /usr/local/bin/cypherkey
+
+# distroless has no shell to `mkdir` with, so the (empty) data directory is created in
+# the build stage and copied in owned by `nonroot` (uid 65532), which the self-host
+# SQLite path needs to be able to write.
+COPY --from=build --chown=65532:65532 /empty-data /data
+USER nonroot:nonroot
+
 ENV PORT=3000
 ENV DATABASE_URL=sqlite:///data/cypherkey.db
 EXPOSE 3000
 
-# JWT_SECRET is deliberately not defaulted: the server refuses to start without
-# one (A-13), and baking a fallback into an image would be the worst possible
-# place to put a secret.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-  CMD bun -e "process.exit((await fetch('http://127.0.0.1:'+(process.env.PORT??3000)+'/healthz')).ok?0:1)"
-
-CMD ["bun", "server/src/index.ts"]
+# No HEALTHCHECK: there is no shell or curl in a distroless image to run one. The
+# orchestrator probes GET /healthz instead — Cloud Run and compose both do.
+#
+# JWT_SECRET is deliberately absent. The server refuses to start without one (A-13),
+# and an image is the worst possible place to bake a fallback.
+#
+# Migrations do not run at boot (A-15 cold-start budget); `bun run db:migrate` is a
+# separate deploy job, and it needs the repo rather than this image.
+ENTRYPOINT ["/usr/local/bin/cypherkey"]

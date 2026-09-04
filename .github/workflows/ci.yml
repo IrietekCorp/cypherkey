@@ -72,12 +72,46 @@ jobs:
       - run: bun test
       - run: bun run e2e
 
+  size:
+    name: A-15 size budgets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      - name: measure and enforce
+        id: sizes
+        run: |
+          bun run size-check | tee sizes.txt
+      - name: post sizes to the run summary
+        if: always()
+        run: |
+          {
+            echo '### Size budgets (docs/02 A-15)'
+            echo '```'
+            cat sizes.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   docker:
     name: docker image builds and answers /healthz
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t cypherkey:ci .
+      - name: report image size
+        run: |
+          SIZE=$(docker image inspect cypherkey:ci --format '{{.Size}}')
+          echo "image: $((SIZE / 1024 / 1024)) MB"
+          {
+            echo '### Container image'
+            echo "\`cypherkey:ci\` — $((SIZE / 1024 / 1024)) MB (A-15 budget: 130 MB)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIZE" -gt $((130 * 1024 * 1024)) ]; then
+            echo "image exceeds the A-15 budget"; exit 1
+          fi
       - name: start and probe
         run: |
           docker run -d --name ck -p 3000:3000 \

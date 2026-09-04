@@ -338,15 +338,15 @@ Errors that change the resolved text (a forgotten Backspace) are not "phantom er
 
 | Target | Budget | How |
 |---|---|---|
-| Server binary | single file via `bun build --compile --minify --target=bun`, < 60 MB incl. runtime | No `node_modules` shipped; Hono (~15 KB), Drizzle, `postgres`, Zod, `@noble/*` only |
-| Server container | `gcr.io/distroless/cc` or `oven/bun:alpine` runtime stage, < 100 MB, non-root | Multi-stage Dockerfile; binary copied in |
+| Server binary | single file via `bun build --compile --minify --target=bun`. **< 95 MB total, and < 8 MB of our own payload** (measured M1-19: 79.4 MB total, of which the Bun 1.4 runtime is 77.0 MB and our code 2.4 MB) | The original "< 60 MB incl. runtime" is unreachable: Bun's runtime alone exceeds it, and `strip` recovers 0.1 MB. The total mostly tracks Bun releases; the **payload** is the number a new dependency moves, so it is budgeted separately and is what actually catches a regression |
+| Server container | `gcr.io/distroless/cc-debian12` runtime stage, **< 130 MB**, non-root (`nonroot`, uid 65532) | Multi-stage: the binary is compiled on `oven/bun:1` so it links against the same glibc, then copied into distroless. 100 MB was set against the old 60 MB binary figure; the base is ~30 MB and the binary 79 MB. No shell, so no `HEALTHCHECK` — the orchestrator probes `/healthz` |
 | Cold start (Cloud Run) | < 300 ms to first response | Bun startup + lazy DB connect; no schema sync at boot (migrations run in CI/deploy job, not on start) |
 | Extension popup JS | < 250 KB gzipped, first paint < 100 ms | WXT/Vite code-splitting; `hash-wasm` Argon2 module (11.6 KB gzipped, measured) fetched and compiled when the popup opens, in parallel with passphrase entry; no moment/lodash/heavy UI kits; Tailwind purged |
 | Site (cypherkey.io) | < 120 KB total, Lighthouse ≥ 95 | Vanilla TS demo, no framework |
 | Argon2id in browser | < 700 ms on a 2020 laptop | `hash-wasm` at m=64 MiB, t=3, p=1 — measured ~175 ms under Bun on the reference machine. Runs in a Web Worker, never on the popup main thread; module compiled during passphrase entry so the cost at submit is the hash alone; show a progress affordance |
 | Login round trip | 500 ms floor (timing defense) + network; target p95 < 900 ms | Single DB transaction per login; score-history insert batched into it |
 
-Enforce with `scripts/size-check.ts` in CI (fails the build on regression). Add `bun build --analyze` output to PR summaries. Never add a dependency without stating its gzipped size in the PR.
+Enforce with `scripts/size-check.ts` in CI (fails the build on regression) — `bun run size-check`. It prints a table and exits non-zero on a breach, and CI posts it to the run summary along with the container image size. A budget with no measurement counts as a failure rather than being skipped, so a target cannot quietly stop being enforced. Never add a dependency without stating its gzipped size in the PR.
 
 **Database decision (recorded):** Postgres for hosted, SQLite for self-host, one Drizzle schema. Firestore was evaluated and rejected: no Drizzle support (two data layers), per-operation pricing that spikes under login/sync/nonce churn, hot-document contention for counters. For pre-launch scale-to-zero, Neon's Postgres free tier is acceptable from Cloud Run with no code change; move to Cloud SQL when there is revenue or a residency requirement.
 

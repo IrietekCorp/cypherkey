@@ -16,7 +16,9 @@
     "db:generate:sqlite": "DATABASE_URL=sqlite://./cypherkey.db bun run db:generate",
     "db:generate:postgres": "DATABASE_URL=postgres://localhost/cypherkey bun run db:generate",
     "db:migrate": "bun server/src/db/migrate-cli.ts",
-    "e2e": "bun scripts/e2e.ts"
+    "e2e": "bun scripts/e2e.ts",
+    "size-check": "bun scripts/size-check.ts",
+    "build:server": "bun build --compile --minify --target=bun server/src/index.ts --outfile dist/cypherkey"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",
