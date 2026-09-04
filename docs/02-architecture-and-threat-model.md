@@ -213,7 +213,10 @@ GET   /auth/salt
 POST  /auth/signup            {username,email,authHash,userSalt,wrappedVaultKey,devicePub,consentAt,consentPolicyVersion}  → 201 {userId, serverShare}
 POST  /auth/recovery-key      {recoveryWrappedVaultKey}   ← second leg of signup (A-5); enrollment refused until it exists
 POST  /auth/login
-POST  /auth/step-up           {method, proof}
+POST  /auth/step-up           {username, authHash, method:'retype', featureVector}   ← M1 supports `retype` only
+                              Like /auth/refresh it takes no access token — a grey login issues none —
+                              and re-proves the passphrase plus the A-3 device signature instead.
+                              On success the access token carries `stepUpAt`, which PATCH /user/settings requires.
 POST  /auth/refresh
 POST  /auth/logout
 GET   /enroll/status

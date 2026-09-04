@@ -1,0 +1,266 @@
+import { desc, eq } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { getFeatureRanges } from '../../../core/biometrics/features';
+import { adapt, score as scoreOf } from '../../../core/biometrics/score';
+import type { Profile } from '../../../core/biometrics/score';
+import { verifyRequest } from '../../../core/crypto/device';
+import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
+import { issueSession } from '../auth/session-tokens';
+import type { Config } from '../config';
+import type { Db } from '../db/client';
+import * as pgSchema from '../db/schema/pg';
+import * as sqliteSchema from '../db/schema/sqlite';
+
+const MAX_SKEW_MS = 30_000;
+/** How long a grey attempt stays open for its retype (X-3: "type it once more"). */
+const PENDING_WINDOW_MS = 5 * 60_000;
+
+const stepUpSchema = z.object({
+  username: z.string().min(1).max(64),
+  authHash: z.string().min(1).max(512),
+  method: z.literal('retype'),
+  featureVector: z.array(z.number().finite()).min(1).max(4096),
+});
+
+export type StepUpDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
+
+async function withFloor<T>(floorMs: number, work: () => Promise<T>): Promise<T> {
+  const started = performance.now();
+  const result = await work();
+  const remaining = floorMs - (performance.now() - started);
+  if (remaining > 0) await Bun.sleep(remaining);
+  return result;
+}
+
+/**
+ * `POST /auth/step-up` — the second half of X-3's ladder.
+ *
+ * Only the `retype` factor exists in M1: it is the one thing the server can verify
+ * on its own. Recovery codes cannot be checked server-side without breaking
+ * zero-knowledge, and passkey/TOTP are M3. The route rejects any other method
+ * rather than pretending to support it.
+ *
+ * Like `/auth/refresh`, this cannot require an access token — a grey login issues
+ * none. It re-proves the passphrase and the device signature instead.
+ */
+export function stepUpRoutes(deps: StepUpDeps): Hono {
+  const app = new Hono();
+  const { db, config } = deps;
+  const now = deps.now ?? Date.now;
+
+  const q = {
+    userByName: async (username: string) =>
+      (db.dialect === 'sqlite'
+        ? await db.drizzle
+            .select()
+            .from(sqliteSchema.users)
+            .where(eq(sqliteSchema.users.username, username))
+        : await db.drizzle
+            .select()
+            .from(pgSchema.users)
+            .where(eq(pgSchema.users.username, username)))[0],
+    deviceByKey: async (publicKey: string) =>
+      (db.dialect === 'sqlite'
+        ? await db.drizzle
+            .select()
+            .from(sqliteSchema.devices)
+            .where(eq(sqliteSchema.devices.publicKey, publicKey))
+        : await db.drizzle
+            .select()
+            .from(pgSchema.devices)
+            .where(eq(pgSchema.devices.publicKey, publicKey)))[0],
+    profile: async (userId: string) =>
+      (db.dialect === 'sqlite'
+        ? await db.drizzle
+            .select()
+            .from(sqliteSchema.biometricProfiles)
+            .where(eq(sqliteSchema.biometricProfiles.userId, userId))
+        : await db.drizzle
+            .select()
+            .from(pgSchema.biometricProfiles)
+            .where(eq(pgSchema.biometricProfiles.userId, userId)))[0],
+    lastScore: async (userId: string) =>
+      (db.dialect === 'sqlite'
+        ? await db.drizzle
+            .select()
+            .from(sqliteSchema.authScoreHistory)
+            .where(eq(sqliteSchema.authScoreHistory.userId, userId))
+            .orderBy(desc(sqliteSchema.authScoreHistory.createdAt))
+            .limit(1)
+        : await db.drizzle
+            .select()
+            .from(pgSchema.authScoreHistory)
+            .where(eq(pgSchema.authScoreHistory.userId, userId))
+            .orderBy(desc(pgSchema.authScoreHistory.createdAt))
+            .limit(1))[0],
+  };
+
+  app.post('/auth/step-up', async (c) => {
+    const rawBody = await c.req.text();
+    const headers = c.req.raw.headers;
+
+    return withFloor(deps.timingFloorMs, async () => {
+      let raw: unknown;
+      try {
+        raw = JSON.parse(rawBody);
+      } catch {
+        return c.json({ error: 'invalid_json' }, 400);
+      }
+      const parsed = stepUpSchema.safeParse(raw);
+      // An unsupported method is 400, not 401: it is a client bug, not a bad secret.
+      if (!parsed.success) return c.json({ error: 'unsupported_method' }, 400);
+      const input = parsed.data;
+
+      const deny = () => c.json({ error: 'invalid_credentials' }, 401);
+
+      const user = await q.userByName(input.username);
+      if (user === undefined) return deny();
+      if (!(await Bun.password.verify(input.authHash, user.authHash))) return deny();
+
+      const deviceKey = headers.get('x-cypherkey-device');
+      const nonceRaw = headers.get('x-cypherkey-nonce');
+      const tsRaw = headers.get('x-cypherkey-ts');
+      const signature = headers.get('x-cypherkey-signature');
+      if (deviceKey === null || nonceRaw === null || tsRaw === null || signature === null)
+        return deny();
+      const ts = Number(tsRaw);
+      if (!Number.isInteger(ts) || Math.abs(now() - ts) > MAX_SKEW_MS) return deny();
+
+      // A new device signs with the key it is asking us to trust, which proves
+      // possession; the passphrase above is what proves it is this account's device.
+      let signerKey: Uint8Array;
+      let nonceBytes: Uint8Array;
+      try {
+        signerKey = fromBase64Url(deviceKey);
+        nonceBytes = fromBase64Url(nonceRaw);
+      } catch {
+        return deny();
+      }
+      const url = new URL(c.req.url);
+      const signatureOk = await verifyRequest(signerKey, signature, {
+        nonce: nonceBytes,
+        ts,
+        method: 'POST',
+        path: url.pathname + url.search,
+        body: utf8Encode(rawBody),
+      });
+      if (!signatureOk) return deny();
+
+      const existing = await q.deviceByKey(deviceKey);
+      if (existing !== undefined && (existing.userId !== user.id || existing.revokedAt !== null)) {
+        return deny();
+      }
+
+      const profile = await q.profile(user.id);
+      let combined: number | null = null;
+
+      if (profile !== undefined && user.biometricEnabled) {
+        if (input.featureVector.length !== getFeatureRanges(profile.scriptLen).totalLength) {
+          return deny();
+        }
+        const loaded: Profile = {
+          version: 1,
+          len: profile.scriptLen,
+          means: profile.means,
+          stds: profile.stds,
+          weights: profile.weights,
+          sampleCount: profile.sampleCount,
+        };
+        const sample = { version: 1 as const, len: profile.scriptLen, values: input.featureVector };
+        const retype = scoreOf(loaded, sample);
+
+        // X-3: the grey band asks for a second sample and scores the average. A
+        // pending grey attempt within the window is what this is completing.
+        const pending = await q.lastScore(user.id);
+        const isPending =
+          pending !== undefined &&
+          pending.band === 'grey' &&
+          now() - pending.createdAt.getTime() <= PENDING_WINDOW_MS;
+        combined = isPending ? (retype + pending.score) / 2 : retype;
+
+        const row = {
+          id: crypto.randomUUID(),
+          userId: user.id,
+          deviceId: existing?.id ?? null,
+          score: combined,
+          band: (combined >= config.scorePass ? 'pass' : 'fail') as 'pass' | 'fail',
+          createdAt: new Date(now()),
+        };
+        if (db.dialect === 'sqlite')
+          await db.drizzle.insert(sqliteSchema.authScoreHistory).values(row);
+        else await db.drizzle.insert(pgSchema.authScoreHistory).values(row);
+
+        if (combined < config.scorePass) {
+          return c.json({ band: 'fail', error: 'step_up_failed' }, 401);
+        }
+
+        // X-3: a cleared step-up folds the sample into the profile — this is how the
+        // profile learns a new keyboard. It deliberately bypasses the A-4.5 ten-minute
+        // cap, because the passphrase and a second sample were both just proven.
+        const next = adapt(loaded, sample);
+        const update = {
+          means: next.means,
+          stds: next.stds,
+          weights: next.weights,
+          sampleCount: next.sampleCount,
+          updatedAt: new Date(now()),
+        };
+        if (db.dialect === 'sqlite') {
+          await db.drizzle
+            .update(sqliteSchema.biometricProfiles)
+            .set(update)
+            .where(eq(sqliteSchema.biometricProfiles.userId, user.id));
+        } else {
+          await db.drizzle
+            .update(pgSchema.biometricProfiles)
+            .set(update)
+            .where(eq(pgSchema.biometricProfiles.userId, user.id));
+        }
+      }
+
+      // X-3: a new device is registered only once the step-up has cleared.
+      let deviceId = existing?.id ?? null;
+      if (existing === undefined) {
+        deviceId = crypto.randomUUID();
+        const row = {
+          id: deviceId,
+          userId: user.id,
+          publicKey: deviceKey,
+          name: 'New device',
+          platform: 'unknown',
+          trustedAt: new Date(now()),
+          lastSeenAt: new Date(now()),
+        };
+        if (db.dialect === 'sqlite') await db.drizzle.insert(sqliteSchema.devices).values(row);
+        else await db.drizzle.insert(pgSchema.devices).values(row);
+      }
+
+      const lockoutReset = { failedCount: 0, lockedUntil: null };
+      if (db.dialect === 'sqlite') {
+        await db.drizzle
+          .update(sqliteSchema.lockouts)
+          .set(lockoutReset)
+          .where(eq(sqliteSchema.lockouts.userId, user.id));
+      } else {
+        await db.drizzle
+          .update(pgSchema.lockouts)
+          .set(lockoutReset)
+          .where(eq(pgSchema.lockouts.userId, user.id));
+      }
+
+      const issued = await issueSession(db, config, user.id, deviceId, now(), now());
+      return c.json({
+        band: 'pass',
+        stepUp: true,
+        score: combined,
+        accessToken: issued.accessToken,
+        refreshToken: issued.refreshToken,
+        wrappedVaultKey: user.wrappedVaultKey,
+        serverShare: user.serverShare,
+      });
+    });
+  });
+
+  return app;
+}

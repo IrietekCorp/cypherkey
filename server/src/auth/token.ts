@@ -8,7 +8,18 @@ import { equalBytes, fromBase64Url, toBase64Url, utf8Encode } from '../../../cor
  */
 export type TokenScope = 'enroll' | 'access';
 
-export type TokenClaims = { sub: string; scope: TokenScope; iat: number; exp: number };
+export type TokenClaims = {
+  sub: string;
+  scope: TokenScope;
+  iat: number;
+  exp: number;
+  /**
+   * When the holder last cleared a step-up, if ever. Settings that weaken the
+   * biometric (X-4 Pause, disabling it, changing Strictness) require this to be
+   * recent, so an attacker holding only the passphrase cannot switch the rhythm off.
+   */
+  stepUpAt?: number;
+};
 
 /** A-8: HS256 over `JWT_SECRET`. Written out rather than pulling in a JWT library. */
 function sign(input: string, secret: string): string {
@@ -16,6 +27,14 @@ function sign(input: string, secret: string): string {
 }
 
 /** Mints a scoped token valid for `ttlMs` from `now`. */
+/** How recently a step-up must have happened for it to still authorise a change. */
+export const STEP_UP_FRESHNESS_MS = 5 * 60_000;
+
+/** True when the token carries a step-up that is still fresh. */
+export function hasFreshStepUp(claims: TokenClaims, now: number): boolean {
+  return claims.stepUpAt !== undefined && now - claims.stepUpAt <= STEP_UP_FRESHNESS_MS;
+}
+
 export function mintToken(
   claims: Omit<TokenClaims, 'iat' | 'exp'>,
   secret: string,

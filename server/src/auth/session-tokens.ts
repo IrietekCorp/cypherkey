@@ -28,9 +28,10 @@ export async function issueSession(
   userId: string,
   deviceId: string | null,
   now: number,
+  stepUpAt?: number,
 ): Promise<IssuedSession> {
   const accessToken = mintToken(
-    { sub: userId, scope: 'access' },
+    { sub: userId, scope: 'access', ...(stepUpAt === undefined ? {} : { stepUpAt }) },
     config.jwtSecret,
     now,
     ACCESS_TTL_MS,
