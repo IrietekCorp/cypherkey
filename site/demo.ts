@@ -4,7 +4,13 @@ import { startCapture } from '../core/biometrics/capture';
 import { extractFeatures } from '../core/biometrics/features';
 import { band, buildProfile, score } from '../core/biometrics/score';
 import type { Profile } from '../core/biometrics/score';
-import { eventsToScript, scriptLength, scriptsEqual } from '../core/biometrics/script';
+import {
+  describeEvents,
+  eventsToScript,
+  readableToken,
+  scriptLength,
+  scriptsEqual,
+} from '../core/biometrics/script';
 import type { FeatureVector, KeyEvent } from '../core/biometrics/types';
 
 type DemoState = 'idle' | 'enrolling' | 'built' | 'challenge_friend' | 'challenge_you' | 'results';
@@ -286,23 +292,23 @@ const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
 /** Renders control tokens so a phantom is visible rather than invisible. */
 function readableScript(script: string): string {
-  return [...script]
-    .map((token) => {
-      if (token === '\u0008') return '⌫';
-      if (token === '\u007F') return '⌦';
-      if (token === '\u001B') return '⎋';
-      if (token >= '\uE000' && token <= '\uE004') return '⌘';
-      return token === ' ' ? '␣' : token;
-    })
-    .join('');
+  return [...script].map(readableToken).join('');
 }
 
-function debugNote(stage: string, outcome: string, detail = '') {
+function debugNote(stage: string, outcome: string, detail = '', trace = '') {
   if (!DEBUG) return;
   const row = document.createElement('div');
-  row.textContent = `${stage.padEnd(10)} ${outcome.padEnd(10)} ${detail}`;
   row.className = outcome === 'accepted' ? 'text-emerald-800' : 'text-rose-800';
+  row.textContent = `${stage.padEnd(8)} ${outcome.padEnd(9)} ${detail}`;
   debugRows.appendChild(row);
+  if (trace !== '') {
+    // The key sequence as captured. Keys and order only — never timings, and this is
+    // a throwaway demo phrase the page already prints in full.
+    const traceRow = document.createElement('div');
+    traceRow.className = 'text-amber-700 pl-4 break-all';
+    traceRow.textContent = trace;
+    debugRows.appendChild(traceRow);
+  }
   debugRows.scrollTop = debugRows.scrollHeight;
 }
 
@@ -378,8 +384,12 @@ function handleEnrollSampleSubmit() {
   // A-14.1 decides what counted as a keystroke, including the phantoms.
   const script = eventsToScript(events);
   if ('error' in script) {
-    debugNote('enroll', 'rejected', script.error);
-    showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.');
+    debugNote('enroll', 'rejected', `${script.error}: ${script.detail}`, describeEvents(events));
+    showFeedback(
+      enrollFeedback,
+      'warn',
+      `${SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.'} (${script.detail})`,
+    );
     prepareEnrollSample(true);
     return;
   }
@@ -389,7 +399,12 @@ function handleEnrollSampleSubmit() {
   // The resolved text is what a normal form would have received — phantoms and all
   // the corrections have already been applied.
   if (script.resolved !== targetPassphrase) {
-    debugNote('enroll', 'rejected', `resolved ${JSON.stringify(script.resolved)} != target`);
+    debugNote(
+      'enroll',
+      'rejected',
+      `resolved ${JSON.stringify(script.resolved)} != ${JSON.stringify(targetPassphrase)}`,
+      describeEvents(events),
+    );
     showFeedback(
       enrollFeedback,
       'warn',
@@ -408,6 +423,7 @@ function handleEnrollSampleSubmit() {
       'enroll',
       'rejected',
       `script ${readableScript(script.script)} != enrolled ${readableScript(canonicalScript)}`,
+      describeEvents(events),
     );
     showFeedback(
       enrollFeedback,
@@ -441,11 +457,15 @@ function handleEnrollSampleSubmit() {
     userProfile = buildProfile(enrollmentSamples);
     setTimeout(() => setState('built'), 400);
   } else {
-    enrollFeedback.className =
-      'text-xs font-medium px-3 py-2 rounded-lg bg-teal-50 text-teal-800 border border-teal-200';
-    enrollFeedback.textContent = `✓ Sample ${enrollmentSamples.length} recorded! Next sample...`;
-    enrollFeedback.classList.remove('hidden');
-    setTimeout(() => prepareEnrollSample(), 350);
+    showFeedback(
+      enrollFeedback,
+      'ok',
+      `✓ Sample ${enrollmentSamples.length} recorded! Next sample...`,
+    );
+    // Restart immediately, keeping the tick on screen. Waiting 350 ms left a window
+    // where the field was live but nothing was listening, so anything typed in it was
+    // silently dropped and its keyup landed in the next sample.
+    prepareEnrollSample(true);
   }
 }
 

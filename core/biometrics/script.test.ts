@@ -80,19 +80,21 @@ describe('the eight cases of A-14.1', () => {
 
   // (4)
   test('Ctrl+A cancels the sample', () => {
-    expect(eventsToScript(hold('Control', ['a']))).toEqual({ error: 'unsupported_combo' });
+    expect(eventsToScript(hold('Control', ['a']))).toMatchObject({ error: 'unsupported_combo' });
   });
 
   // (5)
   test('ArrowLeft cancels the sample', () => {
-    expect(eventsToScript(type(['a', 'ArrowLeft', 'b']))).toEqual({ error: 'unsupported_key' });
+    expect(eventsToScript(type(['a', 'ArrowLeft', 'b']))).toMatchObject({
+      error: 'unsupported_key',
+    });
   });
 
   // (6)
   test('a blur mid-sample cancels it', () => {
     const events = type(['a', 'b']);
     events.splice(2, 0, { type: 'blur', t: 1075 });
-    expect(eventsToScript(events)).toEqual({ error: 'focus_lost' });
+    expect(eventsToScript(events)).toMatchObject({ error: 'focus_lost' });
   });
 
   // (7)
@@ -133,8 +135,8 @@ describe('the other modifier taps', () => {
   });
 
   test('Alt or Meta held over a key is a chord, not a tap', () => {
-    expect(eventsToScript(hold('Alt', ['a']))).toEqual({ error: 'unsupported_combo' });
-    expect(eventsToScript(hold('Meta', ['a']))).toEqual({ error: 'unsupported_combo' });
+    expect(eventsToScript(hold('Alt', ['a']))).toMatchObject({ error: 'unsupported_combo' });
+    expect(eventsToScript(hold('Meta', ['a']))).toMatchObject({ error: 'unsupported_combo' });
   });
 
   test('CapsLock held over a key is not a chord — it changes case, it does not command', () => {
@@ -180,28 +182,61 @@ describe('keys that cancel a sample', () => {
     'Insert',
     'F1',
   ])('%s is unsupported', (key) => {
-    expect(eventsToScript(type(['a', key, 'b']))).toEqual({ error: 'unsupported_key' });
+    expect(eventsToScript(type(['a', key, 'b']))).toMatchObject({ error: 'unsupported_key' });
   });
 
   test('a non-ASCII character is unsupported', () => {
     for (const key of ['é', '密', '🔑']) {
-      expect(eventsToScript(type(['a', key]))).toEqual({ error: 'unsupported_key' });
+      expect(eventsToScript(type(['a', key]))).toMatchObject({ error: 'unsupported_key' });
     }
   });
 
   test('Enter terminates when it comes last, and cancels anywhere else', () => {
     expect(ok(eventsToScript(type(['a', 'b', 'Enter']))).script).toBe('ab');
-    expect(eventsToScript(type(['a', 'Enter', 'b']))).toEqual({ error: 'unsupported_key' });
+    expect(eventsToScript(type(['a', 'Enter', 'b']))).toMatchObject({ error: 'unsupported_key' });
   });
 });
 
 describe('malformed streams', () => {
-  test('a keyup with no keydown', () => {
-    expect(eventsToScript([{ type: 'up', key: 'a', t: 1000 }])).toEqual({ error: 'malformed' });
+  /**
+   * A key released but never pressed is a straggler from before capture began — most
+   * often Shift held across the end of one sample and into the next. It contributed
+   * nothing to a field that was cleared when capture started, so it is dropped rather
+   * than allowed to void a sample the user typed correctly.
+   */
+  test('a leading orphan keyup is ignored, not fatal', () => {
+    const events: KeyEvent[] = [{ type: 'up', key: 'Shift', t: 900 }, ...type(['a', 'b'], 1000)];
+    const r = eventsToScript(events);
+    if ('error' in r) throw new Error(`expected a script, got ${r.error}: ${r.detail}`);
+    expect(r.script).toBe('ab');
   });
 
-  test('a keydown that is never released', () => {
-    expect(eventsToScript([{ type: 'down', key: 'a', t: 1000 }])).toEqual({ error: 'malformed' });
+  test('an orphan keyup mid-sample is ignored too', () => {
+    const events: KeyEvent[] = [
+      ...type(['a'], 1000),
+      { type: 'up', key: 'Control', t: 1150 },
+      ...type(['b'], 1200),
+    ];
+    const r = eventsToScript(events);
+    if ('error' in r) throw new Error(`expected a script, got ${r.error}`);
+    expect(r.script).toBe('ab');
+  });
+
+  test('but releasing a key more often than it was pressed is still malformed', () => {
+    expect(
+      eventsToScript([
+        { type: 'down', key: 'a', t: 1000 },
+        { type: 'up', key: 'a', t: 1050 },
+        { type: 'up', key: 'a', t: 1060 },
+      ]),
+    ).toEqual({ error: 'malformed', detail: 'a released more times than it was pressed' });
+  });
+
+  test('a keydown that is never released says which key', () => {
+    expect(eventsToScript([{ type: 'down', key: 'a', t: 1000 }])).toEqual({
+      error: 'malformed',
+      detail: 'a still held when the sample ended',
+    });
   });
 
   test('a keyup before its keydown', () => {
@@ -210,11 +245,39 @@ describe('malformed streams', () => {
         { type: 'down', key: 'a', t: 1000 },
         { type: 'up', key: 'a', t: 900 },
       ]),
-    ).toEqual({ error: 'malformed' });
+    ).toMatchObject({ error: 'malformed' });
   });
 
-  test('an empty sample', () => {
-    expect(eventsToScript([])).toEqual({ error: 'malformed' });
+  test('an empty sample says so', () => {
+    expect(eventsToScript([])).toEqual({ error: 'malformed', detail: 'no keystrokes captured' });
+  });
+
+  test('a sample of nothing but an orphan keyup has no keystrokes at all', () => {
+    expect(eventsToScript([{ type: 'up', key: 'Shift', t: 1000 }])).toEqual({
+      error: 'malformed',
+      detail: 'no keystrokes captured',
+    });
+  });
+
+  test('every rejection carries a non-empty detail', () => {
+    const cases: KeyEvent[][] = [
+      [],
+      [{ type: 'up', key: 'a', t: 1 }],
+      [
+        { type: 'down', key: 'a', t: 1 },
+        { type: 'up', key: 'a', t: 2 },
+        { type: 'up', key: 'a', t: 3 },
+      ],
+      [{ type: 'down', key: 'a', t: 1 }],
+      [{ type: 'blur', t: 1 }],
+      type(['a', 'ArrowLeft']),
+      hold('Control', ['a']),
+    ];
+    for (const events of cases) {
+      const result = eventsToScript(events);
+      if (!('error' in result)) throw new Error('expected a rejection');
+      expect(result.detail.length).toBeGreaterThan(0);
+    }
   });
 });
 

@@ -273,7 +273,7 @@ describe('Rhythm Light capture module (startCapture)', () => {
 
     const events = session.stop();
     expect(events.some((e) => e.type === 'blur')).toBe(true);
-    expect(eventsToScript(events)).toEqual({ error: 'focus_lost' });
+    expect(eventsToScript(events)).toMatchObject({ error: 'focus_lost' });
   });
 
   it('Backspace is a legitimate keystroke now, not a rejected one', () => {
