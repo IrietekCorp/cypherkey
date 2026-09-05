@@ -49,6 +49,7 @@ function fakeSession() {
         userId: 'user-1',
         recoveryCode: 'AAAA-BBBB-CCCC-DDDD-EEEE-FFFF-GGGG-H',
         enrollmentToken: 'enroll-token-1',
+        backupCodes: Array.from({ length: 10 }, (_, i) => `AAAAA-0000${i}`),
       } satisfies SignupResult;
     },
   };

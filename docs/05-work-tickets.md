@@ -571,7 +571,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 **A-15 has no extension budget.** The site and the server binary have one and are enforced by `scripts/size-check.ts`; the extension is now the largest artefact and has none. Worth adding before M2-08 and M2-09 pull in more.
 
-**A minimum length contradiction, unresolved in the docs and resolved here.** Three numbers were in play: the B1 decision said "at least 8, 10 is better", docs/03 X-2 says "≥ 3/4 and ≥ 12 chars", and this ticket said 10. Built to **12 and zxcvbn ≥ 3**, following docs/03 as the design document for this screen, and exposed as `MIN_PASSPHRASE_LENGTH` so it is a one-line change. The reasoning is asymmetric risk: too strict is fixed by loosening, while too loose leaves weak passphrases in the world permanently and tightening later would force a re-key (A-16). **Still wants a ruling.**
+**A minimum length contradiction, unresolved in the docs and resolved here.** Three numbers were in play: the B1 decision said "at least 8, 10 is better", docs/03 X-2 says "≥ 3/4 and ≥ 12 chars", and this ticket said 10. Built to **12 and zxcvbn ≥ 3**, following docs/03 as the design document for this screen, and exposed as `MIN_PASSPHRASE_LENGTH` so it is a one-line change. The reasoning is asymmetric risk: too strict is fixed by loosening, while too loose leaves weak passphrases in the world permanently and tightening later would force a re-key (A-16). **Ruled 2026-09-05: 12 confirmed.** docs/03 X-2 records it; the B1 figures of 8 and 10 are superseded.
 
 **Tests:** two token-different scripts that resolve alike are rejected; the keystroke/character counts match `scriptLength` and `resolveScript`; under-length is refused; consent is required; an absence test that no passphrase or script reaches storage.
 
@@ -583,7 +583,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-04 · Recovery Kit screen · M · deps: M2-03 · X-2
+### M2-04 · Recovery Kit screen · M · deps: M2-03 · X-2 · **DONE**
 
 **Why.** This sheet is the only artefact that survives losing the device, and it will be read by someone years later who has nothing else.
 
@@ -597,6 +597,13 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 - The first set of **Backup Codes** arrives in the signup response and is shown once, here or immediately after. They are Backup Codes in every string; "Recovery" belongs to the Kit alone.
 
 **Tests:** the rendered code is 33 characters and round-trips through `parseRecoveryCode`; a wrong confirmation character is refused; the print stylesheet includes the authenticator line; the replacement-Kit variant renders its own copy; an absence test that the code never reaches `chrome.storage`.
+
+**As built.**
+
+- One file outside the list changed: **`core/client/session.ts`**. The server has returned `backupCodes` from signup since M2-00e, but `SignupResult` dropped them on the floor — so "the first set of Backup Codes arrives in the signup response and is shown once, here" was not achievable. `SignupResult` now carries them.
+- The confirmation accepts **Crockford lookalikes**: reading `O` where the sheet prints `0`, or `I`/`L` for `1`, is not a failure. The Kit alphabet excludes I, L, O and U precisely so a printed sheet is unambiguous, and punishing someone for the ambiguity the alphabet was designed to remove would be perverse.
+- The authenticator warning lives **inside** the `.print-kit` section rather than beside it, so no print stylesheet change can drop it. The confirmation challenge is `no-print`: a printed "type 4 characters back" prompt is nonsense.
+- Four characters rather than a full retype is not only convenience — a full retype trains the habit of typing a Recovery Kit into a screen, which is exactly what a phishing page would ask for.
 
 ---
 

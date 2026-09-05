@@ -1,17 +1,16 @@
 /**
  * Passphrase strength for onboarding (X-2).
  *
- * The number is contested and worth stating plainly: docs/03 X-2 requires 12 characters
- * and zxcvbn >= 3/4, while the B1 decision said "at least 8, 10 is better". 12 is used
- * because being too strict is recoverable by loosening it, whereas shipping a weaker
- * minimum leaves weak passphrases in the world permanently — tightening later would
- * mean a re-key (A-16), which is the one thing changing a passphrase must avoid.
+ * 12 characters and zxcvbn >= 3/4, ruled 2026-09-05 and recorded in docs/03 X-2. The
+ * earlier B1 figures of 8 and 10 are superseded. The reasoning is asymmetric risk:
+ * loosening this later is free, while tightening it later forces a re-key (A-16) on
+ * every account below the new floor — so start strict.
  *
  * The passphrase is scored in memory and never stored, logged or sent. zxcvbn's
  * dictionaries are loaded lazily so they do not sit in the popup's initial chunk.
  */
 
-/** docs/03 X-2. One line to change if the ruling comes back different. */
+/** docs/03 X-2, ruled 2026-09-05. The single place this number is written down. */
 export const MIN_PASSPHRASE_LENGTH = 12;
 /** zxcvbn's 0–4 scale; 3 is "safely unguessable without a targeted attack". */
 export const MIN_ZXCVBN_SCORE = 3;

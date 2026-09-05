@@ -80,6 +80,12 @@ export type SignupResult = {
   recoveryCode: string;
   /** Scope-`enroll` bearer token from A-9. Enrollment cannot start without it. */
   enrollmentToken: string;
+  /**
+   * X-3's ten one-time Backup Codes, returned once by signup and never again. They are
+   * "Backup Codes" everywhere; "Recovery" belongs to the Kit, which opens a vault
+   * rather than a session.
+   */
+  backupCodes: string[];
 };
 
 export type LoginInput = Credential & { username: string; featureVector: number[] };
@@ -645,10 +651,14 @@ export function createSession(deps: SessionDeps): Session {
       unlockWith(vault, wrap, phantom);
       vaultShareBytes = vaultShare;
 
+      const backupCodes = Array.isArray(payload.backupCodes)
+        ? payload.backupCodes.filter((c): c is string => typeof c === 'string')
+        : [];
       return {
         userId: requireString(payload.userId, 'userId'),
         recoveryCode,
         enrollmentToken: requireString(payload.enrollmentToken, 'enrollmentToken'),
+        backupCodes,
       };
     },
 

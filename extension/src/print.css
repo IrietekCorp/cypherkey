@@ -1,0 +1,41 @@
+/*
+ * The Recovery Kit is the only artefact that survives losing every device, and it will
+ * be read by someone who has nothing else — possibly years later. So the printed sheet
+ * carries its own explanation, not just the code.
+ */
+@media print {
+  /* Nothing but the Kit. Buttons, navigation and the confirmation challenge are
+     screen-only: a printed "type 4 characters back" prompt is nonsense. */
+  body > *:not(.print-kit),
+  .no-print {
+    display: none !important;
+  }
+
+  .print-kit {
+    display: block !important;
+    margin: 0;
+    padding: 2rem;
+    color: #000;
+    background: #fff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  .print-kit .kit-code {
+    font-size: 1.5rem;
+    letter-spacing: 0.08em;
+    word-break: break-all;
+    margin: 1.5rem 0;
+  }
+
+  /* The consequence line must survive printing. Someone reading this sheet has no
+     other context, and discovering it at the next login is too late. */
+  .print-kit .kit-consequences {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    max-width: 34em;
+  }
+
+  @page {
+    margin: 1.5cm;
+  }
+}
