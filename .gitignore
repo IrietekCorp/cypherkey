@@ -11,3 +11,7 @@ site/dist/
 *.db
 *.db-wal
 *.db-shm
+
+# WXT build output and generated types
+extension/.output
+extension/.wxt

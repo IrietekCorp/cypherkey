@@ -36,6 +36,16 @@ export type SessionDeps = {
   idleTimeoutMs?: number;
   /** Overridden only by tests; production uses the per-account params from `/auth/salt`. */
   argonParams?: ArgonParams;
+  /**
+   * The Argon2id step, injected so it can run somewhere other than the calling thread.
+   * The extension supplies a Web Worker-backed implementation: a ~175 ms hash on a
+   * popup's main thread janks the unlock screen and stalls the Rhythm Light's
+   * per-keystroke pulse, which is the one piece of UI that must never stutter.
+   *
+   * Defaults to the direct call, so the server, the e2e and the tests are unaffected.
+   * Whatever is supplied must be the same Argon2id — `hash-wasm` everywhere (A-2).
+   */
+  deriveKey?: typeof deriveMasterKey;
 };
 
 /**
@@ -245,7 +255,7 @@ export function createSession(deps: SessionDeps): Session {
    * because re-deriving it later would mean a second Argon2id at m=64 MiB.
    */
   async function deriveBranches(cred: Credential, salt: Uint8Array, params?: ArgonParams) {
-    const master = await deriveMasterKey(
+    const master = await (deps.deriveKey ?? deriveMasterKey)(
       kdfInput(cred.resolved, cred.script, cred.strictness),
       salt,
       params ?? deps.argonParams,

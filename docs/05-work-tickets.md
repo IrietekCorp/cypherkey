@@ -495,7 +495,7 @@ Written 2026-09-05 against the verified client surface above. Sequence: **M2-01 
 
 ---
 
-### M2-01 · Extension scaffold and the storage adapter · M · deps: M2-00d
+### M2-01 · Extension scaffold and the storage adapter · M · deps: M2-00d · **DONE**
 
 **Why.** Everything else in M2 is a screen inside this shell. It also has to prove the thing most likely to be wrong late: that Argon2id at m=64 MiB runs acceptably inside an MV3 popup.
 
@@ -515,6 +515,14 @@ Only what A-7 permits may persist: the user salt, the device id and the wrapped 
 **Tests:** the storage adapter round-trips and `remove` really removes; a full `createSession` signup drives through it against a mocked `fetch`; the worker returns the same bytes as a direct `deriveMasterKey` for a known vector; the manifest contains `wasm-unsafe-eval`; an absence test that after signup, `chrome.storage.local` holds only the five permitted keys.
 
 **Acceptance:** load unpacked in Chrome, sign up against a local server, and see the popup stay responsive throughout the hash. Measure and record the popup-open-to-unlock time; it is the number M2-07 is judged against.
+
+**As built.**
+
+- One file outside the list was required and changed: **`core/client/session.ts`**. It imported `deriveMasterKey` directly, so there was no seam to move the KDF off the main thread and requirement 2 was unreachable. `SessionDeps` now takes an optional `deriveKey`, matching how `fetch`, `storage` and `now` are already injected; it defaults to the direct call, so the server, the e2e and every existing test are untouched.
+- `workerKdf` correlates requests **by id, not arrival order**. Two derivations can be in flight at once — an unlock racing a background refresh — and resolving in order would hand one caller the other's key. That is a silent wrong-key bug, not a visible failure, so there is a test that replies out of order deliberately.
+- **A dependency conflict worth remembering:** `@wxt-dev/module-react` pulls `@vitejs/plugin-react`, whose v5+ requires Vite 8, while the site is on Vite 6. Rather than force a Vite major on working code, `@vitejs/plugin-react` is pinned to `^4` via a `package.json` override. Revisit when the site moves to Vite 8.
+- **CI builds the extension.** The CSP that lets Argon2 instantiate under MV3 lives in the *generated* manifest, which no unit test can see; a config-object assertion would have passed while the real artefact lost it. CI now builds and greps the output.
+- **Not done here:** the acceptance still needs a human. Nothing in this environment can load an unpacked extension in Chrome, so the popup-open-to-unlock number is unmeasured and M2-07 has no baseline yet.
 
 ---
 

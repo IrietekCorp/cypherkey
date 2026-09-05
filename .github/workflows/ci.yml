@@ -17,6 +17,14 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
+      # M2-01: the CSP that lets Argon2's WASM instantiate under MV3 lives in the
+      # GENERATED manifest, not in the config object the unit test can see. Build it
+      # here so a change that drops it fails CI rather than a real browser.
+      - run: bun run build:extension
+      - name: the built manifest still allows wasm-unsafe-eval
+        run: |
+          grep -q "wasm-unsafe-eval" extension/.output/chrome-mv3/manifest.json \
+            || { echo "extension_pages CSP lost 'wasm-unsafe-eval'"; exit 1; }
       # Blocking, so any NEW advisory fails the build. One exception, by id:
       # GHSA-67mh-4wv8-2f99 is esbuild's dev server letting any website read its
       # responses. It reaches us only through drizzle-kit and vite > tsx, both of
