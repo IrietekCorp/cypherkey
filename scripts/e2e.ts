@@ -357,6 +357,33 @@ async function main(): Promise<void> {
   );
   ok('recovery revoked the old devices and requires a fresh enrolment (X-5)');
 
+  // X-5: the Kit that was just used is retired, and its replacement takes over.
+  const oldKitAgain = await sessionThree
+    .recover({
+      username,
+      recoveryCode: signup.recoveryCode,
+      credential,
+      deviceName: 'replay',
+      devicePlatform: 'ci',
+    })
+    .then(
+      () => 'accepted',
+      () => 'refused',
+    );
+  assert(oldKitAgain === 'refused', 'the Recovery Kit just used must not work twice');
+
+  const storageFour = memoryStorage();
+  const sessionFour = clientFor(storageFour);
+  await sessionFour.recover({
+    username,
+    recoveryCode: recoveredSession.recoveryCode,
+    credential: { ...credential, resolved: 'a third passphrase' },
+    deviceName: 'recovered again',
+    devicePlatform: 'ci',
+  });
+  assert(sessionFour.state() === 'unlocked', 'the replacement Kit must work');
+  ok('recovery retired the used Kit and issued a working replacement (X-5)');
+
   // A wrong Kit must never release the blob.
   const badKit = await sessionThree
     .recover({

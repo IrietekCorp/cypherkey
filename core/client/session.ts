@@ -130,7 +130,16 @@ export type RecoverInput = {
   devicePlatform: string;
 };
 
-export type RecoverResult = { userId: string; enrollmentToken: string };
+export type RecoverResult = {
+  userId: string;
+  enrollmentToken: string;
+  /**
+   * X-5: a replacement Recovery Kit, shown once. The old one stopped working when the
+   * recovery committed, so this must be presented before the flow can be considered
+   * finished — an unsaved Kit is an account with no way back.
+   */
+  recoveryCode: string;
+};
 
 export type Session = {
   state(): SessionState;
@@ -448,6 +457,18 @@ export function createSession(deps: SessionDeps): Session {
       const vaultShare = xor32(vault, serverShare);
       const rewrapped = await wrapKey(vaultShare, wrap, 'cypherkey/wrap/vault-key/v1');
 
+      // A replacement Kit, wrapping the same unchanged vaultKey. The old Kit is retired
+      // by the same transaction that accepts this one.
+      const nextRecoveryCode = generateRecoveryCode();
+      const nextRecoveryKey = await recoveryKeyFromCode(nextRecoveryCode);
+      const nextRecoveryWrapped = await wrapKey(
+        vault,
+        nextRecoveryKey,
+        'cypherkey/wrap/vault-key/v1',
+      );
+      const nextRecoveryAuthHash = toBase64Url(await recoveryAuthHashFromKey(nextRecoveryKey));
+      nextRecoveryKey.fill(0);
+
       const device = await generateDeviceKey();
       const deviceId = toBase64Url(device.pub);
       const done = await request('POST', '/auth/recover', {
@@ -459,6 +480,8 @@ export function createSession(deps: SessionDeps): Session {
         devicePub: deviceId,
         deviceName: input.deviceName,
         devicePlatform: input.devicePlatform,
+        newRecoveryWrappedVaultKey: sealedToJson(nextRecoveryWrapped),
+        newRecoveryAuthHash: nextRecoveryAuthHash,
       });
       authKey.fill(0);
       if (done.status !== 200) {
@@ -486,6 +509,7 @@ export function createSession(deps: SessionDeps): Session {
       return {
         userId: requireString(result.userId, 'userId'),
         enrollmentToken: requireString(result.enrollmentToken, 'enrollmentToken'),
+        recoveryCode: nextRecoveryCode,
       };
     },
 

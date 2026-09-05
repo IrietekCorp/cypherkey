@@ -162,20 +162,36 @@ async function account() {
     recoveryWrappedVaultKey,
     backupCodes: created.backupCodes,
     newSigner: { priv: newDevice.priv, id: toBase64Url(newDevice.pub) } as Signer,
-    recoverBody: (over: Record<string, unknown> = {}) => ({
-      username,
-      recoveryAuthHash,
-      newAuthHash: toBase64Url(randomBytes(32)),
-      newUserSalt: toBase64Url(randomBytes(16)),
-      newWrappedVaultKey: {
-        ct: toBase64Url(randomBytes(48)),
-        nonce: toBase64Url(randomBytes(12)),
-      },
-      devicePub: toBase64Url(newDevice.pub),
-      deviceName: 'Recovered laptop',
-      devicePlatform: 'linux',
-      ...over,
-    }),
+    /**
+     * X-5: recovery retires the old Kit and issues a new one, so a body always carries
+     * a replacement. `kit` is the code the caller would be shown afterwards.
+     */
+    recoverBody: async (over: Record<string, unknown> = {}) => {
+      const kit = generateRecoveryCode();
+      const key = await recoveryKeyFromCode(kit);
+      return {
+        kit,
+        body: {
+          username,
+          recoveryAuthHash,
+          newAuthHash: toBase64Url(randomBytes(32)),
+          newUserSalt: toBase64Url(randomBytes(16)),
+          newWrappedVaultKey: {
+            ct: toBase64Url(randomBytes(48)),
+            nonce: toBase64Url(randomBytes(12)),
+          },
+          devicePub: toBase64Url(newDevice.pub),
+          deviceName: 'Recovered laptop',
+          devicePlatform: 'linux',
+          newRecoveryWrappedVaultKey: {
+            ct: toBase64Url(randomBytes(48)),
+            nonce: toBase64Url(randomBytes(12)),
+          },
+          newRecoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(key)),
+          ...over,
+        },
+      };
+    },
   };
 }
 
@@ -246,7 +262,7 @@ describe('POST /auth/recover/begin', () => {
 describe('POST /auth/recover', () => {
   test('a correct Kit recovers, and the new passphrase logs in', async () => {
     const a = await account();
-    const body = a.recoverBody();
+    const { body } = await a.recoverBody();
     const res = await a.post('/auth/recover', body);
     expect(res.status).toBe(200);
 
@@ -281,7 +297,7 @@ describe('POST /auth/recover', () => {
 
   test('the old passphrase no longer works', async () => {
     const a = await account();
-    await a.post('/auth/recover', a.recoverBody());
+    await a.post('/auth/recover', (await a.recoverBody()).body);
 
     const login = await a.call('POST', '/auth/login', {
       username: a.username,
@@ -297,7 +313,7 @@ describe('POST /auth/recover', () => {
     const before = JSON.stringify(await a.drizzle.select().from(schema.users));
     const res = await a.post(
       '/auth/recover',
-      a.recoverBody({ recoveryAuthHash: toBase64Url(randomBytes(32)) }),
+      (await a.recoverBody({ recoveryAuthHash: toBase64Url(randomBytes(32)) })).body,
     );
 
     expect(res.status).toBe(401);
@@ -306,7 +322,7 @@ describe('POST /auth/recover', () => {
 
   test('every previous device is revoked and the presenting one is registered', async () => {
     const a = await account();
-    const body = a.recoverBody();
+    const { body } = await a.recoverBody();
     await a.post('/auth/recover', body);
 
     const devices = await a.drizzle.select().from(schema.devices);
@@ -319,7 +335,7 @@ describe('POST /auth/recover', () => {
 
   test('the biometric profile is gone and enrollment starts over', async () => {
     const a = await account();
-    const out = (await (await a.post('/auth/recover', a.recoverBody())).json()) as {
+    const out = (await (await a.post('/auth/recover', (await a.recoverBody()).body)).json()) as {
       enrollmentToken: string;
     };
 
@@ -353,7 +369,7 @@ describe('POST /auth/recover', () => {
       createdAt: new Date(CLOCK.now()),
     });
 
-    await a.post('/auth/recover', a.recoverBody());
+    await a.post('/auth/recover', (await a.recoverBody()).body);
 
     expect(await a.drizzle.select().from(schema.stepUpFactors)).toHaveLength(0);
     // Backup Codes are sha256 hashes and owe nothing to the passphrase.
@@ -367,7 +383,7 @@ describe('POST /auth/recover', () => {
   test('the key version is bumped and serverShare is unchanged', async () => {
     const a = await account();
     const before = (await a.drizzle.select().from(schema.users))[0];
-    await a.post('/auth/recover', a.recoverBody());
+    await a.post('/auth/recover', (await a.recoverBody()).body);
     const after = (await a.drizzle.select().from(schema.users))[0];
 
     expect(after?.keyVersion).toBe((before?.keyVersion ?? 0) + 1);
@@ -377,7 +393,7 @@ describe('POST /auth/recover', () => {
 
   test('nothing in the response or the tables carries the Kit', async () => {
     const a = await account();
-    const res = await a.post('/auth/recover', a.recoverBody());
+    const res = await a.post('/auth/recover', (await a.recoverBody()).body);
     const text = await res.text();
     expect(text).not.toContain(a.recoveryAuthHash);
 
@@ -421,7 +437,7 @@ describe('lockout and hardening', () => {
       recoveryAuthHash: toBase64Url(randomBytes(32)),
     });
     CLOCK.value += 30_000;
-    await a.post('/auth/recover', a.recoverBody());
+    await a.post('/auth/recover', (await a.recoverBody()).body);
 
     const lockout = (await a.drizzle.select().from(schema.lockouts))[0];
     expect(lockout?.failedCount).toBe(0);
@@ -524,7 +540,7 @@ describe('the recovery transaction is all-or-nothing', () => {
       collision as ReturnType<typeof crypto.randomUUID>,
     );
     try {
-      const res = await a.post('/auth/recover', a.recoverBody());
+      const res = await a.post('/auth/recover', (await a.recoverBody()).body);
       // However it surfaces, it must not be a success.
       expect(res.status).not.toBe(200);
     } catch {
@@ -548,5 +564,98 @@ describe('the recovery transaction is all-or-nothing', () => {
       commitments: commitsFor(),
     });
     expect(login.status).toBe(200);
+  });
+});
+
+/**
+ * X-5: `vaultKey` never changes, so without this the old Kit would keep opening the
+ * vault forever — and it was just typed into whatever context made recovery necessary.
+ */
+describe('recovery retires the old Recovery Kit', () => {
+  test('the old Kit no longer authenticates', async () => {
+    const a = await account();
+    await a.post('/auth/recover', (await a.recoverBody()).body);
+
+    const res = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: a.recoveryAuthHash,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test('the replacement Kit authenticates and returns the new blob', async () => {
+    const a = await account();
+    const { kit, body } = await a.recoverBody();
+    await a.post('/auth/recover', body);
+
+    const key = await recoveryKeyFromCode(kit);
+    const res = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(key)),
+    });
+
+    expect(res.status).toBe(200);
+    const out = (await res.json()) as Record<string, unknown>;
+    expect(out.recoveryWrappedVaultKey).toEqual(body.newRecoveryWrappedVaultKey);
+  });
+
+  test('the stored verifier is replaced, not appended', async () => {
+    const a = await account();
+    const before = (await a.drizzle.select().from(schema.users))[0]?.recoveryAuthHash;
+    await a.post('/auth/recover', (await a.recoverBody()).body);
+    const after = (await a.drizzle.select().from(schema.users))[0]?.recoveryAuthHash;
+
+    expect(after).not.toBe(before as string);
+    expect(after?.startsWith('$argon2id$')).toBe(true);
+  });
+
+  test('recovering twice in a row works, each time with the newest Kit', async () => {
+    const a = await account();
+    const first = await a.recoverBody();
+    await a.post('/auth/recover', first.body);
+
+    // Round two, presenting the Kit issued by round one.
+    const firstKey = await recoveryKeyFromCode(first.kit);
+    const second = await a.recoverBody({
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(firstKey)),
+    });
+    const res = await a.post('/auth/recover', second.body);
+    expect(res.status).toBe(200);
+  });
+
+  test('a rolled-back recovery leaves the ORIGINAL Kit working', async () => {
+    const a = await account();
+    const userId = (await a.drizzle.select().from(schema.users))[0]?.id as string;
+
+    const collision = crypto.randomUUID();
+    await a.drizzle.insert(schema.devices).values({
+      id: collision,
+      userId,
+      publicKey: toBase64Url(randomBytes(32)),
+      name: 'squatter',
+      platform: 'linux',
+      trustedAt: new Date(CLOCK.now()),
+      lastSeenAt: new Date(CLOCK.now()),
+      revokedAt: null,
+    });
+
+    const spy = spyOn(crypto, 'randomUUID').mockReturnValue(
+      collision as ReturnType<typeof crypto.randomUUID>,
+    );
+    try {
+      await a.post('/auth/recover', (await a.recoverBody()).body);
+    } catch {
+      // The response does not matter; what matters is that the Kit still works.
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Retiring the old Kit is part of the transaction, so a rollback must restore it.
+    // Otherwise a failed recovery would strand the account with no way back at all.
+    const res = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: a.recoveryAuthHash,
+    });
+    expect(res.status).toBe(200);
   });
 });

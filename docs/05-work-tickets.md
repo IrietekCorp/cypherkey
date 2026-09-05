@@ -340,7 +340,9 @@ Returns `{ userId, serverShare, enrollmentToken }`. `vaultKey` itself never chan
 - A failed transaction returns `recovery_failed` (500) rather than leaking a driver error, and does **not** count against lockout: the Kit was correct, something else broke.
 - Every other route test had to gain `recoveryAuthHash`, since `/auth/recovery-key` now requires it — 33 tests failed until they did, which is the schema change being load-bearing rather than cosmetic.
 
-**Open question for you, still not decided:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
+**Decided (2026-09-05): recovery issues a new Kit and retires the used one.** The client wraps the unchanged `vaultKey` under a fresh Kit and sends `newRecoveryWrappedVaultKey` + `newRecoveryAuthHash`; the same transaction that writes the new passphrase replaces the Kit. `session.recover()` returns the new code so the screen can show it once.
+
+The subtlety worth keeping: **retiring the old Kit is inside the transaction.** If it were not, a recovery that failed partway would leave the account with no working Kit at all — a failure mode strictly worse than the one this change fixes. `recover.test.ts` forces a rollback and asserts the *original* Kit still authenticates. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
 
 ### M2-00g · Learn from a verified step-up · M · deps: M1-09 · **approved, mechanism revised**
 

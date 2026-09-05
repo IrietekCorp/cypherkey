@@ -273,10 +273,15 @@ POST  /auth/recover/begin     {username, recoveryAuthHash} → {recoveryWrappedV
                               READ-ONLY: touches no factor, device, key or profile. Same lockout and
                               500 ms floor as /auth/login; an unknown user answers exactly as a wrong Kit.
 POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserSalt, newWrappedVaultKey,
-                              devicePub, deviceName, devicePlatform} → {userId, serverShare, enrollmentToken}
+                              devicePub, deviceName, devicePlatform,
+                              newRecoveryWrappedVaultKey, newRecoveryAuthHash}
+                              → {userId, serverShare, enrollmentToken}   (client keeps the new Kit code)
                               One transaction: delete TOTP factors, revoke every device and refresh token,
                               register the presenting device, write the new key material and bump
-                              key_version, delete the profile and samples. Backup Codes are untouched.
+                              key_version, delete the profile and samples, and replace the Recovery Kit
+                              with the newRecovery* pair the client sends. Backup Codes are untouched.
+                              Retiring the old Kit is INSIDE the transaction: a rollback must leave the
+                              original Kit working, or a failed recovery strands the account.
                               Two calls because the client cannot compute newWrappedVaultKey until it has
                               unwrapped vaultKey, and the server cannot re-wrap on its behalf.
 GET   /user/backup-codes      → {remaining}   ← a count, never the codes

@@ -105,7 +105,12 @@ function mockServer(options: { band?: 'pass' | 'grey' | 'fail' } = {}) {
       if (body?.recoveryAuthHash !== state.stored.recoveryAuthHash) {
         return json(401, { error: 'invalid_credentials' });
       }
-      Object.assign(state.stored, { recovered: body });
+      // X-5: the old Kit is retired and the replacement takes its place, atomically.
+      Object.assign(state.stored, {
+        recovered: body,
+        recoveryAuthHash: body.newRecoveryAuthHash,
+        recoveryWrappedVaultKey: body.newRecoveryWrappedVaultKey,
+      });
       return json(200, {
         userId: 'user-1',
         serverShare: toBase64Url(state.serverShare),
@@ -926,5 +931,76 @@ describe('recovery (X-5)', () => {
     });
 
     expect(storage.dump()['cypherkey.device.id']).not.toBe(before);
+  });
+});
+
+describe('recovery issues a replacement Recovery Kit (X-5)', () => {
+  const recoverWith = (session: ReturnType<typeof makeSession>, recoveryCode: string) =>
+    session.recover({
+      username: 'shawn',
+      recoveryCode,
+      credential: { ...CREDENTIAL, resolved: 'a brand new passphrase' },
+      deviceName: 'Recovered laptop',
+      devicePlatform: 'linux',
+    });
+
+  test('a new code comes back, and it is not the one just used', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+    session.lock();
+
+    const result = await recoverWith(session, recoveryCode);
+    expect(result.recoveryCode).toBeDefined();
+    expect(result.recoveryCode).not.toBe(recoveryCode);
+  });
+
+  test('the replacement wraps the same unchanged vault key', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+    const original = toBase64Url(session.vaultKey());
+    session.lock();
+
+    const result = await recoverWith(session, recoveryCode);
+    // The new Kit must open the same vault: vaultKey is never rotated by recovery.
+    const call = server.state.calls.find((c) => c.path === '/auth/recover');
+    const blob = (call?.body as Record<string, unknown>).newRecoveryWrappedVaultKey;
+    const key = await recoveryKeyFromCode(result.recoveryCode);
+    const unwrapped = await unwrapKey(
+      {
+        ct: fromBase64Url((blob as { ct: string }).ct),
+        nonce: fromBase64Url((blob as { nonce: string }).nonce),
+      },
+      key,
+      'cypherkey/wrap/vault-key/v1',
+    );
+    expect(toBase64Url(unwrapped)).toBe(original);
+  });
+
+  test('the old Kit stops working, the new one takes over', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+    session.lock();
+
+    const result = await recoverWith(session, recoveryCode);
+    session.lock();
+
+    expect(recoverWith(session, recoveryCode)).rejects.toThrow('401');
+    await recoverWith(session, result.recoveryCode);
+    expect(session.state()).toBe('unlocked');
+  });
+
+  test('neither Kit is ever sent to the server', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+    session.lock();
+    const result = await recoverWith(session, recoveryCode);
+
+    const sent = JSON.stringify(server.state.calls.map((c) => c.body));
+    expect(sent).not.toContain(recoveryCode);
+    expect(sent).not.toContain(result.recoveryCode);
   });
 });

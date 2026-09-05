@@ -27,6 +27,13 @@ const recoverSchema = beginSchema.extend({
   devicePub: z.string().min(1).max(512),
   deviceName: z.string().min(1).max(64),
   devicePlatform: z.string().min(1).max(32),
+  /**
+   * X-5: recovery issues a *new* Recovery Kit and retires the old one. `vaultKey` is
+   * unchanged, so the old Kit would otherwise keep opening the vault forever — and it
+   * was just typed into whatever context made recovery necessary.
+   */
+  newRecoveryWrappedVaultKey: sealedSchema,
+  newRecoveryAuthHash: z.string().min(1).max(512),
 });
 
 export type RecoverDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
@@ -148,6 +155,11 @@ export function recoverRoutes(deps: RecoverDeps): Hono {
         argonParams: config.argonParams,
         wrappedVaultKey: input.newWrappedVaultKey,
         keyVersion: user.keyVersion + 1,
+        // The old Kit stops working the moment this commits.
+        recoveryWrappedVaultKey: input.newRecoveryWrappedVaultKey,
+        recoveryAuthHash: await Bun.password.hash(input.newRecoveryAuthHash, {
+          algorithm: 'argon2id',
+        }),
       };
       const deviceRow = {
         id: deviceId,
@@ -190,7 +202,7 @@ export function recoverRoutes(deps: RecoverDeps): Hono {
               .run();
             // 3. register the device that presented the Kit.
             tx.insert(s.devices).values(deviceRow).run();
-            // 4. the new passphrase material, and a key-version bump.
+            // 4. the new passphrase material, the new Recovery Kit, and a key-version bump.
             tx.update(s.users).set(userUpdate).where(eq(s.users.id, user.id)).run();
             // 5. X-5 requires a fresh enrolment: the old rhythm profile goes.
             tx.delete(s.biometricProfiles).where(eq(s.biometricProfiles.userId, user.id)).run();
