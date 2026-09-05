@@ -783,9 +783,11 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 - `getDomain` returns null for localhost, IPs and intranet names. Null is **not** treated as a match, or every intranet host would be equivalent; exact equality is the only route for those.
 - **Two password fields are not a sign-in.** Autofilling a change-password form with the current password looks like it worked and silently sets the new password to the old one.
 
-**A permission decision worth your attention.** The content script matches `<all_urls>`, which is the largest change to what this extension can reach. Autofill cannot know in advance which sites a vault covers, so a password manager either has broad host access or it is not an autofilling password manager. The tighter alternative is `activeTab` with injection on a toolbar click, which turns autofill into "click the extension first, then fill" — a different product. The manifest test pins `permissions: ['storage']`, no `host_permissions`, and exactly one content script matching `<all_urls>`, so any widening has to be deliberate.
+**Permission posture: `activeTab`, not `<all_urls>` (ruled 2026-09-05).** The first pass shipped an `<all_urls>` content script, which is what a password manager usually asks for; it was given up deliberately. The extension holds `activeTab` and `scripting`, so it reaches a single tab only after the user invokes it there, and has **no standing access to browsing at all**. The filler is built as an unlisted script and injected on demand; being in the package is not being active, and a test asserts `content_scripts` is empty.
 
-**Left for the second pass:** the popup-side fill UI (choosing which item, and the inline icon), and a wider fixture set of real-world form shapes.
+**The cost, stated rather than absorbed:** nothing runs on pages the user has not pointed the extension at, so **the punycode lookalike warning now appears when a fill is requested rather than when the page loads**. That is still before any credential is released, but it cannot help someone who types a password by hand on a lookalike domain — which was the case the eager banner was most useful for. If beta shows people meeting lookalikes that way, the options are an opt-in per-site permission or a narrow `<all_urls>` script that *only* warns and never fills.
+
+**Left for the second pass:** the popup-side fill UI (choosing which item, the inline icon, and the `chrome.scripting.executeScript` call that injects `fill.js` into the active tab), and a wider fixture set of real-world form shapes.
 
 ---
 

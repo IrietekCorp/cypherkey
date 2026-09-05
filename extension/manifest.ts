@@ -13,22 +13,21 @@ export const manifest: {
   name: 'CypherKey',
   description: 'A password manager that knows how you type.',
   /**
-   * A-12: the least that works.
+   * A-12: the least that works, and deliberately tighter than a password manager
+   * usually asks for.
    *
-   * `storage` only. Still no `tabs`, no `scripting`, no `webRequest`.
+   * **No `<all_urls>` content script.** Most managers declare one, because autofill
+   * cannot know in advance which sites a vault covers. The trade taken here is the
+   * other one: `activeTab` grants access to a single tab, only after the user invokes
+   * the extension on it, and `scripting` injects the filler at that moment. The
+   * extension therefore has no standing access to browsing at all.
    *
-   * The content script matches `<all_urls>`, which is the real cost here and is a
-   * decision worth stating rather than absorbing: autofill cannot know in advance which
-   * sites a vault covers, so a password manager either has broad host access or it is
-   * not an autofilling password manager. The alternative — `activeTab` with injection
-   * on a toolbar click — is genuinely tighter, and turns autofill into "click the
-   * extension first, then fill", which is a different product.
-   *
-   * What that access is used for is deliberately narrow: the script detects fields and
-   * warns about a punycode host. It never fills on its own; a fill happens only when
-   * the user asks for one through the popup.
+   * The cost is real and worth naming: nothing runs on pages the user has not pointed
+   * the extension at, so **the punycode lookalike warning appears when a fill is
+   * requested rather than when the page loads**. That is still before any credential is
+   * released, but it cannot help someone who types a password by hand on a lookalike.
    */
-  permissions: ['storage'],
+  permissions: ['storage', 'activeTab', 'scripting'],
   content_security_policy: {
     // Requirement 1 of M2-01: without 'wasm-unsafe-eval' the Argon2 module will not
     // instantiate under MV3, and the failure surfaces only in a real browser.

@@ -417,6 +417,8 @@ Errors that change the resolved text (a forgotten Backspace) are not "phantom er
 | DB dump + leaked resolved passphrase | Medium/Relaxed: attacker can derive `phantomKey` and brute-force each commitment (~100 candidates per position) → phantoms add nothing here, but the vault was already lost in this scenario. Strict: `masterKey` needs the exact script → vault still protected. Say this on the Strictness screen |
 | Keylogger | Captures the script → unchanged, out of scope |
 
+**Extension permissions (A-12, ruled 2026-09-05).** `storage`, `activeTab`, `scripting`. No `<all_urls>` content script and no `host_permissions`: the extension reaches a single tab only after the user invokes it there, and has no standing access to browsing. The filler is an unlisted script injected on demand. The accepted cost is that the punycode lookalike warning fires when a fill is requested rather than when a page loads, so it cannot help someone who types a password by hand on a lookalike.
+
 ## A-15. Build, size, and speed budget
 
 | Target | Budget | How |

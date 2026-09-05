@@ -22,7 +22,9 @@ describe('manifest', () => {
 
   /** A-12: ask for the least that works. Each addition needs its own justification. */
   test('permissions are minimal', () => {
-    expect(manifest.permissions).toEqual(['storage']);
+    // `activeTab` + `scripting` instead of an <all_urls> content script: access to one
+    // tab, only after the user invokes the extension on it.
+    expect(manifest.permissions).toEqual(['storage', 'activeTab', 'scripting']);
     expect(manifest).not.toHaveProperty('host_permissions');
   });
 });
@@ -44,7 +46,7 @@ describe('the generated manifest', () => {
 
     expect(generated.manifest_version).toBe(3);
     expect(generated.content_security_policy?.extension_pages).toContain("'wasm-unsafe-eval'");
-    expect(generated.permissions).toEqual(['storage']);
+    expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
   });
 });
 
@@ -68,24 +70,33 @@ describe('the generated manifest is loadable', () => {
 });
 
 /**
- * M2-10 gave the extension broad host access through its content script. That is the
- * single largest change to what the extension can reach, so it is pinned: a future
- * widening (adding `tabs`, `scripting`, `webRequest`, or host_permissions) has to
- * change this test deliberately rather than slip through.
+ * The permission posture, pinned.
+ *
+ * M2-10 first shipped an `<all_urls>` content script, which is what a password manager
+ * usually asks for. It was deliberately given up: the extension now holds `activeTab`,
+ * so it reaches one tab only after the user invokes it there, and has no standing
+ * access to browsing. Any widening has to change this test on purpose.
  */
-describe('what M2-10 granted, and what it did not', () => {
+describe('the extension has no standing access to browsing', () => {
   const built = `${import.meta.dir}/.output/chrome-mv3/manifest.json`;
 
-  test.skipIf(!existsSync(built))('one content script, and no new permissions', async () => {
+  test.skipIf(!existsSync(built))('no content script is declared at all', async () => {
     const generated = JSON.parse(await Bun.file(built).text()) as {
       permissions?: string[];
       host_permissions?: string[];
-      content_scripts?: Array<{ matches?: string[] }>;
+      content_scripts?: unknown[];
     };
 
-    expect(generated.permissions).toEqual(['storage']);
+    // Nothing runs on a page the user has not pointed the extension at.
+    expect(generated.content_scripts ?? []).toHaveLength(0);
     expect(generated).not.toHaveProperty('host_permissions');
-    expect(generated.content_scripts).toHaveLength(1);
-    expect(generated.content_scripts?.[0]?.matches).toEqual(['<all_urls>']);
+    expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
+  });
+
+  test.skipIf(!existsSync(built))('the filler is built but not registered', async () => {
+    // It exists to be injected on demand; being in the package is not being active.
+    expect(existsSync(`${import.meta.dir}/.output/chrome-mv3/fill.js`)).toBe(true);
+    const generated = JSON.parse(await Bun.file(built).text()) as { content_scripts?: unknown[] };
+    expect(generated.content_scripts ?? []).toHaveLength(0);
   });
 });

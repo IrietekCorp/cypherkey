@@ -282,7 +282,7 @@ describe('the warning banner', () => {
    * here put 265 KB into every page; without it the content script is 5.5 KB.
    */
   test('neither the banner nor the content script imports tldts', async () => {
-    for (const file of ['banner.ts', 'detect.ts', 'index.ts']) {
+    for (const file of ['banner.ts', 'detect.ts']) {
       const source = await Bun.file(`${import.meta.dir}/${file}`).text();
       // The word appears in comments explaining why it is absent; an import does not.
       expect(source).not.toMatch(/^\s*import[^\n]*'tldts'/m);
