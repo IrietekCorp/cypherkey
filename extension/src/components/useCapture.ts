@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { startCapture } from '../../../core/biometrics/capture';
-import { eventsToScript } from '../../../core/biometrics/script';
+import { extractFeatures } from '../../../core/biometrics/features';
+import { eventsToScript, scriptLength } from '../../../core/biometrics/script';
 import type { KeyEvent, ScriptError } from '../../../core/biometrics/types';
 
 /**
@@ -120,7 +121,12 @@ export function useCapture() {
    * a chord rather than rejecting it. A caller that just took the events would show
    * nothing and then fail server-side with no explanation.
    */
-  const stop = useCallback((): { script: string; resolved: string; events: KeyEvent[] } | null => {
+  const stop = useCallback((): {
+    script: string;
+    resolved: string;
+    featureVector: number[];
+    events: KeyEvent[];
+  } | null => {
     const active = handle.current;
     if (active === null) return null;
     handle.current = null;
@@ -137,8 +143,18 @@ export function useCapture() {
       });
       return null;
     }
+    // Every consumer -- enrolment, login, step-up -- needs the vector as well as the
+    // script, and both are derived from the same events with the same token count.
+    // Extracting here keeps `getFeatureRanges` agreeing with the commitments.
+    const features = extractFeatures(events, scriptLength(script.script));
+    if ('error' in features) {
+      const reason = features.error === 'length_mismatch' ? 'malformed' : features.error;
+      setState({ status: 'cancelled', reason, message: CANCEL_MESSAGES[reason] });
+      return null;
+    }
+
     setState({ status: 'done', events });
-    return { ...script, events };
+    return { ...script, featureVector: features.values, events };
   }, []);
 
   const cancel = useCallback((reason: CaptureReason) => finish(reason), [finish]);

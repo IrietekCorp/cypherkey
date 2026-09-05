@@ -626,7 +626,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-05 · Enrollment screen · M · deps: M2-04
+### M2-05 · Enrollment screen · M · deps: M2-04 · **DONE**
 
 **Why.** Eight samples is the longest uninterrupted stretch of typing the product ever asks for, and the M1 demo showed it is where people quit.
 
@@ -641,6 +641,13 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 - On `build()`, the server deletes the samples (A-4.6); show that as a reassurance, not a side effect.
 
 **Tests:** eight samples advance the ring and the ninth is refused; a script mismatch retries without consuming a sample; a reload mid-enrolment resumes from `status()`; an absence test that no feature vector is persisted anywhere.
+
+**As built.**
+
+- `useCapture.stop()` now also returns the **feature vector**. Enrolment, login and step-up all need it alongside the script, and both come from the same events with the same token count — deriving it in the hook keeps `getFeatureRanges` agreeing with the commitments instead of asking three screens to remember to.
+- **A mismatch is caught locally when the script is known, and by the server when it is not.** The script is never persisted (A-7), so a popup reopened mid-enrolment has lost it; the screen then submits and lets `script_mismatch` come back, mapping it to the same sentence the local check produces. The user cannot tell which path judged them, which is the point.
+- The enroller is memoized. Building it per render changed `refresh`'s identity, refired the effect, set state, and looped — visible as a blank screen and a five-second test timeout rather than as an error.
+- **A test that looked wrong and was not.** The Backspace case embedded a literal `0x08` in the source, which reads as an empty string in most tools; I read it as broken and nearly "fixed" it into a test that proved nothing. It now uses the `BACKSPACE` constant. Worth a rule: **never put a control byte in a test literal.**
 
 ---
 

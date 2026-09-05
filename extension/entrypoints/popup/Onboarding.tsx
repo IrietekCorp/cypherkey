@@ -9,7 +9,12 @@ export type OnboardingProps = {
   session: Pick<Session, 'signup'>;
   /** A-12: recorded with the consent, so a policy change is auditable. */
   consentPolicyVersion: string;
-  onComplete(result: SignupResult): void;
+  /**
+   * `script` is handed on so enrolment can catch a mismatch without a round trip. It
+   * lives in memory for the length of the flow and is never persisted — it is the key
+   * sequence, and A-7 permits none of it on disk.
+   */
+  onComplete(result: SignupResult, script: string): void;
 };
 
 type Captured = { script: string; resolved: string };
@@ -96,7 +101,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
         devicePlatform: navigator.platform,
       });
       clearField();
-      onComplete(result);
+      onComplete(result, sample.script);
     } catch (err) {
       setProblems([(err as Error).message]);
       capture.reset();
