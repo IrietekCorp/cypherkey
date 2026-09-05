@@ -269,8 +269,16 @@ GET   /vault/changes?since=
 POST  /vault/changes
 GET   /vault/events           (SSE, M4)
 GET   /user/settings
-PATCH /user/settings          {biometricEnabled, pauseUntil, thresholds}   ← refuses Strict; that is a re-key
-POST  /user/rekey             {strictness, authHash, wrappedVaultKey, commitments}  ← M1-17c; needs a fresh step-up.
+PATCH /user/settings          {biometricEnabled, pauseUntil, thresholds, authHash}
+                              ← refuses Strict; that is a re-key. A-17: any change that WEAKENS
+                              protection carries `authHash` in this request. Turning protection
+                              back on needs nothing, or a user whose factor is unavailable would
+                              be stranded in the weakened state they are trying to leave.
+POST  /user/rekey             {strictness, currentAuthHash, authHash, wrappedVaultKey, commitments}
+                              ← M1-17c. `currentAuthHash` proves who is asking (A-17); `authHash`
+                              is what the account will hold afterwards. Crossing Strict changes
+                              `kdfInput`, so the same passphrase yields a different hash on each
+                              side and neither substitutes for the other.
                               Crossing into or out of Strict changes kdfInput and so masterKey (A-16). vaultKey itself
                               does not change, so recoveryWrappedVaultKey stays valid. Bumps users.key_version, which is
                               how other devices learn their A-7 offline cache is stale.

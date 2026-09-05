@@ -821,7 +821,7 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 
 ---
 
-### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16
+### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16 · **DONE**
 
 **Why.** This ticket carries a **server change**, which is why it is not simply a screen.
 
@@ -832,6 +832,13 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 **The screens.** Device list with revoke; biometric toggle; Pause with its A-16 warning; and the **Strictness slider** — Medium↔Relaxed is a settings edit, but crossing into or out of **Strict is a re-key**: `session.changeStrictness()` re-derives everything and the warning must say that the Recovery Kit stays valid while every other device must re-authenticate.
 
 **Tests:** a settings change without the passphrase in the request is refused; with it, accepted; a Strict crossing bumps `key_version` and leaves the Recovery Kit working; revoking a device kills its refresh family.
+
+**As built.**
+
+- **`hasFreshStepUp` and `STEP_UP_FRESHNESS_MS` are deleted, not deprecated.** Both were unreferenced once `requireReauth` landed, and leaving a helper named "fresh step-up" in the tree invites someone to reach for it. The `stepUpAt` claim stays on the token but is now explicitly informational — the audit log and the Rhythm Signature view want to show it; nothing gates on it.
+- **`/user/rekey` needed a second hash.** It already carried `authHash`, but that is the value the account will hold *after* the crossing — a value the caller chooses, proving nothing. `currentAuthHash` is now required and verified. The client derives both, which costs two Argon2id passes because crossing Strict changes `kdfInput` and the two hashes are genuinely different values from the same passphrase.
+- **Even Medium ↔ Relaxed carries the passphrase.** It is a settings PATCH rather than a re-key, but it still loosens an account, and the server refuses it without one.
+- The two guard tests that asserted "a token without a fresh step-up is refused" were rewritten rather than patched: under A-17 an ordinary access token **is** enough, given the passphrase, and freshness is irrelevant. Testing the old rule would have hidden the change.
 
 ---
 

@@ -195,7 +195,7 @@ describe('medium → relaxed', () => {
     const res = await a.call(
       'PATCH',
       '/user/settings',
-      { thresholds: { strictness: 'relaxed' } },
+      { thresholds: { strictness: 'relaxed' }, authHash: a.medium.authHash },
       token,
     );
     expect(res.status).toBe(200);
@@ -210,7 +210,12 @@ describe('medium → relaxed', () => {
   test('the original passphrase still logs in afterwards', async () => {
     const a = await enrolledOnMedium();
     const token = await a.stepUpToken();
-    await a.call('PATCH', '/user/settings', { thresholds: { strictness: 'relaxed' } }, token);
+    await a.call(
+      'PATCH',
+      '/user/settings',
+      { thresholds: { strictness: 'relaxed' }, authHash: a.medium.authHash },
+      token,
+    );
 
     const res = await a.login(a.medium);
     expect(res.status).toBe(200);
@@ -231,6 +236,7 @@ describe('medium → strict', () => {
       strict,
       body: {
         strictness: 'strict' as const,
+        currentAuthHash: a.medium.authHash,
         authHash: strict.authHash,
         wrappedVaultKey: { ct: toBase64Url(rewrapped.ct), nonce: toBase64Url(rewrapped.nonce) },
         commitments: strict.commitments,
@@ -300,7 +306,17 @@ describe('medium → strict', () => {
 });
 
 describe('what /user/rekey refuses', () => {
-  test('a token without a fresh step-up', async () => {
+  /**
+   * A-17 replaced M1-13's `stepUpAt` claim with in-request re-auth, so these two pin
+   * the new rule rather than the old one: token freshness is irrelevant, and the
+   * passphrase is what gates the re-key.
+   *
+   * The old check was weaker twice over. It proved only that a step-up happened in the
+   * last five minutes, so anyone holding an unlocked popup inside that window could
+   * rotate the master key; and a claim cannot produce `stepUpKey`, so a route that must
+   * re-wrap a TOTP secret had nothing to do it with.
+   */
+  test('an ordinary access token is enough, given the passphrase', async () => {
     const a = await enrolledOnMedium();
     const plain = (await (await a.login(a.medium)).json()) as { accessToken: string };
     const strict = await material('strict', a.userSalt);
@@ -315,32 +331,33 @@ describe('what /user/rekey refuses', () => {
       '/user/rekey',
       {
         strictness: 'strict',
+        currentAuthHash: a.medium.authHash,
         authHash: strict.authHash,
         wrappedVaultKey: { ct: toBase64Url(rewrapped.ct), nonce: toBase64Url(rewrapped.nonce) },
         commitments: strict.commitments,
       },
       plain.accessToken,
     );
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'step_up_required' });
+    expect(res.status).toBe(200);
   });
 
-  test('a stale step-up', async () => {
+  test('a wrong current passphrase is refused, however fresh the token', async () => {
     const a = await enrolledOnMedium();
     const token = await a.stepUpToken();
-    CLOCK.value += 6 * 60_000;
-
     const strict = await material('strict', a.userSalt);
     const rewrapped = await wrapKey(
       a.vaultShare,
       strict.wrapKeyBytes,
       'cypherkey/wrap/vault-key/v1',
     );
+
     const res = await a.call(
       'POST',
       '/user/rekey',
       {
         strictness: 'strict',
+        // The NEW hash, offered as proof. It is not: it is a value the caller chose.
+        currentAuthHash: strict.authHash,
         authHash: strict.authHash,
         wrappedVaultKey: { ct: toBase64Url(rewrapped.ct), nonce: toBase64Url(rewrapped.nonce) },
         commitments: strict.commitments,
@@ -348,6 +365,11 @@ describe('what /user/rekey refuses', () => {
       token,
     );
     expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'passphrase_required' });
+
+    // And nothing moved.
+    const after = (await a.drizzle.select().from(schema.users))[0];
+    expect(after?.thresholdsJson?.strictness).not.toBe('strict');
   });
 
   test('a commitment sequence of the wrong length', async () => {
@@ -365,6 +387,7 @@ describe('what /user/rekey refuses', () => {
       '/user/rekey',
       {
         strictness: 'strict',
+        currentAuthHash: a.medium.authHash,
         authHash: strict.authHash,
         wrappedVaultKey: { ct: toBase64Url(rewrapped.ct), nonce: toBase64Url(rewrapped.nonce) },
         commitments: strict.commitments.slice(0, 5),
@@ -385,6 +408,7 @@ describe('what /user/rekey refuses', () => {
     );
     const res = await a.call('POST', '/user/rekey', {
       strictness: 'strict',
+      currentAuthHash: a.medium.authHash,
       authHash: strict.authHash,
       wrappedVaultKey: { ct: toBase64Url(rewrapped.ct), nonce: toBase64Url(rewrapped.nonce) },
       commitments: strict.commitments,

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { fromBase64Url } from '../../../core/crypto/encoding';
 import { requireAuth } from '../auth/require';
-import { bearerToken, hasFreshStepUp, verifyToken } from '../auth/token';
+import { requireReauth } from '../auth/require';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
@@ -37,6 +37,13 @@ function b64url(bytes?: number) {
  */
 const rekeySchema = z.object({
   strictness: z.enum(['strict', 'medium', 'relaxed']),
+  /**
+   * A-17 re-auth. Distinct from `authHash` below: crossing into or out of Strict
+   * changes `kdfInput`, so the same passphrase yields a different hash on each side.
+   * This is the one the account currently holds, and it is what proves the request.
+   */
+  currentAuthHash: b64url(32),
+  /** The hash the account will hold once the re-key commits. */
   authHash: b64url(32),
   wrappedVaultKey: z.object({ ct: b64url(), nonce: b64url(12) }),
   commitments: z.array(z.string().min(1).max(64)).min(1).max(128),
@@ -47,6 +54,8 @@ const settingsSchema = z
     biometricEnabled: z.boolean().optional(),
     pauseUntil: z.number().int().positive().nullable().optional(),
     thresholds: z.object({ strictness: z.enum(['strict', 'medium', 'relaxed']) }).optional(),
+    /** A-17: required for any change that weakens protection. Ignored otherwise. */
+    authHash: b64url(32).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'empty patch' });
 
@@ -134,10 +143,14 @@ export function userRoutes(deps: UserDeps): Hono {
       patch.thresholds !== undefined;
 
     if (weakens) {
-      const token = bearerToken(c.req.raw.headers);
-      const claims = token === null ? null : verifyToken(token, config.jwtSecret, 'access', now());
-      if (claims === null || !hasFreshStepUp(claims, now())) {
-        return c.json({ error: 'step_up_required' }, 403);
+      // A-17: the passphrase travels in THIS request. A `stepUpAt` claim proved only
+      // that a step-up happened in the last five minutes, so anyone holding an unlocked
+      // popup inside that window could switch the rhythm off.
+      if (patch.authHash === undefined) {
+        return c.json({ error: 'passphrase_required' }, 403);
+      }
+      if ((await requireReauth(db, auth.userId, patch.authHash)) === null) {
+        return c.json({ error: 'passphrase_required' }, 403);
       }
     }
 
@@ -189,14 +202,6 @@ export function userRoutes(deps: UserDeps): Hono {
     const auth = await requireAuth(db, config, c.req, rawBody, now());
     if (auth === null) return c.json({ error: 'unauthorized' }, 401);
 
-    // Same guard as the settings that weaken the rhythm: this rotates the master key,
-    // and an attacker holding only the passphrase must not be able to trigger it.
-    const token = bearerToken(c.req.raw.headers);
-    const claims = token === null ? null : verifyToken(token, config.jwtSecret, 'access', now());
-    if (claims === null || !hasFreshStepUp(claims, now())) {
-      return c.json({ error: 'step_up_required' }, 403);
-    }
-
     let raw: unknown;
     try {
       raw = JSON.parse(rawBody);
@@ -206,6 +211,13 @@ export function userRoutes(deps: UserDeps): Hono {
     const parsed = rekeySchema.safeParse(raw);
     if (!parsed.success) return c.json({ error: 'invalid_body' }, 400);
     const input = parsed.data;
+
+    // A-17: this rotates the master key, so the passphrase travels in this request.
+    // `currentAuthHash` rather than `authHash`, which is the value the account will
+    // hold *after* the crossing and proves nothing about who is asking.
+    if ((await requireReauth(db, auth.userId, input.currentAuthHash)) === null) {
+      return c.json({ error: 'passphrase_required' }, 403);
+    }
 
     const user = await q.user(auth.userId);
     if (user === undefined) return c.json({ error: 'unauthorized' }, 401);

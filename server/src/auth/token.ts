@@ -18,6 +18,13 @@ export type TokenClaims = {
    * biometric (X-4 Pause, disabling it, changing Strictness) require this to be
    * recent, so an attacker holding only the passphrase cannot switch the rhythm off.
    */
+  /**
+   * When a step-up cleared. **Informational only** since A-17: nothing gates on it.
+   * A route that weakens protection asks for the passphrase in that request instead
+   * (`requireReauth`), because a claim proves only that *someone* stepped up recently
+   * and cannot produce `stepUpKey` for a route that must re-wrap a TOTP secret.
+   * Kept because the audit log and the Rhythm Signature view both want to show it.
+   */
   stepUpAt?: number;
 };
 
@@ -27,13 +34,6 @@ function sign(input: string, secret: string): string {
 }
 
 /** Mints a scoped token valid for `ttlMs` from `now`. */
-/** How recently a step-up must have happened for it to still authorise a change. */
-export const STEP_UP_FRESHNESS_MS = 5 * 60_000;
-
-/** True when the token carries a step-up that is still fresh. */
-export function hasFreshStepUp(claims: TokenClaims, now: number): boolean {
-  return claims.stepUpAt !== undefined && now - claims.stepUpAt <= STEP_UP_FRESHNESS_MS;
-}
 
 export function mintToken(
   claims: Omit<TokenClaims, 'iat' | 'exp'>,

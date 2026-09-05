@@ -892,14 +892,28 @@ export function createSession(deps: SessionDeps): Session {
 
       // Medium to Relaxed and back moves no keys at all.
       if (from !== 'strict' && input.level !== 'strict') {
+        // A-17: even this edit weakens or changes protection, so it carries the
+        // passphrase. Deriving it costs one Argon2id pass, which is the price of the
+        // guarantee that a session token alone cannot loosen an account.
+        const {
+          authKey: proof,
+          wrapKey: unusedWrap,
+          phantomKey: unusedPhantom,
+        } = await deriveBranches(
+          { resolved: input.resolved, script: input.script, strictness: from },
+          fromBase64Url((await deps.storage.get(KEYS.userSalt)) ?? ''),
+        );
+        unusedWrap.fill(0);
+        unusedPhantom.fill(0);
         const patched = await request(
           'PATCH',
           '/user/settings',
-          { thresholds: { strictness: input.level } },
+          { thresholds: { strictness: input.level }, authHash: toBase64Url(proof) },
           null,
           undefined,
           input.accessToken,
         );
+        proof.fill(0);
         if (patched.status !== 200) return { error: `settings_${patched.status}` };
         return { keyVersion: Number(asRecord(patched.body).keyVersion ?? 0) };
       }
@@ -907,13 +921,30 @@ export function createSession(deps: SessionDeps): Session {
       const saltRaw = await deps.storage.get(KEYS.userSalt);
       if (saltRaw === null) return { error: 'unknown_salt' };
 
+      const salt = fromBase64Url(saltRaw);
+
+      /**
+       * Two derivations, unavoidably. Crossing Strict changes `kdfInput`, so the same
+       * passphrase produces a different `authHash` on each side: one proves who is
+       * asking (A-17), the other is what the account will hold afterwards. Neither
+       * substitutes for the other.
+       */
+      const proving = await deriveBranches(
+        { resolved: input.resolved, script: input.script, strictness: from },
+        salt,
+      );
+      const currentAuthHash = toBase64Url(proving.authKey);
+      proving.authKey.fill(0);
+      proving.wrapKey.fill(0);
+      proving.phantomKey.fill(0);
+
       const {
         authKey,
         wrapKey: nextWrap,
         phantomKey: nextPhantom,
       } = await deriveBranches(
         { resolved: input.resolved, script: input.script, strictness: input.level },
-        fromBase64Url(saltRaw),
+        salt,
       );
 
       const rewrapped = await wrapKey(vaultShareBytes, nextWrap, 'cypherkey/wrap/vault-key/v1');
@@ -925,6 +956,7 @@ export function createSession(deps: SessionDeps): Session {
         '/user/rekey',
         {
           strictness: input.level,
+          currentAuthHash,
           authHash: toBase64Url(authKey),
           wrappedVaultKey: sealedToJson(rewrapped),
           commitments,

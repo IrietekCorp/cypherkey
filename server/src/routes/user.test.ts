@@ -200,12 +200,22 @@ describe('GET /user/settings', () => {
   });
 });
 
-describe('PATCH /user/settings — the step-up guard (X-4)', () => {
-  test('disabling the rhythm without a fresh step-up is refused', async () => {
+/**
+ * A-17 replaced M1-13's `stepUpAt` claim with in-request re-auth. These pin the rule as
+ * it now is: the passphrase must travel in the request that weakens protection, and how
+ * recently a step-up happened is irrelevant.
+ *
+ * The old check proved only that *someone* stepped up in the last five minutes, so
+ * anyone holding an unlocked popup inside that window could switch the rhythm off. It
+ * also could not produce `stepUpKey`, so a route that must re-wrap a TOTP secret had
+ * nothing to do it with.
+ */
+describe('PATCH /user/settings — the A-17 re-auth guard (X-4)', () => {
+  test('disabling the rhythm without the passphrase is refused', async () => {
     const a = await account();
     const res = await a.call('PATCH', '/user/settings', { biometricEnabled: false }, a.plainToken);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: 'step_up_required' });
+    expect(await res.json()).toEqual({ error: 'passphrase_required' });
 
     const after = (await (
       await a.call('GET', '/user/settings', undefined, a.plainToken)
@@ -215,7 +225,7 @@ describe('PATCH /user/settings — the step-up guard (X-4)', () => {
     expect(after.biometricEnabled).toBe(true);
   });
 
-  test('pausing without a fresh step-up is refused', async () => {
+  test('pausing without the passphrase is refused', async () => {
     const a = await account();
     const res = await a.call(
       'PATCH',
@@ -226,7 +236,7 @@ describe('PATCH /user/settings — the step-up guard (X-4)', () => {
     expect(res.status).toBe(403);
   });
 
-  test('changing Strictness without a fresh step-up is refused (A-16)', async () => {
+  test('changing Strictness without the passphrase is refused (A-16)', async () => {
     const a = await account();
     const res = await a.call(
       'PATCH',
@@ -237,21 +247,52 @@ describe('PATCH /user/settings — the step-up guard (X-4)', () => {
     expect(res.status).toBe(403);
   });
 
-  test('with a fresh step-up, all three are allowed', async () => {
+  test('a wrong passphrase is refused, and changes nothing', async () => {
     const a = await account();
-    const token = await a.stepUpToken();
+    const res = await a.call(
+      'PATCH',
+      '/user/settings',
+      { biometricEnabled: false, authHash: toBase64Url(randomBytes(32)) },
+      a.plainToken,
+    );
+    expect(res.status).toBe(403);
+
+    const after = (await (
+      await a.call('GET', '/user/settings', undefined, a.plainToken)
+    ).json()) as { biometricEnabled: boolean };
+    expect(after.biometricEnabled).toBe(true);
+  });
+
+  test('with the passphrase, all three are allowed on an ordinary token', async () => {
+    const a = await account();
+    // Deliberately the plain token: freshness is no longer what gates this.
+    const token = a.plainToken;
 
     expect(
-      (await a.call('PATCH', '/user/settings', { biometricEnabled: false }, token)).status,
+      (
+        await a.call(
+          'PATCH',
+          '/user/settings',
+          { biometricEnabled: false, authHash: a.authHash },
+          token,
+        )
+      ).status,
     ).toBe(200);
     expect(
-      (await a.call('PATCH', '/user/settings', { pauseUntil: CLOCK.now() + 60_000 }, token)).status,
+      (
+        await a.call(
+          'PATCH',
+          '/user/settings',
+          { pauseUntil: CLOCK.now() + 60_000, authHash: a.authHash },
+          token,
+        )
+      ).status,
     ).toBe(200);
 
     const res = await a.call(
       'PATCH',
       '/user/settings',
-      { thresholds: { strictness: 'relaxed' } },
+      { thresholds: { strictness: 'relaxed' }, authHash: a.authHash },
       token,
     );
     expect(res.status).toBe(200);
@@ -260,15 +301,17 @@ describe('PATCH /user/settings — the step-up guard (X-4)', () => {
     });
   });
 
-  test('a step-up goes stale after five minutes', async () => {
+  test('an old step-up no longer substitutes for the passphrase', async () => {
     const a = await account();
     const token = await a.stepUpToken();
-    CLOCK.value += 6 * 60_000;
-
+    // Even while the claim is fresh, it is not what the route asks for any more.
     const res = await a.call('PATCH', '/user/settings', { biometricEnabled: false }, token);
     expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'passphrase_required' });
   });
+});
 
+describe('PATCH /user/settings — validation', () => {
   // Turning protection back on can never need a second factor: requiring one would
   // strand a user whose factor is unavailable in the weakened state.
   test('re-enabling and un-pausing need no step-up', async () => {
@@ -293,7 +336,7 @@ describe('PATCH /user/settings — validation', () => {
     const res = await a.call(
       'PATCH',
       '/user/settings',
-      { thresholds: { strictness: 'strict' } },
+      { thresholds: { strictness: 'strict' }, authHash: a.authHash },
       token,
     );
     expect(res.status).toBe(409);
@@ -306,7 +349,7 @@ describe('PATCH /user/settings — validation', () => {
     const res = await a.call(
       'PATCH',
       '/user/settings',
-      { pauseUntil: CLOCK.now() + 365 * 24 * 60 * 60_000 },
+      { pauseUntil: CLOCK.now() + 365 * 24 * 60 * 60_000, authHash: a.authHash },
       token,
     );
     expect(res.status).toBe(400);
@@ -337,7 +380,12 @@ describe('PATCH /user/settings — validation', () => {
     });
     expect(before.status).toBe(401);
 
-    await a.call('PATCH', '/user/settings', { pauseUntil: CLOCK.now() + 60 * 60_000 }, token);
+    await a.call(
+      'PATCH',
+      '/user/settings',
+      { pauseUntil: CLOCK.now() + 60 * 60_000, authHash: a.authHash },
+      token,
+    );
 
     // After it, the same sample is let through, because scoring is skipped entirely.
     const after = await a.call('POST', '/auth/login', {
@@ -353,7 +401,12 @@ describe('PATCH /user/settings — validation', () => {
   test('a pause weakens the rhythm, never the passphrase', async () => {
     const a = await account();
     const token = await a.stepUpToken();
-    await a.call('PATCH', '/user/settings', { pauseUntil: CLOCK.now() + 60 * 60_000 }, token);
+    await a.call(
+      'PATCH',
+      '/user/settings',
+      { pauseUntil: CLOCK.now() + 60 * 60_000, authHash: a.authHash },
+      token,
+    );
 
     const res = await a.call('POST', '/auth/login', {
       username: 'shawn',
