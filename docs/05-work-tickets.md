@@ -391,22 +391,44 @@ Answering directly: **a browser cannot identify a keyboard**, and the parts that
 
 ### The client surface as it actually is
 
-Verified against the source, not recalled. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.
+Verified against the source on 2026-09-05, after M2-00d, M2-00d.1 and M2-00f. Every M2 ticket must be written against these signatures; where a ticket needs something absent here, the ticket has to create it.
 
 ```ts
 // core/client/session.ts
 createSession(deps: SessionDeps): Session
+type Credential = { resolved: string; script: string; strictness: Strictness };
+  // NOT kdfInput bytes: the session derives authKey, wrapKey AND phantomKey from one
+  // Argon2id pass, because asking a caller for commitments meant a second pass at 64 MiB.
+
 type Session = {
   state(): SessionState;                      // 'locked' | 'unlocked' | 'step-up-required'
-  signup(input: SignupInput): Promise<SignupResult>;        // → { userId, recoveryCode }
-  login(input: LoginInput): Promise<LoginResult>;           // → pass | grey+stepUp | fail
-  stepUp(method: string, proof: string): Promise<LoginResult>;
+  signup(input: SignupInput): Promise<SignupResult>;   // -> { userId, recoveryCode, enrollmentToken }
+  login(input: LoginInput): Promise<LoginResult>;      // Credential & { username, featureVector }
+  stepUp(input: StepUpInput): Promise<LoginResult>;    // { method:'retype', script, featureVector }
+  recover(input: RecoverInput): Promise<RecoverResult>; // -> { userId, enrollmentToken, recoveryCode }
+  tokens(): { accessToken: string; refreshToken: string } | null;
+  refresh(): Promise<boolean>;
+  logout(): Promise<boolean>;
+  authed(): AuthedRequest;                    // device-signed transport for the two below
+  commitmentsFor(script: string): Promise<string[]>;   // uses the held phantomKey
   unlockOffline(input: Credential): Promise<boolean>;
   changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
   lock(): void; touch(): void; checkIdle(): void;
   vaultKey(): Uint8Array;                     // throws while locked
 };
-// NOT PRESENT: any enrollment method, any vault method. M2-00d creates both.
+
+// core/client/enroll.ts - createEnroller({ request: session.authed(), token })
+type Enroller = {
+  status(): Promise<{ required; submitted; remaining; built }>;
+  sample(input: { featureVector: number[]; commitments: string[] }): Promise<{ samplesRemaining }>;
+  build(): Promise<{ built: true; scriptLen: number; sampleCount: number }>;
+};
+
+// core/client/sync.ts - createSync({ request: session.authed(), token })
+type Sync = {
+  pull(since: number): Promise<{ items: VaultItemWire[]; cursor: number }>;
+  push(items: VaultItemWire[]): Promise<{ cursor; applied: Applied[]; conflicts: Conflict[] }>;
+};      // a 409 is a PARTIAL SUCCESS, not an error: clean items in the batch still applied
 
 // core/biometrics/capture.ts
 startCapture(
@@ -414,41 +436,31 @@ startCapture(
   light: HTMLElement,
   opts?: { onPulse?: () => void; onCancel?: (reason: ScriptError) => void },
 ): { stop(): KeyEvent[]; cancel(): void }      // throws 'RhythmLightNotVisible'
+  // DOM-bound. M2-00h introduces the adapter that CLI and mobile need.
 
 // core/biometrics/script.ts
 eventsToScript(events: KeyEvent[]): { script: string; resolved: string } | { error: ScriptError }
-eventsToTokens(events: KeyEvent[]): TimedResult | { error: ScriptError }
-scriptsEqual(a: string, b: string): boolean    // constant-time
-scriptLength(script: string): number           // code points, not characters
-resolveScript(script: string): string
-BACKSPACE '\u0008' · DELETE '\u007F' · ESCAPE '\u001B' · MODIFIER_TOKENS '\uE000'–'\uE004'
+eventsToTokens - scriptsEqual (constant-time) - scriptLength (code points) - resolveScript
+BACKSPACE '\u0008' - DELETE '\u007F' - ESCAPE '\u001B' - MODIFIER_TOKENS '\uE000'-'\uE004'
 
 // core/biometrics/features.ts / score.ts
 extractFeatures(events: KeyEvent[], expectedLen: number): FeatureVector | FeatureExtractionError
-getFeatureRanges(len: number)                  // vector length is 3n + 5
-buildProfile(samples) · score(profile, sample) · band(s, pass?, grey?) · adapt(profile, sample, alpha?)
+getFeatureRanges(len)                          // vector length is 3n + 5
+buildProfile - score - band - adapt
 
 // core/crypto/phantom.ts
-kdfInput(resolved: string, script: string, level: Strictness): Uint8Array
-scriptCommitments(phantomKey: Uint8Array, script: string): Promise<Uint8Array[]>
-budget(level, canonLen): { maxInsertions: number; maxMissing: number }
-rhythmBands(level): { pass: number; grey: number }
+kdfInput(resolved, script, level) - scriptCommitments(phantomKey, script)
+budget(level, canonLen): { maxInsertions; maxMissing } - rhythmBands(level): { pass; grey }
 
 // core/crypto/recovery.ts
 generateRecoveryCode(): string                 // 33 chars: 32 data + 1 check symbol
-parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secret)
+parseRecoveryCode - recoveryKeyFromCode - formatRecoveryCode
+recoveryAuthHashFromKey(recoveryKey)           // the verifier the server stores (M2-00f)
 ```
 
-### Corrections to the rows below, from what M1 actually built
+### Corrections from what M1 actually built
 
-- **M2-02** — `startCapture` now takes `onCancel(reason)` and records modifier keys and `blur`; `KeyEvent` is a union with a `blur` variant. The component must surface cancel reasons, and a submit control must not steal focus (see the M1-18 follow-up: `preventDefault` on `mousedown`).
-- **M2-03** — onboarding must capture the script **twice, token-identical** (A-14), show "12 keystrokes · 8 characters", default Strictness to Medium, and record the A-12 consent checkbox.
-- **M2-04** — the Recovery Kit code is **33 characters**, not 32. The printed Kit and the on-screen copy must both carry: *"If you ever use this Kit, your authenticator app will need to be set up again. Your Backup Codes will still work."* Someone reading the sheet years later has only what is printed on it.
-- **M2-07 / M2-03, new** — recovery is now a real server flow (M2-00f): the Kit is verified before the wrapped vault key is released, `begin` is read-only, and the commit is one transaction. Any "forgot passphrase" screen must drive that, not a client-only unwrap.
-- **M2-05** — "backspace retry" is withdrawn: Backspace is a legitimate Phantom Key. The retry condition is a **script mismatch**, and every sample carries commitments.
-- **M2-07** — the server accepts **`retype` only**; `step_up_factors` is a table no route touches. **M2-00e above now covers this** and is a hard prerequisite: M2-07 cannot start until it lands. M2-00e also fixes a hole it uncovered — a failed step-up does not currently count toward lockout. The screen says **Backup Codes**, never "recovery codes".
-- **M2-14 and the server, new** — A-17 requires every step-up-gated settings change to carry **the passphrase in that request**: Pause, Strictness, Backup Code regeneration, TOTP enrolment. M1-13 shipped a weaker check — a `stepUpAt` claim on the access token, good for five minutes — which cannot produce `stepUpKey` and so cannot touch a TOTP factor. Someone has to replace `hasFreshStepUp` with an in-request re-auth; M2-14 owns the screens and the server change should land with it.
-- **M2-09** — the cache must honour `key_version`: a Strict re-key (M1-17c) invalidates every other device's offline blob.
+**Absorbed into the ticket bodies below on 2026-09-05.** They were a separate list, which is a second source of truth waiting to drift from the first; each correction now lives in the ticket it constrains.
 
 | ID | Title | Size | Notes |
 |---|---|---|---|
@@ -475,7 +487,282 @@ parseRecoveryCode(code) · recoveryKeyFromCode(code) · formatRecoveryCode(secre
 | M2-16 | Hosted deploy: Cloud Run + Cloud SQL + secrets + status page | M | file 07; you do the console work |
 | M2-17 | Beta feedback link + in-extension bug report (opens GitHub issue template) | S | |
 
-Ticket M2-10 prompt guidance: "Implement detection for `input[type=password]` plus the nearest preceding text/email input in the same form; fall back to heuristics (name/id/autocomplete attributes). Never fill unless `location.origin` host matches the item's saved host exactly or as a registrable-domain match via `tldts`. Show a warning banner and refuse to fill if the host contains `xn--`." Add `tldts` as the only new dependency.
+## M2 ticket bodies
+
+Written 2026-09-05 against the verified client surface above. Sequence: **M2-01 → M2-02 → M2-03 → M2-04 → M2-05 → M2-07 → M2-08 → M2-09 → M2-10** is the critical path; M2-06, M2-11, M2-12, M2-13, M2-17 can land any time after their dependency; M2-14 carries a server change; M2-15 and M2-16 are independent.
+
+**Dependencies needing approval before use.** The M1 allowance covered hono, drizzle, postgres, zod, @noble/*, hash-wasm, happy-dom, biome. Everything below is new and must be cleared with its gzipped size first, per the standing rule: `wxt`, `react` + `react-dom`, `tailwindcss` (M2-01); `zxcvbn-ts` (M2-03); `fuse.js` (M2-08); `idb` (M2-09); `tldts` (M2-10); `resend` (M2-15). Where a small hand-rolled version would do, the ticket says so.
+
+---
+
+### M2-01 · Extension scaffold and the storage adapter · M · deps: M2-00d
+
+**Why.** Everything else in M2 is a screen inside this shell. It also has to prove the thing most likely to be wrong late: that Argon2id at m=64 MiB runs acceptably inside an MV3 popup.
+
+**Files:** create `extension/` (WXT config, manifest, `entrypoints/{popup,options,background,content}`), `extension/src/storage.ts` (+test), `extension/src/kdf-worker.ts` (+test), `extension/src/session.ts` (+test).
+
+**The Argon2 requirements, decided in M1-03 and non-negotiable:**
+1. `content_security_policy.extension_pages` must include `'wasm-unsafe-eval'`, or the module will not instantiate under MV3.
+2. The KDF runs in a **Web Worker**, never the popup main thread. A ~175 ms hash on the main thread janks the unlock screen and stalls the Rhythm Light's per-keystroke pulse — the one piece of UI that must never stutter, because its whole job is to show that capture is live.
+3. Fetch and compile the module **when the popup opens**, in parallel with passphrase entry, not lazily on submit. It is 11.6 KB gzipped; compiling during typing leaves only the hash itself to pay for at submit.
+
+**Interfaces.** `storage.ts` implements `SessionStorage` from `core/client` over `chrome.storage.local`:
+```ts
+export function extensionStorage(): SessionStorage;   // get/set/remove of strings
+```
+Only what A-7 permits may persist: the user salt, the device id and the wrapped device private key, and the wrapped offline vault blob. **Never** a vault key, wrap key, phantom key, passphrase, script or feature vector.
+
+**Tests:** the storage adapter round-trips and `remove` really removes; a full `createSession` signup drives through it against a mocked `fetch`; the worker returns the same bytes as a direct `deriveMasterKey` for a known vector; the manifest contains `wasm-unsafe-eval`; an absence test that after signup, `chrome.storage.local` holds only the five permitted keys.
+
+**Acceptance:** load unpacked in Chrome, sign up against a local server, and see the popup stay responsive throughout the hash. Measure and record the popup-open-to-unlock time; it is the number M2-07 is judged against.
+
+---
+
+### M2-02 · `<RhythmLight/>` · M · deps: M2-01 · X-1
+
+**Why.** X-1's promise is that the light is the consent signal: no visible light, no capture. `startCapture` already enforces it by throwing `RhythmLightNotVisible`, so this component's job is to make that guarantee legible rather than to re-implement it.
+
+**Files:** create `extension/src/components/RhythmLight.tsx` (+test), `extension/src/components/useCapture.ts` (+test).
+
+**What M1 changed, and this must honour.** `startCapture` now takes `onCancel(reason)` and records modifier keys and `blur`; `KeyEvent` is a union with a `blur` variant. So:
+- **Surface every cancel reason.** `focus_lost`, `unsupported_key`, `unsupported_combo`, `malformed` each need distinct copy. M1-18 shipped five conditions collapsed into one bare "enroll rejected malformed", and it was unusable in the field — the demo needed a `?debug=1` panel before anyone could tell what had happened.
+- **A submit control must not steal focus.** `preventDefault` on `mousedown`, or clicking Submit blurs the input, fires `blur`, and voids the sample the click was meant to send. This cost a full debugging session on the web demo.
+- Paste, drop and `compositionstart` cancel the sample; say why, do not fail silently.
+
+**Tests (happy-dom):** the light pulses once per keystroke; capture throws when the light is `display:none`, `visibility:hidden` or zero-size; each cancel reason renders its own message; `mousedown` on a sibling button does not cancel the sample; ARIA — `role="status"`, `aria-live="polite"`, and a label that states capture is active.
+
+**Acceptance:** with the light hidden by CSS, capture refuses and says so on screen.
+
+---
+
+### M2-03 · Onboarding: passphrase, script, consent · M · deps: M2-02 · X-2
+
+**Why.** The account's whole key hierarchy is decided here, and two of its inputs cannot be changed later without a re-key.
+
+**Files:** create `extension/entrypoints/popup/Onboarding.tsx` (+test), `extension/src/passphrase-strength.ts` (+test).
+
+**Requirements.**
+- Capture the script **twice and require the two to be token-identical** (A-14), not merely to resolve to the same text. Use `scriptsEqual`, which is constant-time.
+- Show what was actually captured: **"12 keystrokes · 8 characters"**. This is the moment Phantom Keys become comprehensible, and the web demo showed people do not grasp them from prose.
+- Minimum length **10 characters** resolved (B1 decision; 8 is the floor, 10 is the recommendation).
+- Default Strictness to **Medium** and explain the Strict trade-off without offering it here — crossing into Strict is a re-key (A-16), which is M2-14's job.
+- Record the A-12 consent checkbox with its policy version; `signup` already sends `consentAt` and `consentPolicyVersion`.
+- Drives `session.signup({ resolved, script, strictness, username, email, ... })`. Note the credential shape: the session derives all three A-2 branches itself, so this screen never touches a KDF.
+
+**Dependency:** `zxcvbn-ts` for strength. It is large; if the gzipped size is not acceptable, a length-plus-character-class heuristic with a clear "this is a rough guide" label is an acceptable substitute — but say which shipped.
+
+**Tests:** two token-different scripts that resolve alike are rejected; the keystroke/character counts match `scriptLength` and `resolveScript`; under-length is refused; consent is required; an absence test that no passphrase or script reaches storage.
+
+---
+
+### M2-04 · Recovery Kit screen · M · deps: M2-03 · X-2
+
+**Why.** This sheet is the only artefact that survives losing the device, and it will be read by someone years later who has nothing else.
+
+**Files:** create `extension/entrypoints/popup/RecoveryKit.tsx` (+test), `extension/src/print.css`.
+
+**Requirements.**
+- The code is **33 characters** — 32 data symbols plus one Crockford check symbol. Not 32.
+- Confirmation is "type 4 characters back" at random positions, not a full retype. It proves the sheet was saved without training anyone to type the Kit into a screen.
+- The printable view and the on-screen copy must **both** carry: *"If you ever use this Kit, your authenticator app will need to be set up again. Your Backup Codes will still work."* A printed sheet carries no other context.
+- **This screen is reused at the end of recovery.** M2-00f decided recovery retires the used Kit and issues a new one, so the same component must present a replacement Kit with the line *"The old one no longer works — save this one now."*
+- The first set of **Backup Codes** arrives in the signup response and is shown once, here or immediately after. They are Backup Codes in every string; "Recovery" belongs to the Kit alone.
+
+**Tests:** the rendered code is 33 characters and round-trips through `parseRecoveryCode`; a wrong confirmation character is refused; the print stylesheet includes the authenticator line; the replacement-Kit variant renders its own copy; an absence test that the code never reaches `chrome.storage`.
+
+---
+
+### M2-05 · Enrollment screen · M · deps: M2-04
+
+**Why.** Eight samples is the longest uninterrupted stretch of typing the product ever asks for, and the M1 demo showed it is where people quit.
+
+**Files:** create `extension/entrypoints/popup/Enroll.tsx` (+test).
+
+**"Backspace retry" is withdrawn.** Backspace is a legitimate Phantom Key, so a sample containing one is not an error. The retry condition is a **script mismatch** against the enrolled script — `scriptsEqual` returning false — and the copy must say so: *"That was a different sequence of keys."*
+
+**Requirements.**
+- Drives `createEnroller({ request: session.authed(), token: enrollmentToken })`; every sample carries `commitments` from `session.commitmentsFor(script)`.
+- Progress ring from `enroller.status()`, not a local counter, so a reload resumes correctly.
+- **Do not ask for deliberately fast or slow samples.** Measured during M2-00g: six natural samples plus one slow and one fast raised the median feature std from 8 ms to 21.4 ms and lifted a stranger from 0.453 (fail) to 0.840 (comfortable pass). Widening the band admits everyone. Natural variability is learned from real logins.
+- On `build()`, the server deletes the samples (A-4.6); show that as a reassurance, not a side effect.
+
+**Tests:** eight samples advance the ring and the ninth is refused; a script mismatch retries without consuming a sample; a reload mid-enrolment resumes from `status()`; an absence test that no feature vector is persisted anywhere.
+
+---
+
+### M2-06 · In-app Party Trick · S · deps: M2-05 · X-7
+
+**Why.** It is the moment the product explains itself, and the web demo already taught us its shape.
+
+**Files:** create `extension/entrypoints/popup/PartyTrick.tsx` (+test).
+
+**Carry over what the demo learned** (all four were real user complaints, not speculation):
+- The friend gets **three attempts with a visible counter and an explicit "give up"** — one attempt reads as a fluke.
+- When the keyboard comes back, **show the passphrase again**. The owner has not seen it for several minutes.
+- **Never show a band and a verdict that disagree.** "0.69 PASS" beside "Stolen password neutralized" was the single most confusing thing in the demo; the verdict copy must be derived from the band, not written alongside it.
+- A **Strictness lever** that re-judges the attempts already recorded, so the trade-off is felt rather than described.
+- **Test another person** resets cleanly without re-enrolling.
+
+**Tests:** three attempts then forced give-up; the verdict string is a pure function of the band; the lever re-judges recorded attempts without new capture; reset clears attempt state but not the profile.
+
+---
+
+### M2-07 · Unlock screen · L · deps: M2-00e, M2-05 · X-3
+
+**Why.** The ladder in X-3 is the product's answer to "what if my hands are different today", and it is the screen every user sees most.
+
+**Files:** create `extension/entrypoints/popup/Unlock.tsx` (+test); modify `core/client/session.ts` (+test).
+
+**A prerequisite this ticket owns.** `StepUpInput` is `{ method: 'retype', script, featureVector }` — retype only. M2-00e built the server side of `backup_code`, but **no client can drive it**, so the e2e does not cover that path. Widen the type to a discriminated union and add the `backup_code` branch here:
+```ts
+type StepUpInput =
+  | { method: 'retype'; script: string; featureVector: number[] }
+  | { method: 'backup_code'; proof: string };
+```
+
+**Requirements.**
+- Bands drive everything: pass unlocks; grey shows *"Your rhythm looks different today. Type it once more."* and scores the average; a failed grey offers step-up.
+- Step-up offers **Backup Codes** — never "recovery codes". The Recovery Kit is not offered here; it opens a vault, not a session, and belongs to the "forgot passphrase" path.
+- **"Forgot passphrase" drives the real M2-00f flow**: `session.recover()`, which verifies the Kit before anything is released, and ends on M2-04's replacement-Kit screen. Not a client-side unwrap.
+- A failed step-up now counts toward lockout (M2-00e); surface the remaining attempts before the account locks, or the lock arrives unexplained.
+- Offline: `session.unlockOffline(credential)` when the network is gone, per A-7.
+
+**Tests:** each band renders its own state; a grey retype that clears unlocks; a Backup Code clears step-up and the used code is reported spent; lockout copy appears before the lock; offline unlock works with a cached blob and fails cleanly without one.
+
+**Acceptance:** the e2e gains a Backup Code step-up leg, driven through `core/client`.
+
+---
+
+### M2-08 · Vault list, search and item editing · L · deps: M2-07 · X-6
+
+**Why.** The vault is the reason anyone tolerates the rest.
+
+**Files:** create `extension/src/vault/{item,codec}.ts` (+tests), `extension/entrypoints/popup/{VaultList,ItemView,ItemEdit}.tsx` (+tests).
+
+**Interfaces.** An item is plaintext only in memory; `codec` is the single place that encrypts and decrypts:
+```ts
+type VaultItem =
+  | { kind: 'login'; id; title; host; username; password; notes?; updatedAt }
+  | { kind: 'note';  id; title; body; updatedAt };
+encodeItem(item, vaultKey): Promise<{ ciphertext: string; nonce: string }>
+decodeItem(wire, vaultKey): Promise<VaultItem>
+```
+AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be moved between items.
+
+**Dependency:** `fuse.js` for fuzzy search — but the list is small and local; a substring match over title and host may be enough. Ship the simple one unless it demonstrably fails.
+
+**Tests:** round-trip every item kind; a ciphertext re-labelled with another id fails to decrypt; search ranks title above host above username; an absence test that no plaintext reaches storage or logs.
+
+---
+
+### M2-09 · Local cache, sync engine and offline queue · L · deps: M2-08 · A-6, A-7
+
+**Why.** Without this the vault is unusable on a train, and A-6's conflict rules only exist client-side.
+
+**Files:** create `extension/src/sync/{cache,engine,queue}.ts` (+tests).
+
+**Requirements.**
+- Cache ciphertext in IndexedDB, never plaintext. Decrypt on read into memory only.
+- **A 409 from `sync.push` is a partial success, not an error.** The clean items in a mixed batch were applied; the conflicts come back with the server copy. Treating it as failure silently drops writes that actually landed — the client library got this wrong once already and `sync.ts` documents it.
+- **Honour `key_version`.** A Strict re-key (M1-17c) or a recovery (M2-00f) bumps it, and every other device's cached blob is then undecryptable. Detect the bump and re-sync from zero rather than surfacing a decryption error.
+- The offline queue replays in order on reconnect and survives a popup close.
+
+**Dependency:** `idb`, or hand-rolled — the schema is one object store.
+
+**Tests:** a 409 applies the clean half and reports the conflicts; a `key_version` bump triggers a full re-sync; a queued write survives a simulated restart; cursor paging resumes correctly; an absence test that IndexedDB holds no plaintext.
+
+---
+
+### M2-10 · Content script: detection and domain-bound autofill · L · deps: M2-09 · X-6
+
+**Why.** Highest bug risk in the milestone, and the only place a mistake fills a credential into the wrong site. **Budget two passes.**
+
+**Files:** create `extension/entrypoints/content/{detect,fill,banner}.ts` (+tests).
+
+**Requirements** (from the original guidance, unchanged): detect `input[type=password]` plus the nearest preceding text/email input in the same form; fall back to `name`/`id`/`autocomplete` heuristics. **Never fill unless `location.origin`'s host matches the item's saved host exactly, or as a registrable-domain match via `tldts`.** If the host contains `xn--`, show a warning banner and refuse to fill.
+
+`tldts` is the only new dependency.
+
+**Tests:** a fixture set of real login-form shapes; a punycode host refuses and warns; a subdomain of the saved registrable domain fills; a different registrable domain does not; an `<iframe>` on a foreign origin never receives a fill.
+
+---
+
+### M2-11 · Generator · S · deps: M2-08
+
+**Files:** create `extension/src/generator.ts` (+test), `extension/entrypoints/popup/Generator.tsx` (+test).
+
+Random-character and passphrase modes, `crypto.getRandomValues` only, with rejection sampling so the alphabet is unbiased — the modulo shortcut is fine for a 32-symbol alphabet and wrong for most others. One-click fill into the item being edited.
+
+**Tests:** the distribution is unbiased across the alphabet; length and class options are honoured; `Math.random` appears nowhere in the file.
+
+---
+
+### M2-12 · Idle lock, lock on close, memory zeroing · S · deps: M2-07
+
+**Files:** create `extension/src/lock.ts` (+test).
+
+`session.checkIdle()` already implements A-5's 15-minute rule; this wires it to a real timer, to popup close, and to browser lock/sleep. Every `Uint8Array` holding key material is zeroed on lock — `session.lock()` does its own, so the ticket covers what the *extension* holds beyond it.
+
+**Tests:** idle past the timeout locks; activity defers it; closing the popup locks; after lock, `vaultKey()` throws and no key material is reachable from any module-level reference.
+
+---
+
+### M2-13 · Import Bitwarden JSON and Chrome CSV · M · deps: M2-08
+
+**Files:** create `extension/src/import/{bitwarden,chrome-csv}.ts` (+tests), `extension/entrypoints/popup/Import.tsx` (+test).
+
+Parse, map to `VaultItem`, report per-row failures without aborting the batch, and never write an imported file to disk. A malformed row is skipped with a reason, not silently dropped.
+
+**Tests:** fixtures for both formats including malformed rows; totals reconcile (imported + skipped = rows); an absence test that no imported plaintext is logged.
+
+---
+
+### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16
+
+**Why.** This ticket carries a **server change**, which is why it is not simply a screen.
+
+**Files:** create `extension/entrypoints/options/Settings.tsx` (+test); modify `server/src/auth/require.ts`, `server/src/routes/user.ts` (+tests).
+
+**The server change.** A-17 requires every step-up-gated settings change to carry **the passphrase in that request**: Pause, Strictness, Backup Code regeneration, TOTP enrolment. M1-13 shipped a weaker check — a `stepUpAt` claim on the access token, good for five minutes — which cannot produce `stepUpKey` and therefore cannot re-wrap a TOTP secret. Replace `hasFreshStepUp` with an in-request re-auth. `POST /user/backup-codes` (M2-00e) already does it this way and is the pattern to copy.
+
+**The screens.** Device list with revoke; biometric toggle; Pause with its A-16 warning; and the **Strictness slider** — Medium↔Relaxed is a settings edit, but crossing into or out of **Strict is a re-key**: `session.changeStrictness()` re-derives everything and the warning must say that the Recovery Kit stays valid while every other device must re-authenticate.
+
+**Tests:** a settings change without the passphrase in the request is refused; with it, accepted; a Strict crossing bumps `key_version` and leaves the Recovery Kit working; revoking a device kills its refresh family.
+
+---
+
+### M2-15 · "Not your rhythm" email · S · deps: none
+
+**Files:** create `server/src/mail/{client,templates}.ts` (+tests); modify `server/src/routes/login.ts`.
+
+X-3 calls this a feature, not a notification: *"Someone typed your passphrase but didn't match your rhythm"* is the dark-web-breach email inverted, and it is the clearest proof the product works. Sent on a **fail** band, rate-limited to one per account per hour so a lockout attempt cannot be turned into a mail flood.
+
+`resend` is the dependency; the transport must be injectable so tests send nothing.
+
+**Tests:** a fail sends once and a second within the hour does not; a grey or pass sends nothing; the body contains no score, no vector and no device detail beyond a coarse location; the transport is never called in tests.
+
+---
+
+### M2-16 · Hosted deploy · M · deps: M2-00f
+
+**Files:** create `deploy/` (Cloud Run service, Cloud SQL, Secret Manager wiring), `.github/workflows/deploy.yml`; modify `docs/07`.
+
+Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is the existing distroless build; Postgres is reached over the network via `DATABASE_URL` and is never part of the image.
+
+**A doc conflict to settle first, in one line:** `docs/04` and `docs/07` still say Cloudflare Pages, and M0-06 is marked done against it, but hosting is now GCP. Correct both, and say whether the marketing site moves too or stays on Pages.
+
+**Acceptance:** a deployed instance passes the e2e against `DATABASE_URL`, and the size budgets still hold.
+
+---
+
+### M2-17 · Beta feedback link · S · deps: M2-01
+
+**Files:** create `extension/entrypoints/popup/Feedback.tsx` (+test).
+
+Opens a prefilled GitHub issue template. **It must not attach logs, scores, vectors or vault contents** — the template asks the user to describe what happened, and carries only the extension version and browser. Anything auto-attached from a zero-knowledge client is a leak waiting to be discovered.
+
+**Tests:** the generated URL contains version and browser and nothing else; no capture or vault state is reachable from the component.
+
 
 ---
 
