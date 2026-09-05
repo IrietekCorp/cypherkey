@@ -121,7 +121,15 @@ export type AuthedRequest = (
 ) => Promise<{ status: number; body: unknown }>;
 
 export type LoginResult =
-  | { band: 'pass' }
+  | {
+      band: 'pass';
+      /**
+       * A-16/M2-09: bumped by a Strict re-key or a recovery. Every other device's
+       * cached blobs are wrapped under the old key and become undecryptable, so the
+       * cache compares this against what it holds and re-syncs from zero on a change.
+       */
+      keyVersion: number;
+    }
   | { band: 'grey'; stepUp: string[] }
   | { band: 'fail'; error: string };
 
@@ -259,6 +267,8 @@ export function createSession(deps: SessionDeps): Session {
    */
   let pending: { username: string; authHash: string } | null = null;
   let sessionTokens: { accessToken: string; refreshToken: string } | null = null;
+  /** Reported by login and step-up; 0 until one has succeeded. */
+  let lastKeyVersion = 0;
   /**
    * X-3: a device the server does not know is generated here, used to sign the login,
    * and only persisted once the step-up clears — which is also when the server
@@ -390,6 +400,7 @@ export function createSession(deps: SessionDeps): Session {
       provisionalDevice.priv.fill(0);
       provisionalDevice = null;
     }
+    lastKeyVersion = typeof payload.keyVersion === 'number' ? payload.keyVersion : lastKeyVersion;
     const access = payload.accessToken;
     const refresh = payload.refreshToken;
     sessionTokens =
@@ -810,7 +821,7 @@ export function createSession(deps: SessionDeps): Session {
         state = 'locked';
         throw err;
       }
-      return { band: 'pass' };
+      return { band: 'pass', keyVersion: lastKeyVersion };
     },
 
     async stepUp(input) {
@@ -845,7 +856,7 @@ export function createSession(deps: SessionDeps): Session {
         return { band: 'fail', error: typeof error === 'string' ? error : 'step_up_failed' };
       }
       await acceptPass(asRecord(response.body), wrap);
-      return { band: 'pass' };
+      return { band: 'pass', keyVersion: lastKeyVersion };
     },
 
     /**

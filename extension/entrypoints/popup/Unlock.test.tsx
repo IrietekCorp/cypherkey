@@ -75,15 +75,16 @@ const el = (id: string) => host.querySelector(`[data-testid="${id}"]`);
 const text = () => host.textContent ?? '';
 
 const render = async (session: UnlockSession, props: { offline?: boolean } = {}) => {
-  const events = { unlocked: 0, forgot: 0 };
+  const events = { unlocked: 0, forgot: 0, keyVersion: -1 };
   await act(async () => {
     root.render(
       <Unlock
         session={session}
         username="shawn"
         strictness="medium"
-        onUnlocked={() => {
+        onUnlocked={(v) => {
           events.unlocked += 1;
+          events.keyVersion = v;
         }}
         onForgotPassphrase={() => {
           events.forgot += 1;
@@ -123,7 +124,7 @@ const click = async (id: string) => {
 
 describe('bands drive the screen (X-3)', () => {
   test('a pass unlocks', async () => {
-    const { session } = fakeSession({ logins: [{ band: 'pass' }] });
+    const { session } = fakeSession({ logins: [{ band: 'pass', keyVersion: 1 }] });
     const events = await render(session);
 
     await typeAndSubmit();
@@ -144,7 +145,7 @@ describe('bands drive the screen (X-3)', () => {
   test('a second sample after grey goes to step-up, not login', async () => {
     const { session, seen } = fakeSession({
       logins: [{ band: 'grey', stepUp: ['retype'] }],
-      stepUps: [{ band: 'pass' }],
+      stepUps: [{ band: 'pass', keyVersion: 1 }],
     });
     const events = await render(session);
 
@@ -186,7 +187,10 @@ describe('step-up with a Backup Code', () => {
   const reachStepUp = async () => {
     const { session, seen } = fakeSession({
       logins: [{ band: 'grey', stepUp: ['retype'] }],
-      stepUps: [{ band: 'fail', error: 'step_up_failed' }, { band: 'pass' }],
+      stepUps: [
+        { band: 'fail', error: 'step_up_failed' },
+        { band: 'pass', keyVersion: 1 },
+      ],
     });
     const events = await render(session);
     await typeAndSubmit();
@@ -285,5 +289,26 @@ describe('forgotten passphrase', () => {
 
     await click('forgot');
     expect(events.forgot).toBe(1);
+  });
+});
+
+describe('the key version reaches the cache', () => {
+  /** M2-09: a re-key elsewhere makes every cached blob on this device undecryptable. */
+  test('a pass reports the account key version', async () => {
+    const { session } = fakeSession({ logins: [{ band: 'pass', keyVersion: 7 }] });
+    const events = await render(session);
+
+    await typeAndSubmit();
+    expect(events.keyVersion).toBe(7);
+  });
+
+  test('an offline unlock reports 0, because there is no server to ask', async () => {
+    const { session } = fakeSession({ offline: true });
+    const events = await render(session, { offline: true });
+
+    await typeAndSubmit();
+    // The cache keeps what it believes; a re-key is detected on the next online unlock,
+    // which is the earliest it can be known.
+    expect(events.keyVersion).toBe(0);
   });
 });

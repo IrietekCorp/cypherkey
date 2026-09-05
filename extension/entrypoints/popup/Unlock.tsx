@@ -32,7 +32,8 @@ export type UnlockProps = {
   strictness: Credential['strictness'];
   /** True when the network is unreachable; drives the A-7 offline path. */
   offline?: boolean;
-  onUnlocked(): void;
+  /** The account's current key version, which the cache uses to detect a re-key. */
+  onUnlocked(keyVersion: number): void;
   onForgotPassphrase(): void;
 };
 
@@ -72,7 +73,7 @@ export function Unlock({
 
   const applyResult = (result: LoginResult) => {
     if (result.band === 'pass') {
-      onUnlocked();
+      onUnlocked(result.keyVersion);
       return;
     }
     if (result.band === 'grey') {
@@ -110,7 +111,10 @@ export function Unlock({
         // A-7: a device that has unlocked online before can unlock from its cached
         // blob. There is no scoring here — the server is not reachable to do it.
         const ok = await session.unlockOffline(credential);
-        if (ok) onUnlocked();
+        // Offline there is no server to report a key version, so the cache keeps
+        // whatever it already believes. A re-key elsewhere is detected on the next
+        // online unlock, which is the earliest it can be known.
+        if (ok) onUnlocked(0);
         else {
           setFailures((n) => n + 1);
           setMessage('That passphrase did not open the offline vault on this device.');

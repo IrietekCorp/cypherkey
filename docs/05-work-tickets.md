@@ -735,7 +735,7 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 
 ---
 
-### M2-09 · Local cache, sync engine and offline queue · L · deps: M2-08 · A-6, A-7
+### M2-09 · Local cache, sync engine and offline queue · L · deps: M2-08 · A-6, A-7 · **DONE**
 
 **Why.** Without this the vault is unusable on a train, and A-6's conflict rules only exist client-side.
 
@@ -750,6 +750,15 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 **Dependency:** `idb`, or hand-rolled — the schema is one object store.
 
 **Tests:** a 409 applies the clean half and reports the conflicts; a `key_version` bump triggers a full re-sync; a queued write survives a simulated restart; cursor paging resumes correctly; an absence test that IndexedDB holds no plaintext.
+
+**As built.**
+
+- One file outside the list changed: **`core/client/session.ts`**. `key_version` was returned by login and dropped by the client, so cache invalidation was impossible. `LoginResult` now carries it on a pass. That is the fourth time this milestone the server has produced something the client discarded.
+- **`idb` was not added.** The cache is one object store with four operations behind a `KeyValueStore` seam, so IndexedDB backs it in the browser and a map backs it in tests. The wrapper would have cost download size on every popup open to save about thirty lines.
+- **`open()` does not throw when the server is unreachable.** It reports `pulled: false` instead. Opening the vault on a train has to show what is cached — A-7 says so — and the first draft would have failed the whole unlock. A key-version bump still clears the cache in that case, because those blobs are undecryptable whether or not the network is up.
+- **Editing the same item twice offline queues one write, not two.** Replaying both would push a stale version and manufacture a conflict against ourselves.
+- The queue holds ciphertext and is persisted: a popup closes the moment it loses focus, and an edit typed thirty seconds earlier must not go with it.
+- An offline unlock reports `keyVersion: 0`, meaning "no server to ask". The cache keeps what it believes and detects a re-key on the next online unlock, which is the earliest it can be known.
 
 ---
 

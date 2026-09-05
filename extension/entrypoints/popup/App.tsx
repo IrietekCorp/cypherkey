@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { SignupResult } from '../../../core/client/session';
+import { createSync } from '../../../core/client/sync';
 import { createExtensionSession } from '../../src/session';
 import { memoryArea } from '../../src/storage';
-import { type ItemWire, decodeItem, encodeItem } from '../../src/vault/codec';
+import { createCache, indexedDbStore } from '../../src/sync/cache';
+import { type SyncEngine, createSyncEngine } from '../../src/sync/engine';
+import { createQueue } from '../../src/sync/queue';
+import { decodeItem, encodeItem } from '../../src/vault/codec';
 import type { VaultItem } from '../../src/vault/item';
 import { Enroll } from './Enroll';
 import { ItemEdit } from './ItemEdit';
@@ -19,10 +23,11 @@ const CONSENT_POLICY_VERSION = '2026-09-01';
  * The popup shell: Onboarding (M2-03) → Recovery Kit (M2-04) → Enrollment (M2-05) →
  * Unlock (M2-07) → Vault (M2-08).
  *
- * Storage is still the in-memory area rather than `chrome.storage.local`, and the vault
- * lives in React state rather than IndexedDB. Both are M2-09's job. Persisting a
- * half-made account before there is a sync engine would leave the next popup open in a
- * state no screen can recover from.
+ * The vault is cached in IndexedDB as ciphertext and decrypted into memory for the
+ * length of the unlock (M2-09). Session storage is still the in-memory area rather than
+ * `chrome.storage.local`: persisting device keys belongs with the settings screen that
+ * can revoke them (M2-14), and until then a half-made account would leave the next
+ * popup open in a state no screen recovers from.
  */
 export function App() {
   const [signedUp, setSignedUp] = useState<SignupResult | null>(null);
@@ -33,9 +38,9 @@ export function App() {
   const [enrolled, setEnrolled] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
 
-  /** Items are held encrypted and decoded for display — the shape M2-09 will persist. */
-  const [vault, setVault] = useState<Record<string, ItemWire>>({});
   const [items, setItems] = useState<VaultItem[]>([]);
+  const [engine, setEngine] = useState<SyncEngine | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [viewing, setViewing] = useState<VaultItem | null>(null);
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
@@ -52,20 +57,24 @@ export function App() {
     });
   }, []);
 
-  // Plaintext exists only here, and only while unlocked (A-5).
-  useEffect(() => {
-    if (!unlocked) return;
-    let cancelled = false;
-    void (async () => {
-      const decoded = await Promise.all(
-        Object.entries(vault).map(([id, wire]) => decodeItem(wire, session.vaultKey(), id)),
-      );
-      if (!cancelled) setItems(decoded);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [vault, unlocked, session]);
+  /**
+   * Decrypts whatever the cache holds, into memory, for as long as the session is
+   * unlocked (A-5). The cache itself never holds plaintext (A-7).
+   */
+  const refresh = useCallback(async () => {
+    const cached = await createCache(indexedDbStore()).items();
+    const decoded: VaultItem[] = [];
+    for (const row of cached) {
+      if (row.deletedAt != null) continue;
+      try {
+        decoded.push(await decodeItem(row.wire, session.vaultKey(), row.id));
+      } catch {
+        // A blob this key cannot open is one the engine will re-pull; showing a
+        // broken row would be worse than showing none.
+      }
+    }
+    setItems(decoded);
+  }, [session]);
 
   if (signedUp === null) {
     return (
@@ -111,15 +120,47 @@ export function App() {
         session={session}
         username={username}
         strictness="medium"
-        onUnlocked={() => setUnlocked(true)}
+        onUnlocked={async (keyVersion) => {
+          const store = indexedDbStore();
+          const active = createSyncEngine({
+            sync: createSync({
+              request: session.authed(),
+              token: session.tokens()?.accessToken ?? '',
+            }),
+            cache: createCache(store),
+            queue: createQueue(store),
+          });
+          const { reset, pulled } = await active.open(keyVersion);
+          setEngine(active);
+          setUnlocked(true);
+          await refresh();
+          if (reset) setNotice('Your vault key changed elsewhere, so this device re-synced.');
+          else if (!pulled) setNotice('Offline. Showing what this device already had.');
+        }}
         onForgotPassphrase={() => setUnlocked(false)}
       />
     );
   }
 
   const save = async (item: VaultItem) => {
+    if (engine === null) return;
     const wire = await encodeItem(item, session.vaultKey());
-    setVault((current) => ({ ...current, [item.id]: wire }));
+    const existing = await createCache(indexedDbStore()).get(item.id);
+    const result = await engine.save({
+      id: item.id,
+      version: existing?.version ?? 0,
+      ciphertext: wire.ciphertext,
+      nonce: wire.nonce,
+      updatedAt: item.updatedAt,
+    });
+    setNotice(
+      result.queued
+        ? 'Saved on this device. It will sync when you are back online.'
+        : result.conflicts.length > 0
+          ? 'This item changed on another device. Open it to see the newer copy.'
+          : null,
+    );
+    await refresh();
     setEditing(null);
     setViewing(null);
   };
@@ -145,5 +186,12 @@ export function App() {
     );
   }
 
-  return <VaultList items={items} onOpen={setViewing} onAdd={(kind) => setEditing({ kind })} />;
+  return (
+    <>
+      {notice !== null && (
+        <p className="bg-neutral-100 px-4 pt-3 font-sans text-xs text-neutral-600">{notice}</p>
+      )}
+      <VaultList items={items} onOpen={setViewing} onAdd={(kind) => setEditing({ kind })} />
+    </>
+  );
 }
