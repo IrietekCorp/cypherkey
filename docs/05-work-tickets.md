@@ -703,7 +703,7 @@ type StepUpInput =
 
 ---
 
-### M2-08 · Vault list, search and item editing · L · deps: M2-07 · X-6
+### M2-08 · Vault list, search and item editing · L · deps: M2-07 · X-6 · **DONE**
 
 **Why.** The vault is the reason anyone tolerates the rest.
 
@@ -722,6 +722,16 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 **Dependency:** `fuse.js` for fuzzy search — but the list is small and local; a substring match over title and host may be enough. Ship the simple one unless it demonstrably fails.
 
 **Tests:** round-trip every item kind; a ciphertext re-labelled with another id fails to decrypt; search ranks title above host above username; an absence test that no plaintext reaches storage or logs.
+
+**As built.**
+
+- **`fuse.js` was not added.** Search is a ranked substring match over three fields; the list is local and small, and a dependency here would cost download size on every popup open for a problem this does not have. Revisit when real vaults make it feel wrong.
+- **A password is never searchable.** Matching on it would let anyone with the vault already open confirm a guess by typing it into the search box, and would surface entries for a reason invisible on screen. Note bodies *are* searchable, because they are content rather than a secret field.
+- **A password is never trimmed, though a title is.** Leading or trailing spaces are legitimate in a password, and silently removing one locks the user out of the site with no visible cause.
+- `decodeItem` takes the item id from the **envelope**, not the payload. Trusting an id inside the ciphertext would defeat the binding — the decryption has to be attempted against the id the server filed it under.
+- A decrypted payload is authenticated but still validated: it may have been written by an older version, and a malformed entry rendering as `undefined` throughout the UI is worse than a named error.
+
+**Corrected while doing this:** M2-07 claimed the unlock screen was wired into the popup and it was not. The edit had silently missed after biome reformatted the block, leaving `Unlock` imported and never rendered, and I did not check the file afterwards. The shell now runs the whole path — onboarding, Kit, enrolment, unlock, vault. **A `python` replace that prints success is not evidence the edit landed.**
 
 ---
 
