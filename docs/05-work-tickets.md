@@ -762,7 +762,7 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 
 ---
 
-### M2-10 · Content script: detection and domain-bound autofill · L · deps: M2-09 · X-6
+### M2-10 · Content script: detection and domain-bound autofill · L · deps: M2-09 · X-6 · **DONE (first pass)**
 
 **Why.** Highest bug risk in the milestone, and the only place a mistake fills a credential into the wrong site. **Budget two passes.**
 
@@ -773,6 +773,19 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 `tldts` is the only new dependency.
 
 **Tests:** a fixture set of real login-form shapes; a punycode host refuses and warns; a subdomain of the saved registrable domain fills; a different registrable domain does not; an `<iframe>` on a foreign origin never receives a fill.
+
+**As built (first of the two passes this ticket was budgeted).**
+
+- **`tldts` in the content script cost 265 KB on every page.** The public suffix list was bundled into a script that runs everywhere, to answer a punycode question that is a substring check. Splitting `isPunycodeHost` into `banner.ts` — which imports nothing — took the content script to **5.5 KB**. A test asserts that neither the banner, the detector nor the entrypoint imports `tldts` or `fill.ts`.
+- **The content script never fills.** It detects and warns; a fill happens only when the user asks through the popup. A script that filled on sight would put a credential on the page before anyone had looked at the address bar.
+- **Only punycode earns a banner.** A different site or a subframe is an ordinary "not here", and interrupting for those trains people to dismiss the banner unread — which is exactly when the one that matters arrives.
+- **Every refusal names itself** — `punycode`, `different-site`, `subframe`, `unknown-host` — and a test asserts all four are distinct. A silent no is indistinguishable from a bug.
+- `getDomain` returns null for localhost, IPs and intranet names. Null is **not** treated as a match, or every intranet host would be equivalent; exact equality is the only route for those.
+- **Two password fields are not a sign-in.** Autofilling a change-password form with the current password looks like it worked and silently sets the new password to the old one.
+
+**A permission decision worth your attention.** The content script matches `<all_urls>`, which is the largest change to what this extension can reach. Autofill cannot know in advance which sites a vault covers, so a password manager either has broad host access or it is not an autofilling password manager. The tighter alternative is `activeTab` with injection on a toolbar click, which turns autofill into "click the extension first, then fill" — a different product. The manifest test pins `permissions: ['storage']`, no `host_permissions`, and exactly one content script matching `<all_urls>`, so any widening has to be deliberate.
+
+**Left for the second pass:** the popup-side fill UI (choosing which item, and the inline icon), and a wider fixture set of real-world form shapes.
 
 ---
 

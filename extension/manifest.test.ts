@@ -66,3 +66,26 @@ describe('the generated manifest is loadable', () => {
     }
   });
 });
+
+/**
+ * M2-10 gave the extension broad host access through its content script. That is the
+ * single largest change to what the extension can reach, so it is pinned: a future
+ * widening (adding `tabs`, `scripting`, `webRequest`, or host_permissions) has to
+ * change this test deliberately rather than slip through.
+ */
+describe('what M2-10 granted, and what it did not', () => {
+  const built = `${import.meta.dir}/.output/chrome-mv3/manifest.json`;
+
+  test.skipIf(!existsSync(built))('one content script, and no new permissions', async () => {
+    const generated = JSON.parse(await Bun.file(built).text()) as {
+      permissions?: string[];
+      host_permissions?: string[];
+      content_scripts?: Array<{ matches?: string[] }>;
+    };
+
+    expect(generated.permissions).toEqual(['storage']);
+    expect(generated).not.toHaveProperty('host_permissions');
+    expect(generated.content_scripts).toHaveLength(1);
+    expect(generated.content_scripts?.[0]?.matches).toEqual(['<all_urls>']);
+  });
+});
