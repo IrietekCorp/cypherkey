@@ -47,3 +47,22 @@ describe('the generated manifest', () => {
     expect(generated.permissions).toEqual(['storage']);
   });
 });
+
+/**
+ * Chrome refuses to load a manifest whose `content_scripts` entry has an empty
+ * `matches`, and the failure is total: the extension does not load at all. A no-op
+ * placeholder content script cost a load failure once; this stops it recurring.
+ */
+describe('the generated manifest is loadable', () => {
+  const built = `${import.meta.dir}/.output/chrome-mv3/manifest.json`;
+
+  test.skipIf(!existsSync(built))('no content script declares an empty matches', async () => {
+    const generated = JSON.parse(await Bun.file(built).text()) as {
+      content_scripts?: Array<{ matches?: string[] }>;
+    };
+
+    for (const entry of generated.content_scripts ?? []) {
+      expect(entry.matches ?? []).not.toHaveLength(0);
+    }
+  });
+});

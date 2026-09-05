@@ -13,7 +13,10 @@ export const manifest: {
   name: 'CypherKey',
   description: 'A password manager that knows how you type.',
   // A-12: the least that works. No host permissions until M2-10 needs them, and no
-  // "tabs" — the content script is injected per-site with explicit user action.
+  // "tabs". There is deliberately no content script yet: Chrome refuses to load a
+  // manifest whose content_scripts entry has an empty `matches`, and the only way to
+  // make a placeholder valid is to request host access we do not want. M2-10 adds it
+  // with real matches, once there is something safe to inject.
   permissions: ['storage'],
   content_security_policy: {
     // Requirement 1 of M2-01: without 'wasm-unsafe-eval' the Argon2 module will not

@@ -21,10 +21,11 @@ jobs:
       # GENERATED manifest, not in the config object the unit test can see. Build it
       # here so a change that drops it fails CI rather than a real browser.
       - run: bun run build:extension
-      - name: the built manifest still allows wasm-unsafe-eval
-        run: |
-          grep -q "wasm-unsafe-eval" extension/.output/chrome-mv3/manifest.json \
-            || { echo "extension_pages CSP lost 'wasm-unsafe-eval'"; exit 1; }
+      # Also checks the rules Chrome enforces at load time. An empty `matches` on a
+      # content script makes the extension fail to load ENTIRELY, and nothing in the
+      # build warns about it -- that cost one manual load failure already.
+      - name: the built manifest is valid and loadable
+        run: bun run scripts/check-manifest.ts
       # Blocking, so any NEW advisory fails the build. One exception, by id:
       # GHSA-67mh-4wv8-2f99 is esbuild's dev server letting any website read its
       # responses. As of the Vite 8 upgrade (2026-09-05) it reaches us through
