@@ -27,10 +27,12 @@ jobs:
             || { echo "extension_pages CSP lost 'wasm-unsafe-eval'"; exit 1; }
       # Blocking, so any NEW advisory fails the build. One exception, by id:
       # GHSA-67mh-4wv8-2f99 is esbuild's dev server letting any website read its
-      # responses. It reaches us only through drizzle-kit and vite > tsx, both of
-      # which use esbuild as a bundler and never start that server, and the fix is
-      # pinned out of reach by those packages' own ranges. Re-check when drizzle-kit
-      # or vite bumps esbuild past 0.24.2, and delete this flag.
+      # responses. As of the Vite 8 upgrade (2026-09-05) it reaches us through
+      # drizzle-kit ALONE -- drizzle-kit > @esbuild-kit/core-utils > esbuild@0.18.20.
+      # Vite now carries 0.25.12 and tsx 0.28.2, both past the 0.24.2 fix, so the
+      # "or vite" half of this exception is retired. drizzle-kit is a CLI we run by
+      # hand to generate migrations; it never starts a dev server and never ships.
+      # Delete this flag entirely when drizzle-kit drops @esbuild-kit.
       #
       # Retried because it calls the npm advisory API, which returns 503 often enough
       # to have already failed a build. A registry outage is not a vulnerability, but

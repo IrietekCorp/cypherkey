@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [tailwindcss()],
   resolve: {
     alias: {
-      '@core': resolve(__dirname, '../core'),
+      '@core': resolve(import.meta.dirname, '../core'),
     },
   },
   build: {
@@ -14,8 +14,8 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        onePager: resolve(__dirname, 'one-pager.html'),
+        main: resolve(import.meta.dirname, 'index.html'),
+        onePager: resolve(import.meta.dirname, 'one-pager.html'),
       },
     },
   },
