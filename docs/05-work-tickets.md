@@ -527,7 +527,7 @@ Only what A-7 permits may persist: the user salt, the device id and the wrapped 
 
 ---
 
-### M2-02 · `<RhythmLight/>` · M · deps: M2-01 · X-1
+### M2-02 · `<RhythmLight/>` · M · deps: M2-01 · X-1 · **DONE**
 
 **Why.** X-1's promise is that the light is the consent signal: no visible light, no capture. `startCapture` already enforces it by throwing `RhythmLightNotVisible`, so this component's job is to make that guarantee legible rather than to re-implement it.
 
@@ -540,7 +540,16 @@ Only what A-7 permits may persist: the user salt, the device id and the wrapped 
 
 **Tests (happy-dom):** the light pulses once per keystroke; capture throws when the light is `display:none`, `visibility:hidden` or zero-size; each cancel reason renders its own message; `mousedown` on a sibling button does not cancel the sample; ARIA — `role="status"`, `aria-live="polite"`, and a label that states capture is active.
 
-**Acceptance:** with the light hidden by CSS, capture refuses and says so on screen.
+**Acceptance:** with the light hidden by CSS, capture refuses and says so on screen. The popup carries a "Hide the light" toggle so this is checkable by hand.
+
+**As built — the cancel reasons do not arrive the way the ticket assumed.**
+
+Writing the tests surfaced two things about `startCapture` that change what a screen has to do:
+
+1. **`onCancel` only ever reports `unsupported_key`.** Paste, drop and `compositionstart` all funnel through one `abandon('unsupported_key')`, so three different mistakes are indistinguishable at the callback — the M1-18 failure one layer down. The hook therefore attaches its own `paste`/`drop`/`compositionstart` listeners purely for messaging, while capture independently voids the sample. No shared type changed; `ScriptError` is used by the server too and widening it for a UI concern would be the wrong trade.
+2. **`focus_lost`, `unsupported_combo` and `malformed` are never raised during capture.** A blur is *recorded as a token*, and the error only appears when `eventsToScript` tokenizes. So `useCapture.stop()` tokenizes and reports, rather than handing back raw events — a caller that just took the events would show nothing and then fail server-side with no explanation. `stop()` returns `{ script, resolved, events }` or null, which is also what M2-03 and M2-05 need.
+
+Also: the shared `unsupported_key` copy originally said "an arrow, a function key or similar", which would have been wrong for a paste. It no longer guesses at a cause it cannot know, and there is a test pinning that.
 
 ---
 
