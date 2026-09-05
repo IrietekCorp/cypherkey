@@ -553,7 +553,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-03 · Onboarding: passphrase, script, consent · M · deps: M2-02 · X-2
+### M2-03 · Onboarding: passphrase, script, consent · M · deps: M2-02 · X-2 · **DONE**
 
 **Why.** The account's whole key hierarchy is decided here, and two of its inputs cannot be changed later without a re-key.
 
@@ -567,9 +567,19 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 - Record the A-12 consent checkbox with its policy version; `signup` already sends `consentAt` and `consentPolicyVersion`.
 - Drives `session.signup({ resolved, script, strictness, username, email, ... })`. Note the credential shape: the session derives all three A-2 branches itself, so this screen never touches a KDF.
 
-**Dependency:** `zxcvbn-ts` for strength. It is large; if the gzipped size is not acceptable, a length-plus-character-class heuristic with a clear "this is a rough guide" label is an acceptable substitute — but say which shipped.
+**Dependency:** `zxcvbn-ts`, approved 2026-09-05. **Measured cost: 224.8 KB gzipped of dictionaries plus 11.0 KB of core**, in a dynamic `import()` so neither is in the chunk the popup pays for on open. For comparison the initial popup chunk is 34.8 KB gzipped and the React runtime 59.1 KB. It is loaded on the onboarding screen only, once per install, and warmed while the user fills in their username.
+
+**A-15 has no extension budget.** The site and the server binary have one and are enforced by `scripts/size-check.ts`; the extension is now the largest artefact and has none. Worth adding before M2-08 and M2-09 pull in more.
+
+**A minimum length contradiction, unresolved in the docs and resolved here.** Three numbers were in play: the B1 decision said "at least 8, 10 is better", docs/03 X-2 says "≥ 3/4 and ≥ 12 chars", and this ticket said 10. Built to **12 and zxcvbn ≥ 3**, following docs/03 as the design document for this screen, and exposed as `MIN_PASSPHRASE_LENGTH` so it is a one-line change. The reasoning is asymmetric risk: too strict is fixed by loosening, while too loose leaves weak passphrases in the world permanently and tightening later would force a re-key (A-16). **Still wants a ruling.**
 
 **Tests:** two token-different scripts that resolve alike are rejected; the keystroke/character counts match `scriptLength` and `resolveScript`; under-length is refused; consent is required; an absence test that no passphrase or script reaches storage.
+
+**As built.**
+
+- **React's `onChange` does not fire under happy-dom.** Verified across four dispatch variants on a minimal controlled input — direct assignment, the prototype value setter, `input` and `change` events, and `InputEvent`. `onFocus` and `onClick` work; the change plugin's value tracking does not. The identity fields are therefore **uncontrolled**, which is the better design here anyway: they have no formatting or as-you-type validation, so controlled state bought only re-renders during typing.
+- **The submit button is never disabled for missing input; it says what is missing.** A disabled control with no stated reason leaves the user guessing which of three fields is at fault. This replaced a `disabled={!identityReady || !consented}` that was both untestable and worse.
+- The strength dictionaries are warmed on mount, so the first check is a microtask rather than a ~2 MB import. Without that, `assessPassphrase` resolved after React's `act()` window and every assertion read a stale DOM.
 
 ---
 

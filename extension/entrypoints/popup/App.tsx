@@ -1,75 +1,52 @@
-import { useRef, useState } from 'react';
-import { RhythmLight } from '../../src/components/RhythmLight';
-import { preventFocusSteal, useCapture } from '../../src/components/useCapture';
+import { useMemo, useState } from 'react';
+import type { SignupResult } from '../../../core/client/session';
+import { createExtensionSession } from '../../src/session';
+import { memoryArea } from '../../src/storage';
+import { Onboarding } from './Onboarding';
+
+/** A-12: bumped whenever the consent text changes, and recorded with the consent. */
+const CONSENT_POLICY_VERSION = '2026-09-01';
 
 /**
  * The popup shell. Screens land here in order: Onboarding (M2-03), Recovery Kit
  * (M2-04), Enrollment (M2-05), Unlock (M2-07), Vault (M2-08).
  *
- * Until then this exercises M2-02 so the X-1 guarantee can be checked by hand: hide the
- * light and capture refuses, on screen, rather than failing quietly or throwing.
+ * Storage is still the in-memory area rather than `chrome.storage.local`: nothing here
+ * has a server to talk to yet, so persisting a half-made account would leave the next
+ * popup open in a state no screen can recover from. M2-07 wires the real one.
  */
 export function App() {
-  const input = useRef<HTMLInputElement>(null);
-  const light = useRef<HTMLDivElement>(null);
-  const [hidden, setHidden] = useState(false);
-  const [script, setScript] = useState<string | null>(null);
-  const capture = useCapture();
+  const [done, setDone] = useState<SignupResult | null>(null);
 
-  const begin = () => {
-    if (input.current !== null && light.current !== null) {
-      setScript(null);
-      capture.start(input.current, light.current);
-    }
-  };
+  const session = useMemo(() => {
+    const worker = new Worker(new URL('../../src/kdf-worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    return createExtensionSession({
+      baseUrl: 'http://localhost:8787',
+      area: memoryArea(),
+      worker,
+    });
+  }, []);
+
+  if (done !== null) {
+    return (
+      <main className="flex flex-col gap-2 p-4 font-sans text-sm">
+        <h1 className="text-base font-semibold">Save your Recovery Kit</h1>
+        <p className="text-xs text-neutral-600">
+          The Recovery Kit screen is M2-04. Until then, this is the code that would be shown once
+          and never again.
+        </p>
+        <code className="rounded bg-neutral-100 p-2 text-xs break-all">{done.recoveryCode}</code>
+      </main>
+    );
+  }
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">CypherKey</h1>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-600">Type anything to see the light work</span>
-        <input
-          ref={input}
-          type="password"
-          onFocus={begin}
-          className="rounded border border-neutral-300 px-2 py-1"
-        />
-      </label>
-
-      <div style={hidden ? { display: 'none' } : undefined}>
-        <RhythmLight ref={light} state={capture.state} />
-      </div>
-
-      <div className="flex items-center gap-2">
-        {/* preventFocusSteal: without it, this click blurs the input, which voids the
-            sample the click is meant to submit. */}
-        <button
-          type="button"
-          onMouseDown={preventFocusSteal}
-          onClick={() => setScript(capture.stop()?.script ?? null)}
-          className="rounded bg-neutral-900 px-2 py-1 text-white"
-        >
-          Done
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            capture.reset();
-            setScript(null);
-            setHidden((h) => !h);
-          }}
-          className="rounded border border-neutral-300 px-2 py-1"
-        >
-          {hidden ? 'Show the light' : 'Hide the light'}
-        </button>
-      </div>
-
-      {script !== null && (
-        <p className="text-xs text-neutral-600">
-          Captured {[...script].length} keystrokes. Nothing left this popup.
-        </p>
-      )}
-    </main>
+    <Onboarding
+      session={session}
+      consentPolicyVersion={CONSENT_POLICY_VERSION}
+      onComplete={setDone}
+    />
   );
 }
