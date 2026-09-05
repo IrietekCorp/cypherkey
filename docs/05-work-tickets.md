@@ -291,7 +291,7 @@ POST /auth/step-up         → gains { method: 'backup_code', proof: string }
 - The client cannot yet drive `backup_code` — `core/client`'s `StepUpInput` is retype-only — so the e2e does not cover this path. That is M2-07's job and should be part of it.
 - Corrected a stale claim in `stepup.ts`'s header comment, which still said a code "cannot be checked server-side without breaking zero-knowledge". Same conflation this ticket exists to undo.
 
-### M2-00f · Server-authenticated recovery · L · deps: M2-00e · **approved**
+### M2-00f · Server-authenticated recovery · L · deps: M2-00e · **DONE**
 
 **Confirmed gap, both halves.** There is no `recoveryAuthHash` anywhere in the codebase: `POST /auth/recovery-key` stores `recoveryWrappedVaultKey` and nothing else, so nothing proves possession of the Kit. And there is no `POST /auth/recover` — `03` X-5 describes the flow and no route implements it. Recovery today is a paragraph, not a feature.
 
@@ -334,7 +334,13 @@ Returns `{ userId, serverShare, enrollmentToken }`. `vaultKey` itself never chan
 
 **Tests:** a correct Kit recovers and the new passphrase logs in; the old passphrase does not; `begin` with a wrong `recoveryAuthHash` is 401 and returns no blob; `begin` mutates nothing (row-for-row comparison before and after); a wrong Kit increments lockout and five lock the account; an enrolled TOTP factor is gone afterwards and Backup Codes still work; every device is revoked and the presenting one is registered; the profile is gone and `/enroll/status` says so; a failure mid-transaction leaves the account exactly as it was; no response or table contains the Kit, `recoveryAuthHash`, or a decrypted key.
 
-**Open question for you, not decided here:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
+**As built.** 16 tests in `recover.test.ts`, plus 6 client tests and three new e2e steps (19–21), which now drive real recovery through `core/client` instead of reading the blob out of the users table.
+
+- **A trap found on the way: Drizzle's sqlite `transaction()` does not roll back an async callback.** `bun:sqlite` is synchronous, so the transaction returns before the promise settles and the writes escape transactional control. A throw rolled back *nothing* — measured, and it would have passed every test while quietly defeating this ticket's central requirement. The route uses a synchronous body with `.run()` on sqlite and the awaited one on Postgres, and `recover.test.ts` forces a mid-transaction primary-key collision to prove the rollback. Recorded in A-9 so the next multi-write route does not rediscover it.
+- A failed transaction returns `recovery_failed` (500) rather than leaking a driver error, and does **not** count against lockout: the Kit was correct, something else broke.
+- Every other route test had to gain `recoveryAuthHash`, since `/auth/recovery-key` now requires it — 33 tests failed until they did, which is the schema change being load-bearing rather than cosmetic.
+
+**Open question for you, still not decided:** whether recovery should also force a *new* Recovery Kit. The old one still unwraps the vault, since `vaultKey` is unchanged. Regenerating is better hygiene — the Kit was just typed into a context that may be why recovery was needed — but it costs a "save this new Kit" step at the worst possible moment. Left as-is unless you say otherwise.
 
 ### M2-00g · Learn from a verified step-up · M · deps: M1-09 · **approved, mechanism revised**
 

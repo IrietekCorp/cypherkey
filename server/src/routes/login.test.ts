@@ -135,6 +135,7 @@ async function enrolledAccount(timingFloorMs = 0) {
       ct: toBase64Url(randomBytes(48)),
       nonce: toBase64Url(randomBytes(12)),
     },
+    recoveryAuthHash: toBase64Url(randomBytes(32)),
   };
   await post(
     app,

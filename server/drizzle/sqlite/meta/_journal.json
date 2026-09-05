@@ -15,6 +15,13 @@
       "when": 1788565093655,
       "tag": "0001_omniscient_the_order",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788578067284,
+      "tag": "0002_graceful_orphan",
+      "breakpoints": true
     }
   ]
 }

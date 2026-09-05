@@ -139,6 +139,7 @@ async function enrolledOnMedium() {
       ct: toBase64Url(randomBytes(48)),
       nonce: toBase64Url(randomBytes(12)),
     },
+    recoveryAuthHash: toBase64Url(randomBytes(32)),
   });
   for (let i = 0; i < config.enrollmentSamples; i++) {
     await call(

@@ -4,6 +4,7 @@ import {
   formatRecoveryCode,
   generateRecoveryCode,
   parseRecoveryCode,
+  recoveryAuthHashFromKey,
   recoveryKeyFromCode,
 } from './recovery';
 
@@ -192,5 +193,43 @@ describe('key material never reaches a log', () => {
     } finally {
       for (const s of spies) s.mockRestore();
     }
+  });
+});
+
+/**
+ * M2-00f. Recovery must be server-authenticated, which needs a verifier the server can
+ * check without ever being able to unwrap the vault itself.
+ */
+describe('recoveryAuthHashFromKey', () => {
+  test('is deterministic for a given Kit', async () => {
+    const code = generateRecoveryCode();
+    const key = await recoveryKeyFromCode(code);
+    expect(await recoveryAuthHashFromKey(key)).toEqual(await recoveryAuthHashFromKey(key));
+  });
+
+  test('is 32 bytes', async () => {
+    const key = await recoveryKeyFromCode(generateRecoveryCode());
+    expect((await recoveryAuthHashFromKey(key)).length).toBe(32);
+  });
+
+  test('differs from the key that unwraps the vault', async () => {
+    const key = await recoveryKeyFromCode(generateRecoveryCode());
+    const auth = await recoveryAuthHashFromKey(key);
+    // If these were equal, storing the verifier would hand the server the wrap key.
+    expect(auth).not.toEqual(key);
+  });
+
+  test('a different Kit yields a different verifier', async () => {
+    const a = await recoveryAuthHashFromKey(await recoveryKeyFromCode(generateRecoveryCode()));
+    const b = await recoveryAuthHashFromKey(await recoveryKeyFromCode(generateRecoveryCode()));
+    expect(a).not.toEqual(b);
+  });
+
+  test('the same Kit re-entered with different formatting verifies the same', async () => {
+    const code = generateRecoveryCode();
+    const spaced = code.toLowerCase().replace(/-/g, ' ');
+    const fromCanonical = await recoveryAuthHashFromKey(await recoveryKeyFromCode(code));
+    const fromSpaced = await recoveryAuthHashFromKey(await recoveryKeyFromCode(spaced));
+    expect(fromSpaced).toEqual(fromCanonical);
   });
 });

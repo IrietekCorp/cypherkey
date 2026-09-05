@@ -10,7 +10,11 @@ import {
   randomBytes,
 } from '../crypto/kdf';
 import { type Strictness, kdfInput, scriptCommitments } from '../crypto/phantom';
-import { generateRecoveryCode, recoveryKeyFromCode } from '../crypto/recovery';
+import {
+  generateRecoveryCode,
+  recoveryAuthHashFromKey,
+  recoveryKeyFromCode,
+} from '../crypto/recovery';
 
 /** A-5 step 6: the vault key lives in memory only, and only while unlocked. */
 export type SessionState = 'locked' | 'unlocked' | 'step-up-required';
@@ -112,6 +116,22 @@ export type StrictnessChange = {
   accessToken: string;
 };
 
+/**
+ * X-5 recovery. The Kit is typed once and never stored; the new credential replaces
+ * the lost one. `vaultKey` itself does not change, so the vault is never re-encrypted.
+ */
+export type RecoverInput = {
+  username: string;
+  /** The 33-character Recovery Kit code, as printed. */
+  recoveryCode: string;
+  /** The new passphrase, as a credential — the same shape a login takes. */
+  credential: Credential;
+  deviceName: string;
+  devicePlatform: string;
+};
+
+export type RecoverResult = { userId: string; enrollmentToken: string };
+
 export type Session = {
   state(): SessionState;
   signup(input: SignupInput): Promise<SignupResult>;
@@ -119,6 +139,11 @@ export type Session = {
   stepUp(input: StepUpInput): Promise<LoginResult>;
   /** Session tokens from the last pass. Null while locked or awaiting step-up. */
   tokens(): { accessToken: string; refreshToken: string } | null;
+  /**
+   * X-5: proves possession of the Recovery Kit, then replaces the passphrase. Leaves
+   * the session unlocked and enrolment pending — the profile is deleted server-side.
+   */
+  recover(input: RecoverInput): Promise<RecoverResult>;
   /** A-9 rotation: exchanges the refresh token for a new pair. */
   refresh(): Promise<boolean>;
   /** Revokes the refresh family server-side, then locks. */
@@ -385,6 +410,85 @@ export function createSession(deps: SessionDeps): Session {
      * The route is device-signed but takes no bearer token — the refresh token is the
      * credential.
      */
+    /**
+     * X-5. Two calls, because the client cannot compute the new wrapped key until it
+     * has unwrapped the old one, and the server cannot re-wrap on its behalf. Both
+     * calls prove possession of the Kit; the first one writes nothing.
+     */
+    async recover(input) {
+      const recoveryKey = await recoveryKeyFromCode(input.recoveryCode);
+      const recoveryAuthHash = toBase64Url(await recoveryAuthHashFromKey(recoveryKey));
+
+      const begun = await request('POST', '/auth/recover/begin', {
+        username: input.username,
+        recoveryAuthHash,
+      });
+      if (begun.status !== 200) {
+        recoveryKey.fill(0);
+        throw new Error(`recovery failed with status ${begun.status}`);
+      }
+
+      const payload = asRecord(begun.body);
+      const serverShare = fromBase64Url(requireString(payload.serverShare, 'serverShare'));
+      // A-5: the Kit wraps the FULL vault key, not the client's share of it.
+      const vault = await unwrapKey(
+        sealedFromJson(payload.recoveryWrappedVaultKey),
+        recoveryKey,
+        'cypherkey/wrap/vault-key/v1',
+      );
+      recoveryKey.fill(0);
+
+      // The new passphrase gets a new salt, and therefore an entirely new hierarchy.
+      const userSalt = randomBytes(SALT_BYTES);
+      const {
+        authKey,
+        wrapKey: wrap,
+        phantomKey: phantom,
+      } = await deriveBranches(input.credential, userSalt);
+      const vaultShare = xor32(vault, serverShare);
+      const rewrapped = await wrapKey(vaultShare, wrap, 'cypherkey/wrap/vault-key/v1');
+
+      const device = await generateDeviceKey();
+      const deviceId = toBase64Url(device.pub);
+      const done = await request('POST', '/auth/recover', {
+        username: input.username,
+        recoveryAuthHash,
+        newAuthHash: toBase64Url(authKey),
+        newUserSalt: toBase64Url(userSalt),
+        newWrappedVaultKey: sealedToJson(rewrapped),
+        devicePub: deviceId,
+        deviceName: input.deviceName,
+        devicePlatform: input.devicePlatform,
+      });
+      authKey.fill(0);
+      if (done.status !== 200) {
+        vault.fill(0);
+        wrap.fill(0);
+        phantom.fill(0);
+        device.priv.fill(0);
+        throw new Error(`recovery failed with status ${done.status}`);
+      }
+
+      const devicePrivWrapped = await wrapKey(device.priv, wrap, 'cypherkey/wrap/device-key/v1');
+      device.priv.fill(0);
+      await deps.storage.set(KEYS.deviceId, deviceId);
+      await deps.storage.set(KEYS.devicePub, deviceId);
+      await deps.storage.set(
+        KEYS.devicePrivWrapped,
+        JSON.stringify(sealedToJson(devicePrivWrapped)),
+      );
+      await deps.storage.set(KEYS.userSalt, toBase64Url(userSalt));
+      await cacheForOffline(vault, wrap);
+      unlockWith(vault, wrap, phantom);
+      vaultShareBytes = vaultShare;
+
+      const result = asRecord(done.body);
+      return {
+        userId: requireString(result.userId, 'userId'),
+        enrollmentToken: requireString(result.enrollmentToken, 'enrollmentToken'),
+      };
+    },
+
     async refresh() {
       if (sessionTokens === null || wrapKeyBytes === null) return false;
       const device = await loadDevice(wrapKeyBytes);
@@ -474,13 +578,16 @@ export function createSession(deps: SessionDeps): Session {
       const recoveryCode = generateRecoveryCode();
       const recoveryKey = await recoveryKeyFromCode(recoveryCode);
       const recoveryWrapped = await wrapKey(vault, recoveryKey, 'cypherkey/wrap/vault-key/v1');
+      // M2-00f: the verifier that lets the server authenticate a recovery. A second
+      // HKDF branch, so what proves possession is never what unwraps.
+      const recoveryAuthHash = toBase64Url(await recoveryAuthHashFromKey(recoveryKey));
       recoveryKey.fill(0);
       // Signed with the device key registered a moment ago (A-3). An anonymous write
       // here would let anyone swap the Recovery Kit for one they control.
       const registered = await request(
         'POST',
         '/auth/recovery-key',
-        { recoveryWrappedVaultKey: sealedToJson(recoveryWrapped) },
+        { recoveryWrappedVaultKey: sealedToJson(recoveryWrapped), recoveryAuthHash },
         device.priv,
         deviceId,
       );

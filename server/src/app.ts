@@ -8,6 +8,7 @@ import { backupCodeRoutes } from './routes/backup-codes';
 import { enrollRoutes } from './routes/enroll';
 import { healthRoutes } from './routes/health';
 import { loginRoutes } from './routes/login';
+import { recoverRoutes } from './routes/recover';
 import { sessionRoutes } from './routes/session';
 import { stepUpRoutes } from './routes/stepup';
 import { userRoutes } from './routes/user';
@@ -47,6 +48,15 @@ export function createApp(deps: AppDeps): Hono {
     app.route(
       '/',
       loginRoutes({
+        db: deps.db,
+        config: deps.config,
+        timingFloorMs: deps.timingFloorMs ?? DEFAULT_TIMING_FLOOR_MS,
+        now: deps.now,
+      }),
+    );
+    app.route(
+      '/',
+      recoverRoutes({
         db: deps.db,
         config: deps.config,
         timingFloorMs: deps.timingFloorMs ?? DEFAULT_TIMING_FLOOR_MS,

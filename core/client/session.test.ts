@@ -3,7 +3,7 @@ import { decryptItem, encryptItem, unwrapKey, xor32 } from '../crypto/aead';
 import { fromBase64Url, toBase64Url, utf8Encode } from '../crypto/encoding';
 import * as kdf from '../crypto/kdf';
 import { deriveMasterKey, deriveSubkey, randomBytes } from '../crypto/kdf';
-import { recoveryKeyFromCode } from '../crypto/recovery';
+import { generateRecoveryCode, recoveryKeyFromCode } from '../crypto/recovery';
 import { type SessionStorage, createSession } from './session';
 
 const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
@@ -89,6 +89,27 @@ function mockServer(options: { band?: 'pass' | 'grey' | 'fail' } = {}) {
         refreshToken: 'refresh-1',
         wrappedVaultKey: state.stored.wrappedVaultKey,
         serverShare: toBase64Url(state.serverShare),
+      });
+    }
+    if (path === '/auth/recover/begin') {
+      // M2-00f: read-only, and only after the verifier matches what was registered.
+      if (body?.recoveryAuthHash !== state.stored.recoveryAuthHash) {
+        return json(401, { error: 'invalid_credentials' });
+      }
+      return json(200, {
+        recoveryWrappedVaultKey: state.stored.recoveryWrappedVaultKey,
+        serverShare: toBase64Url(state.serverShare),
+      });
+    }
+    if (path === '/auth/recover') {
+      if (body?.recoveryAuthHash !== state.stored.recoveryAuthHash) {
+        return json(401, { error: 'invalid_credentials' });
+      }
+      Object.assign(state.stored, { recovered: body });
+      return json(200, {
+        userId: 'user-1',
+        serverShare: toBase64Url(state.serverShare),
+        enrollmentToken: 'enroll-token-2',
       });
     }
     if (path === '/auth/step-up') {
@@ -789,5 +810,121 @@ describe('one Argon2id pass per unlock (M2-00d.1)', () => {
     // The retype is committed from the branch the grey login already held.
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+/**
+ * M2-00f. Recovery is server-authenticated: the Kit is proved before the server
+ * releases the wrapped vault key, and `begin` writes nothing.
+ */
+describe('recovery (X-5)', () => {
+  test('signup registers a verifier alongside the wrapped key', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    await session.signup(SIGNUP);
+
+    const call = server.state.calls.find((c) => c.path === '/auth/recovery-key');
+    const body = call?.body as Record<string, unknown>;
+    expect(body.recoveryWrappedVaultKey).toBeDefined();
+    expect(typeof body.recoveryAuthHash).toBe('string');
+  });
+
+  test('the verifier is not the key that unwraps the vault', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+
+    const call = server.state.calls.find((c) => c.path === '/auth/recovery-key');
+    const sent = (call?.body as Record<string, unknown>).recoveryAuthHash as string;
+    const recoveryKey = await recoveryKeyFromCode(recoveryCode);
+    // If these matched, registering the verifier would hand the server the wrap key.
+    expect(sent).not.toBe(toBase64Url(recoveryKey));
+  });
+
+  test('a correct Kit recovers the vault key and leaves the session unlocked', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    const { recoveryCode } = await session.signup(SIGNUP);
+    const original = toBase64Url(session.vaultKey());
+    session.lock();
+
+    const result = await session.recover({
+      username: 'shawn',
+      recoveryCode,
+      credential: { ...CREDENTIAL, resolved: 'a brand new passphrase' },
+      deviceName: 'Recovered laptop',
+      devicePlatform: 'linux',
+    });
+
+    expect(result.enrollmentToken).toBe('enroll-token-2');
+    expect(session.state()).toBe('unlocked');
+    // The vault key itself never changes, so nothing needs re-encrypting.
+    expect(toBase64Url(session.vaultKey())).toBe(original);
+  });
+
+  test('the new passphrase re-wraps the share; the old one is not sent', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    const { recoveryCode } = await session.signup(SIGNUP);
+    session.lock();
+
+    await session.recover({
+      username: 'shawn',
+      recoveryCode,
+      credential: { ...CREDENTIAL, resolved: 'a brand new passphrase' },
+      deviceName: 'Recovered laptop',
+      devicePlatform: 'linux',
+    });
+
+    const call = server.state.calls.find((c) => c.path === '/auth/recover');
+    const body = call?.body as Record<string, unknown>;
+    expect(body.newAuthHash).toBeDefined();
+    expect(body.newUserSalt).toBeDefined();
+    expect(body.newWrappedVaultKey).toBeDefined();
+    // Absence: the Kit, the passphrase and the vault key never travel.
+    const sent = JSON.stringify(body);
+    expect(sent).not.toContain(recoveryCode);
+    expect(sent).not.toContain('a brand new passphrase');
+    expect(sent).not.toContain('correct horse');
+  });
+
+  test('a wrong Kit fails before anything is released', async () => {
+    const server = mockServer();
+    const session = makeSession(server, memoryStorage());
+    await session.signup(SIGNUP);
+    session.lock();
+
+    expect(
+      session.recover({
+        username: 'shawn',
+        recoveryCode: generateRecoveryCode(),
+        credential: CREDENTIAL,
+        deviceName: 'Attacker',
+        devicePlatform: 'linux',
+      }),
+    ).rejects.toThrow('401');
+
+    // No /auth/recover call was ever made: begin refused first.
+    expect(server.state.calls.some((c) => c.path === '/auth/recover')).toBe(false);
+  });
+
+  test('recovery registers a fresh device key', async () => {
+    const server = mockServer();
+    const storage = memoryStorage();
+    const session = makeSession(server, storage);
+    const { recoveryCode } = await session.signup(SIGNUP);
+    const before = storage.dump()['cypherkey.device.id'];
+    session.lock();
+
+    await session.recover({
+      username: 'shawn',
+      recoveryCode,
+      credential: { ...CREDENTIAL, resolved: 'a brand new passphrase' },
+      deviceName: 'Recovered laptop',
+      devicePlatform: 'linux',
+    });
+
+    expect(storage.dump()['cypherkey.device.id']).not.toBe(before);
   });
 });

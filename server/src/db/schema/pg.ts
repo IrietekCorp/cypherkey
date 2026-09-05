@@ -40,6 +40,14 @@ export const users = table('users', {
   authHash: txt('auth_hash').notNull(),
   wrappedVaultKey: json<WrappedKey>('wrapped_vault_key').notNull(),
   recoveryWrappedVaultKey: json<WrappedKey>('recovery_wrapped_vault_key'),
+  /**
+   * A-2 / M2-00f: `Argon2id(recoveryAuthHash)`, where `recoveryAuthHash` is a second
+   * HKDF branch off the Recovery Kit. It proves possession of the Kit without being
+   * the key that unwraps `recovery_wrapped_vault_key` — so a DB dump does not yield a
+   * vault. Nullable only for accounts created before the column existed; both it and
+   * the blob are written together by the one-shot `/auth/recovery-key`.
+   */
+  recoveryAuthHash: txt('recovery_auth_hash'),
   serverShare: txt('server_share').notNull(),
   keyVersion: int('key_version').notNull().default(1),
   biometricEnabled: bool('biometric_enabled').notNull().default(true),

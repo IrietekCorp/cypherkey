@@ -276,6 +276,8 @@ describe('POST /auth/recovery-key (second leg of signup)', () => {
       ct: toBase64Url(randomBytes(48)),
       nonce: toBase64Url(randomBytes(12)),
     },
+    // M2-00f: the verifier lands in the same one-shot call as the blob.
+    recoveryAuthHash: toBase64Url(randomBytes(32)),
   });
 
   async function signedUp() {

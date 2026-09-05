@@ -54,7 +54,11 @@ const signupSchema = z.object({
   consentPolicyVersion: z.string().min(1).max(32),
 });
 
-const recoveryKeySchema = z.object({ recoveryWrappedVaultKey: sealedSchema });
+const recoveryKeySchema = z.object({
+  recoveryWrappedVaultKey: sealedSchema,
+  /** M2-00f: the verifier that proves possession of the Kit at recovery time. */
+  recoveryAuthHash: z.string().min(1).max(512),
+});
 
 export type AuthDeps = {
   db: Db;
@@ -273,7 +277,15 @@ export function authRoutes(deps: AuthDeps): Hono {
         return c.json({ error: 'already_registered' }, 409);
       }
 
-      const value = { recoveryWrappedVaultKey: parsed.data.recoveryWrappedVaultKey };
+      // Stored the same way as `authHash`: Argon2id over a value the server never
+      // learns. Both land in one write, so an account can never hold a blob that
+      // nobody can prove title to.
+      const value = {
+        recoveryWrappedVaultKey: parsed.data.recoveryWrappedVaultKey,
+        recoveryAuthHash: await Bun.password.hash(parsed.data.recoveryAuthHash, {
+          algorithm: 'argon2id',
+        }),
+      };
       if (db.dialect === 'sqlite') {
         await db.drizzle
           .update(sqliteSchema.users)

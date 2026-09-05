@@ -17,6 +17,8 @@ const GROUP_SIZE = 4;
 
 /** HKDF label separating the Recovery Kit branch from every other key in A-2. */
 const RECOVERY_INFO = 'cypherkey/recovery/v1';
+/** A-2: the branch that *proves possession*, kept separate from the one that unwraps. */
+const RECOVERY_AUTH_INFO = 'cypherkey/recovery-auth/v1';
 
 /** Decoding table, including Crockford's aliases: O reads as 0, I and L read as 1. */
 const DECODE = (() => {
@@ -133,4 +135,19 @@ export async function recoveryKeyFromCode(code: string): Promise<Uint8Array> {
   } finally {
     secret.fill(0);
   }
+}
+
+/**
+ * The verifier the server stores, so that the value proving possession of the Kit is
+ * never the value that unwraps the vault.
+ *
+ * Chained off `recoveryKey` rather than derived as its sibling purely to reuse the
+ * tested `recoveryKeyFromCode()`. HKDF is one-way either way, so a stolen verifier
+ * reveals nothing about the wrap key: an attacker holding `recoveryAuthHash` still
+ * cannot decrypt `recoveryWrappedVaultKey`.
+ *
+ * The server stores `Argon2id(recoveryAuthHash)`, exactly as it stores `Argon2id(authHash)`.
+ */
+export async function recoveryAuthHashFromKey(recoveryKey: Uint8Array): Promise<Uint8Array> {
+  return hkdf(sha256, recoveryKey, undefined, utf8Encode(RECOVERY_AUTH_INFO), KEY_BYTES);
 }

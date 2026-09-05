@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 /**
  * The M1 exit test (docs/04). Drives the real HTTP surface through the real client
  * library, against whatever `DATABASE_URL` names — SQLite by default, Postgres in CI.
@@ -21,17 +20,15 @@ import type { KeyEvent } from '../core/biometrics/types';
 import { createEnroller } from '../core/client/enroll';
 import { type Credential, type SessionStorage, createSession } from '../core/client/session';
 import { createSync } from '../core/client/sync';
-import { decryptItem, encryptItem, unwrapKey } from '../core/crypto/aead';
+import { decryptItem, encryptItem } from '../core/crypto/aead';
 import { fromBase64Url, toBase64Url, utf8Decode, utf8Encode } from '../core/crypto/encoding';
 import { deriveMasterKey, deriveSubkey } from '../core/crypto/kdf';
 import { kdfInput, scriptCommitments } from '../core/crypto/phantom';
-import { recoveryKeyFromCode } from '../core/crypto/recovery';
+import { generateRecoveryCode } from '../core/crypto/recovery';
 import { createApp } from '../server/src/app';
 import { loadConfigOrExit } from '../server/src/config';
 import { createDb } from '../server/src/db/client';
 import { migrateDb } from '../server/src/db/migrate';
-import * as pgSchema from '../server/src/db/schema/pg';
-import * as sqliteSchema from '../server/src/db/schema/sqlite';
 
 /**
  * The enrolled script: "passw0rd!" typed with two Phantom Keys — a doubled `s` that is
@@ -321,41 +318,60 @@ async function main(): Promise<void> {
   ok('logout revoked the session');
 
   // ---- the Recovery Kit really is the escape hatch (A-5, X-5) ---------------
-  // The blob is write-only until M2-00f adds `/auth/recover`, so read it back from
-  // storage directly; that step replaces this with the real verified route.
-  const row =
-    db.dialect === 'sqlite'
-      ? (
-          await db.drizzle
-            .select()
-            .from(sqliteSchema.users)
-            .where(eq(sqliteSchema.users.username, username))
-        )[0]
-      : (
-          await db.drizzle
-            .select()
-            .from(pgSchema.users)
-            .where(eq(pgSchema.users.username, username))
-        )[0];
-  const blob = row?.recoveryWrappedVaultKey as { ct: string; nonce: string } | null | undefined;
-  assert(blob != null, 'the Recovery Kit blob must be registered');
-
-  const recoveryKey = await recoveryKeyFromCode(signup.recoveryCode);
-  const viaKit = await unwrapKey(
-    { ct: fromBase64Url(blob.ct), nonce: fromBase64Url(blob.nonce) },
-    recoveryKey,
-    'cypherkey/wrap/vault-key/v1',
-  );
-  const fromKit = await decryptItem(
+  // M2-00f made this a real server-authenticated flow. It used to read the blob
+  // straight out of the users table, because no route would release it.
+  const storageThree = memoryStorage();
+  const sessionThree = clientFor(storageThree);
+  const recoveredSession = await sessionThree.recover({
+    username,
+    recoveryCode: signup.recoveryCode,
+    credential: { ...credential, resolved: 'a completely new passphrase' },
+    deviceName: 'recovered device',
+    devicePlatform: 'ci',
+  });
+  assert(sessionThree.state() === 'unlocked', 'recovery should leave the session unlocked');
+  // vaultKey is unchanged, so the item written before recovery still decrypts.
+  const afterRecovery = await decryptItem(
     {
       ct: fromBase64Url(read.items[0]?.ciphertext as string),
       nonce: fromBase64Url(read.items[0]?.nonce as string),
     },
-    viaKit,
+    sessionThree.vaultKey(),
     'item-1',
   );
-  assert(utf8Decode(fromKit).includes('hunter2'), 'the Recovery Kit must open the vault');
+  assert(
+    utf8Decode(afterRecovery).includes('hunter2'),
+    'the Recovery Kit must open the vault with no help from the old passphrase',
+  );
   ok('Recovery Kit opens the vault with no help from the server');
+
+  // X-5 requires a fresh enrolment: the profile is deleted by the recovery transaction.
+  const enrollAfter = createEnroller({
+    request: sessionThree.authed(),
+    token: recoveredSession.enrollmentToken,
+  });
+  const statusAfter = await enrollAfter.status();
+  assert(
+    !statusAfter.built && statusAfter.submitted === 0,
+    'recovery must delete the profile and require re-enrolment',
+  );
+  ok('recovery revoked the old devices and requires a fresh enrolment (X-5)');
+
+  // A wrong Kit must never release the blob.
+  const badKit = await sessionThree
+    .recover({
+      username,
+      recoveryCode: generateRecoveryCode(),
+      credential,
+      deviceName: 'attacker',
+      devicePlatform: 'ci',
+    })
+    .then(
+      () => 'accepted',
+      (err: Error) => err.message,
+    );
+  assert(badKit !== 'accepted', 'a wrong Recovery Kit must be refused');
+  ok('a wrong Recovery Kit is refused before anything is released');
 
   console.log(`\n  ${stepNumber} steps passed on ${db.dialect}\n`);
 }

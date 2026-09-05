@@ -225,12 +225,15 @@ Self-host: `docker compose up` gives server + SQLite in one container, volumes f
 | `refresh_tokens` | id, user_id, device_id, token_hash, expires_at, revoked_at, replaced_by |
 | `nonces` | nonce, user_id, seen_at (pruned > 5 min) |
 | `step_up_factors` | id, user_id, type (totp/passkey), secret_enc, created_at — see A-17 for what `secret_enc` holds per type. Backup Codes are **not** here: a one-time code needs a one-way hash, not a reversible secret |
+| `users.recovery_auth_hash` | `Argon2id(recoveryAuthHash)` — the verifier checked before `/auth/recover` releases or changes anything. Nullable only for accounts predating M2-00f; it is written in the same one-shot call as the blob, so no account can hold a blob nobody can prove title to |
 | `backup_codes` | id, user_id, code_hash (unique), used_at, created_at — X-3's ten one-time codes, stored as `base64url(sha256(normalized))`. A Backup Code opens a **session**; the Recovery Kit opens a **vault**, and the two are never named alike |
 | `lockouts` | user_id, failed_count, locked_until |
 | `rate_limits` | key (HMAC of scope+value under the server secret), tokens, updated_at — the DB token buckets A-8 calls for; neither an IP nor a username is stored in the clear |
 | `audit_log` | id, user_id, event, ip_hash, device_id, created_at |
 
 Removed from original: `credentials` (replaced by `vault_items`, no server-side key derivation), `enroll_tokens` (replaced by refresh tokens with scope), in-memory revocation.
+
+**Transactions on SQLite must use a synchronous callback.** `bun:sqlite` is a synchronous driver, and Drizzle's sqlite `transaction()` given an *async* callback returns before the promise settles: the writes then land outside transactional control and a throw rolls back nothing at all. Measured during M2-00f, where it would have silently defeated the one-transaction requirement while every test still passed. Any multi-write route therefore needs a synchronous body with explicit `.run()` on sqlite and the ordinary awaited body on Postgres — two branches, as elsewhere in the schema layer. `server/src/routes/recover.ts` is the reference, and `recover.test.ts` has the regression test that forces a mid-transaction failure.
 
 ## A-10. API surface (M1–M3)
 
@@ -266,6 +269,16 @@ POST  /user/rekey             {strictness, authHash, wrappedVaultKey, commitment
                               Crossing into or out of Strict changes kdfInput and so masterKey (A-16). vaultKey itself
                               does not change, so recoveryWrappedVaultKey stays valid. Bumps users.key_version, which is
                               how other devices learn their A-7 offline cache is stale.
+POST  /auth/recover/begin     {username, recoveryAuthHash} → {recoveryWrappedVaultKey, serverShare}
+                              READ-ONLY: touches no factor, device, key or profile. Same lockout and
+                              500 ms floor as /auth/login; an unknown user answers exactly as a wrong Kit.
+POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserSalt, newWrappedVaultKey,
+                              devicePub, deviceName, devicePlatform} → {userId, serverShare, enrollmentToken}
+                              One transaction: delete TOTP factors, revoke every device and refresh token,
+                              register the presenting device, write the new key material and bump
+                              key_version, delete the profile and samples. Backup Codes are untouched.
+                              Two calls because the client cannot compute newWrappedVaultKey until it has
+                              unwrapped vaultKey, and the server cannot re-wrap on its behalf.
 GET   /user/backup-codes      → {remaining}   ← a count, never the codes
 POST  /user/backup-codes      {authHash}  → {backupCodes[10]}   ← regenerate; invalidates every previous
                               code. A-17: the passphrase travels in this request, not a flag minted earlier.
@@ -340,6 +353,12 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 **Secrets (A-14.2).**
 - `masterKey = Argon2id(kdfInput, salt)` where `kdfInput = resolvedPassphrase` in Medium/Relaxed, and `kdfInput = resolvedPassphrase || U+0000 || script` in Strict. A wrong resolved passphrase therefore always fails, in every mode.
 - `phantomKey = HKDF(masterKey, "cypherkey/phantom/v1")`.
+- **The Recovery Kit has two branches, and only one of them unwraps anything:**
+  ```
+  recoveryKey      = HKDF(recoverySecret, "cypherkey/recovery/v1")        // unwraps the vault
+  recoveryAuthHash = HKDF(recoveryKey,    "cypherkey/recovery-auth/v1")   // proves possession
+  ```
+  The server stores `Argon2id(recoveryAuthHash)` in `users.recovery_auth_hash`, exactly as it stores `Argon2id(authHash)`. Chained off `recoveryKey` rather than a sibling of it purely to reuse the tested `recoveryKeyFromCode()`; HKDF is one-way either way, so the stored verifier reveals nothing about the wrap key. This is what makes recovery *server-authenticated*: without it, `POST /auth/recover` would hand the wrapped vault key to anyone who could name a username, turning the server into an oracle that distributes the encrypted vault key on request.
 - **All three branches are derived in one Argon2id pass and `phantomKey` is held in memory for the life of the unlock.** It is a sibling of `authKey` and `wrapKey`, so a client that holds only the KDF *input* cannot commit a script without running Argon2id again at m=64 MiB — doubling the cost of every unlock on the popup and the phone, which are the contexts least able to absorb it. A client API therefore takes the credential (`resolved`, `script`, `strictness`) rather than pre-built KDF bytes. `phantomKey` is memory-only: never persisted, never sent, zeroed on lock, exactly like `vaultKey`.
 - Script commitments: `c_i = HMAC-SHA256(phantomKey, token_i)` truncated to 16 bytes, for each token in order. The client sends `[c_1..c_n]` at enrollment (canonical) and at every login.
 - The server stores the canonical commitment sequence and compares at login (A-14.3). It cannot recover tokens (needs `phantomKey` → `masterKey` → passphrase). It can see the *equality pattern* of tokens (repeated characters hash identically). This is the disclosed leak; it reveals no token identities and no positions of phantoms relative to the resolved text.
