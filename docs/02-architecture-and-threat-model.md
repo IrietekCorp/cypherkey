@@ -10,6 +10,11 @@ This replaces sections 2, 3, and 7 of the original PROJECT.MD. The building mode
 4. **Wrap, don't derive.** The vault is encrypted with a random key that is *wrapped* by the passphrase-derived key. Changing your passphrase or adding a recovery key re-wraps one 32-byte key, not the whole vault.
 5. **One codebase, two databases.** SQLite for self-host and dev; Postgres for hosted. Same schema via an ORM, no forks.
 6. **No capture without the light.** The client never records keystroke timing unless the Rhythm Light component is mounted and visible. This is enforced in code, not policy (see `03`, X-1).
+7. **An artefact that leaves the system carries its own context, and is always replaceable.** The Recovery Kit is the only thing we produce that goes offline: printed, filed away, and read months or years later under stress, possibly by someone who was not there when it was made, with nothing else to hand. Four rules follow, and they are derivations rather than separate decisions:
+   - **Everything needed to act on it is *on* it.** Consequences travel with the artefact, not beside it on a screen that will not exist later. This is why the "your authenticator app will need to be set up again" line lives inside the printable block rather than next to it.
+   - **Transcription is forgiving.** It is read by eye and typed by hand, so the alphabet excludes I, L, O and U and the reader is never punished for the ambiguity the alphabet was designed to remove.
+   - **It never teaches a dangerous habit.** Confirmation reads back four characters rather than the whole Kit, because a full retype trains exactly the behaviour a phishing page would ask for.
+   - **It can always be replaced by someone who knows the passphrase** (`POST /user/recovery-kit`, M2-00i). Any one-shot artefact eventually produces a user who has none, and without a replacement path that state is unrecoverable — see A-10.
 
 ## A-2. Key hierarchy (client-side only)
 
@@ -275,7 +280,11 @@ POST  /auth/recover/begin     {username, recoveryAuthHash} → {recoveryWrappedV
 POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserSalt, newWrappedVaultKey,
                               devicePub, deviceName, devicePlatform,
                               newRecoveryWrappedVaultKey, newRecoveryAuthHash}
-                              → {userId, serverShare, enrollmentToken}   (client keeps the new Kit code)
+                              → {userId, serverShare, accessToken, refreshToken, enrollmentToken}
+                              (client keeps the new Kit code). It issues a session because the Kit was
+                              just proved and the device just registered; a forced re-login would prove
+                              nothing further and would hit a login with no profile to score, since the
+                              transaction deleted it.
                               One transaction: delete TOTP factors, revoke every device and refresh token,
                               register the presenting device, write the new key material and bump
                               key_version, delete the profile and samples, and replace the Recovery Kit
@@ -284,6 +293,15 @@ POST  /auth/recover           {username, recoveryAuthHash, newAuthHash, newUserS
                               original Kit working, or a failed recovery strands the account.
                               Two calls because the client cannot compute newWrappedVaultKey until it has
                               unwrapped vaultKey, and the server cannot re-wrap on its behalf.
+POST  /user/recovery-kit      {authHash, recoveryWrappedVaultKey, recoveryAuthHash} → {ok}
+                              Replaces the Kit. A-17 re-auth: the passphrase travels in THIS request,
+                              because a session token alone would let anyone holding an unlocked popup
+                              swap the Kit for one they control. Both halves move together.
+                              Without this the system has a closed loop with no exit: /auth/recovery-key
+                              is one-shot, so the only way to get a Kit is a recovery, which needs the
+                              Kit you do not have. Two ordinary events land a user there — closing the
+                              popup before saving the Kit at signup, and closing it after a recovery,
+                              which is worse because the old Kit is already retired.
 GET   /user/backup-codes      → {remaining}   ← a count, never the codes
 POST  /user/backup-codes      {authHash}  → {backupCodes[10]}   ← regenerate; invalidates every previous
                               code. A-17: the passphrase travels in this request, not a flag minted earlier.

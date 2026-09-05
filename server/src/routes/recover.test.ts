@@ -659,3 +659,199 @@ describe('recovery retires the old Recovery Kit', () => {
     expect(res.status).toBe(200);
   });
 });
+
+/**
+ * M2-00i. Without rotation the Kit is a one-shot artefact and the system has a closed
+ * loop with no exit: `/auth/recovery-key` is one-shot, so the only way to obtain a Kit
+ * is a recovery, which requires the Kit you do not have. Two ordinary events land a
+ * user in it — closing the popup before saving the Kit at signup, and closing it after
+ * a recovery, which is worse because the old Kit has already been retired.
+ */
+describe('POST /user/recovery-kit rotates the Kit', () => {
+  /** A fresh Kit and its verifier, as the client would compute them. */
+  const freshKit = async () => {
+    const kit = generateRecoveryCode();
+    const key = await recoveryKeyFromCode(kit);
+    return {
+      kit,
+      body: {
+        recoveryWrappedVaultKey: {
+          ct: toBase64Url(randomBytes(48)),
+          nonce: toBase64Url(randomBytes(12)),
+        },
+        recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(key)),
+      },
+    };
+  };
+
+  const accessTokenFor = async (a: Awaited<ReturnType<typeof account>>) => {
+    const res = await a.call('POST', '/auth/login', {
+      username: a.username,
+      authHash: a.authHash,
+      featureVector: SAME,
+      commitments: commitsFor(),
+    });
+    return ((await res.json()) as { accessToken: string }).accessToken;
+  };
+
+  test('a rotated Kit works and the old one stops', async () => {
+    const a = await account();
+    const token = await accessTokenFor(a);
+    const { kit, body } = await freshKit();
+
+    const res = await a.call(
+      'POST',
+      '/user/recovery-kit',
+      { authHash: a.authHash, ...body },
+      token,
+    );
+    expect(res.status).toBe(200);
+
+    // The old Kit is dead.
+    const old = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: a.recoveryAuthHash,
+    });
+    expect(old.status).toBe(401);
+
+    // The new one authenticates and returns the new blob.
+    const key = await recoveryKeyFromCode(kit);
+    const fresh = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(key)),
+    });
+    expect(fresh.status).toBe(200);
+    expect(((await fresh.json()) as Record<string, unknown>).recoveryWrappedVaultKey).toEqual(
+      body.recoveryWrappedVaultKey,
+    );
+  });
+
+  /** A-17: a session token alone must not be enough to swap the Kit. */
+  test('the passphrase is required in the request', async () => {
+    const a = await account();
+    const token = await accessTokenFor(a);
+    const { body } = await freshKit();
+
+    const res = await a.call(
+      'POST',
+      '/user/recovery-kit',
+      { authHash: toBase64Url(randomBytes(32)), ...body },
+      token,
+    );
+    expect(res.status).toBe(401);
+
+    // And nothing moved: the original Kit still works.
+    const still = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: a.recoveryAuthHash,
+    });
+    expect(still.status).toBe(200);
+  });
+
+  test('a session is required', async () => {
+    const a = await account();
+    const { body } = await freshKit();
+    const res = await a.call('POST', '/user/recovery-kit', { authHash: a.authHash, ...body });
+    expect(res.status).toBe(401);
+  });
+
+  test('a wrong passphrase counts toward lockout', async () => {
+    const a = await account();
+    const token = await accessTokenFor(a);
+    const { body } = await freshKit();
+
+    await a.call(
+      'POST',
+      '/user/recovery-kit',
+      { authHash: toBase64Url(randomBytes(32)), ...body },
+      token,
+    );
+    const lockout = (await a.drizzle.select().from(schema.lockouts))[0];
+    expect(lockout?.failedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  test('rotation can be repeated, each time retiring the last', async () => {
+    const a = await account();
+    const token = await accessTokenFor(a);
+
+    const first = await freshKit();
+    await a.call('POST', '/user/recovery-kit', { authHash: a.authHash, ...first.body }, token);
+    const second = await freshKit();
+    await a.call('POST', '/user/recovery-kit', { authHash: a.authHash, ...second.body }, token);
+
+    const firstKey = await recoveryKeyFromCode(first.kit);
+    const dead = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(firstKey)),
+    });
+    expect(dead.status).toBe(401);
+
+    const secondKey = await recoveryKeyFromCode(second.kit);
+    const live = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(secondKey)),
+    });
+    expect(live.status).toBe(200);
+  });
+
+  /**
+   * The exact scenario that motivated this ticket, end to end: the user recovers, the
+   * Kit that recovery issued is never saved, and before M2-00i they were stranded —
+   * the old Kit was retired inside the recovery transaction, no route could issue
+   * another, and recovery itself needs the Kit they no longer have.
+   */
+  test('a user who loses the Kit issued by a recovery is not stranded', async () => {
+    const a = await account();
+    const { body } = await a.recoverBody();
+
+    // Recover. The replacement Kit is deliberately discarded, exactly as closing the
+    // popup before the confirmation screen would discard it.
+    const out = (await (await a.post('/auth/recover', body)).json()) as {
+      enrollmentToken: string;
+    };
+
+    // Recovery revoked every old device and deleted the profile, so the account is now
+    // reached through the device that presented the Kit, with a fresh enrolment.
+    const call = async (method: string, path: string, b?: unknown, token?: string) =>
+      a.app.request(path, {
+        method,
+        headers: await headersFor(a.newSigner, method, path, b, token),
+        ...(b === undefined ? {} : { body: JSON.stringify(b) }),
+      });
+    for (let i = 0; i < a.config.enrollmentSamples; i++) {
+      await call(
+        'POST',
+        '/enroll/sample',
+        { featureVector: SAME, commitments: commitsFor() },
+        out.enrollmentToken,
+      );
+    }
+    await call('POST', '/enroll/build', {}, out.enrollmentToken);
+
+    const login = (await (
+      await call('POST', '/auth/login', {
+        username: a.username,
+        authHash: body.newAuthHash,
+        featureVector: SAME,
+        commitments: commitsFor(),
+      })
+    ).json()) as { accessToken: string };
+
+    // The way out: knowing the (new) passphrase is enough to be issued a fresh Kit.
+    const { kit, body: kitBody } = await freshKit();
+    const res = await call(
+      'POST',
+      '/user/recovery-kit',
+      { authHash: body.newAuthHash, ...kitBody },
+      login.accessToken,
+    );
+    expect(res.status).toBe(200);
+
+    const key = await recoveryKeyFromCode(kit);
+    const back = await a.post('/auth/recover/begin', {
+      username: a.username,
+      recoveryAuthHash: toBase64Url(await recoveryAuthHashFromKey(key)),
+    });
+    expect(back.status).toBe(200);
+  });
+});

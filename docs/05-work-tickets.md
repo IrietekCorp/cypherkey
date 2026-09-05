@@ -495,6 +495,25 @@ Written 2026-09-05 against the verified client surface above. Sequence: **M2-01 
 
 ---
 
+### M2-00i · The Recovery Kit must be replaceable · M · deps: M2-00f · **DONE**
+
+**The gap, found by asking whether four small decisions were really one.** Kit confirmation was client-side state in `App.tsx` and the server never learned whether anything was saved. Enrollment gates on the Kit being *registered*, but the client does that automatically during signup, so it proves nothing about the human.
+
+That leaves a **closed loop with no exit**: `/auth/recovery-key` is one-shot (409 if registered), so the only way to obtain a Kit is a recovery — which requires the Kit you do not have. Two entirely ordinary events land a user in it:
+
+1. **Signup**, popup closed before confirming. The account works and the passphrase logs in, so nothing looks wrong. The user is one forgotten passphrase from a sealed vault and has no way to know.
+2. **After a recovery**, popup closed before confirming — and this one is worse, because M2-00f retires the old Kit *inside* the transaction. That was the right call for atomicity, but it means there is an interval where the old Kit is dead and the new one exists only on screen.
+
+**Files:** modify `server/src/routes/recover.ts` (+test), `core/client/session.ts`, `scripts/e2e.ts`, `docs/02` A-1/A-10.
+
+**What was built.** `POST /user/recovery-kit` replaces the Kit for anyone who knows the passphrase — A-17 re-auth, so the passphrase travels in that request rather than resting on a session token an unlocked popup already carries. `session.rotateRecoveryKit(credential)` drives it and returns the new code to show once, reusing M2-04's screen. Failures count toward lockout.
+
+**A second gap found while testing the flow end to end:** `/auth/recover` issued no session tokens, so a recovered session could not make a single authenticated request — including the rotation that rescues it. It now issues a session, which is right on its own merits: the Kit was just proved and the device just registered, and a forced re-login would land on a login with no profile to score against, since the transaction deleted it.
+
+**Tests:** rotation retires the old Kit and the new one recovers; the passphrase is required and a session token alone is refused; a wrong passphrase counts toward lockout and moves nothing; repeated rotation retires each previous Kit; and the motivating scenario in full — recover, discard the issued Kit, re-enrol, log in with the new passphrase, rotate, and recover again with the rotated Kit. The e2e drives the same path through `core/client` as step 22.
+
+**The more valuable half is the principle this exposed**, now A-1 principle 7: an artefact that leaves the system carries its own context and is always replaceable. The four decisions from M2-04 are derivations of it, not separate rulings.
+
 ### M2-01 · Extension scaffold and the storage adapter · M · deps: M2-00d · **DONE**
 
 **Why.** Everything else in M2 is a screen inside this shell. It also has to prove the thing most likely to be wrong late: that Argon2id at m=64 MiB runs acceptably inside an MV3 popup.

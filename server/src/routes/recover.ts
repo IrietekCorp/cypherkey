@@ -2,6 +2,8 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { clearLockout, readLockout, recordFailure } from '../auth/lockout';
+import { requireAuth } from '../auth/require';
+import { issueSession } from '../auth/session-tokens';
 import { mintToken } from '../auth/token';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
@@ -36,6 +38,13 @@ const recoverSchema = beginSchema.extend({
   newRecoveryAuthHash: z.string().min(1).max(512),
 });
 
+const rotateSchema = z.object({
+  /** A-17: the passphrase travels in this request, not a flag minted earlier. */
+  authHash: z.string().min(1).max(512),
+  recoveryWrappedVaultKey: sealedSchema,
+  recoveryAuthHash: z.string().min(1).max(512),
+});
+
 export type RecoverDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
 
 /** The same floor as `/auth/login`: an unknown user must cost what a wrong Kit costs. */
@@ -60,6 +69,23 @@ export function recoverRoutes(deps: RecoverDeps): Hono {
   const app = new Hono();
   const { db, config } = deps;
   const now = deps.now ?? Date.now;
+
+  const userById = async (userId: string) =>
+    db.dialect === 'sqlite'
+      ? (
+          await db.drizzle
+            .select()
+            .from(sqliteSchema.users)
+            .where(eq(sqliteSchema.users.id, userId))
+            .limit(1)
+        )[0]
+      : (
+          await db.drizzle
+            .select()
+            .from(pgSchema.users)
+            .where(eq(pgSchema.users.id, userId))
+            .limit(1)
+        )[0];
 
   const userByName = async (username: string) =>
     db.dialect === 'sqlite'
@@ -238,11 +264,19 @@ export function recoverRoutes(deps: RecoverDeps): Hono {
 
       await clearLockout(db, user.id);
 
+      // A recovery has just proved the Kit, set a new passphrase and registered this
+      // device. Making the user log in again immediately would prove nothing further
+      // and would land them on a login that has no profile to score against, since
+      // step 5 deleted it.
+      const issued = await issueSession(db, config, user.id, deviceId, now(), now());
+
       // `vaultKey` itself never changed, so the vault is not re-encrypted. What changed
       // is the passphrase that wraps the client's half of it.
       return c.json({
         userId: user.id,
         serverShare: user.serverShare,
+        accessToken: issued.accessToken,
+        refreshToken: issued.refreshToken,
         enrollmentToken: mintToken(
           { sub: user.id, scope: 'enroll' },
           config.jwtSecret,
@@ -251,6 +285,65 @@ export function recoverRoutes(deps: RecoverDeps): Hono {
         ),
       });
     });
+  });
+
+  /**
+   * `POST /user/recovery-kit` — replace the Kit at any time, knowing the passphrase.
+   *
+   * Without this the Kit is a one-shot artefact and the system has a closed loop with
+   * no exit: `/auth/recovery-key` is one-shot, so the only way to obtain a Kit is to
+   * perform a recovery, which requires the Kit you do not have. Two ordinary events
+   * land a user in it — closing the popup before saving the Kit at signup, and closing
+   * it after a recovery, which is worse because M2-00f has already retired the old Kit
+   * inside the transaction.
+   *
+   * It also makes "print a new Recovery Kit" a normal settings action, which is what
+   * anyone who has lost a printout will look for first.
+   */
+  app.post('/user/recovery-kit', async (c) => {
+    const rawBody = await c.req.text();
+    const auth = await requireAuth(db, config, c.req, rawBody, now());
+    if (auth === null) return c.json({ error: 'unauthorized' }, 401);
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(rawBody);
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const parsed = rotateSchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'invalid_body' }, 400);
+
+    const user = await userById(auth.userId);
+    if (user === undefined) return c.json({ error: 'unauthorized' }, 401);
+
+    // A-17: a change of this weight needs the passphrase presented in *this* request.
+    // A session token alone would let anyone holding an unlocked popup swap the Kit
+    // for one they control, which is a silent account takeover.
+    if (!(await Bun.password.verify(parsed.data.authHash, user.authHash))) {
+      await recordFailure(db, user.id, now());
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+
+    // Both halves move together, as at registration: an account must never hold a blob
+    // nobody can prove title to, nor a verifier for a blob that is not there.
+    const value = {
+      recoveryWrappedVaultKey: parsed.data.recoveryWrappedVaultKey,
+      recoveryAuthHash: await Bun.password.hash(parsed.data.recoveryAuthHash, {
+        algorithm: 'argon2id',
+      }),
+    };
+    if (db.dialect === 'sqlite') {
+      await db.drizzle
+        .update(sqliteSchema.users)
+        .set(value)
+        .where(eq(sqliteSchema.users.id, user.id));
+    } else {
+      await db.drizzle.update(pgSchema.users).set(value).where(eq(pgSchema.users.id, user.id));
+    }
+    await clearLockout(db, user.id);
+
+    return c.json({ ok: true });
   });
 
   return app;

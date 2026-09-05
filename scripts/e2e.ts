@@ -384,6 +384,39 @@ async function main(): Promise<void> {
   assert(sessionFour.state() === 'unlocked', 'the replacement Kit must work');
   ok('recovery retired the used Kit and issued a working replacement (X-5)');
 
+  /**
+   * M2-00i: the way out of the closed loop. sessionFour recovered a moment ago and,
+   * like a user who closed the popup before the confirmation screen, never saved the
+   * Kit that recovery issued. Knowing the passphrase must be enough to get another.
+   */
+  const thirdCredential = { ...credential, resolved: 'a third passphrase' };
+  const rotated = await sessionFour.rotateRecoveryKit(thirdCredential);
+  assert(
+    rotated.recoveryCode !== recoveredSession.recoveryCode,
+    'rotation must issue a different Kit',
+  );
+
+  const storageFive = memoryStorage();
+  const sessionFive = clientFor(storageFive);
+  await sessionFive.recover({
+    username,
+    recoveryCode: rotated.recoveryCode,
+    credential: { ...credential, resolved: 'a fourth passphrase' },
+    deviceName: 'recovered via rotated kit',
+    devicePlatform: 'ci',
+  });
+  assert(sessionFive.state() === 'unlocked', 'the rotated Kit must open the vault');
+  const viaRotated = await decryptItem(
+    {
+      ct: fromBase64Url(read.items[0]?.ciphertext as string),
+      nonce: fromBase64Url(read.items[0]?.nonce as string),
+    },
+    sessionFive.vaultKey(),
+    'item-1',
+  );
+  assert(utf8Decode(viaRotated).includes('hunter2'), 'the rotated Kit opens the same vault');
+  ok('a lost Kit can be replaced with the passphrase, and the new one recovers (M2-00i)');
+
   // A wrong Kit must never release the blob.
   const badKit = await sessionThree
     .recover({

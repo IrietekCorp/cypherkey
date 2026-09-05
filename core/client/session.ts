@@ -169,6 +169,12 @@ export type Session = {
    * the session unlocked and enrolment pending — the profile is deleted server-side.
    */
   recover(input: RecoverInput): Promise<RecoverResult>;
+  /**
+   * Replaces the Recovery Kit, returning the new code to show once. Requires the
+   * passphrase (A-17) and an unlocked session, because the new Kit must wrap the live
+   * `vaultKey`.
+   */
+  rotateRecoveryKit(input: Credential): Promise<{ recoveryCode: string }>;
   /** A-9 rotation: exchanges the refresh token for a new pair. */
   refresh(): Promise<boolean>;
   /** Revokes the refresh family server-side, then locks. */
@@ -522,11 +528,70 @@ export function createSession(deps: SessionDeps): Session {
       vaultShareBytes = vaultShare;
 
       const result = asRecord(done.body);
+      // A recovery leaves a usable session: the Kit was proved, the device registered.
+      const access = result.accessToken;
+      const refreshToken = result.refreshToken;
+      sessionTokens =
+        typeof access === 'string' && typeof refreshToken === 'string'
+          ? { accessToken: access, refreshToken }
+          : null;
       return {
         userId: requireString(result.userId, 'userId'),
         enrollmentToken: requireString(result.enrollmentToken, 'enrollmentToken'),
         recoveryCode: nextRecoveryCode,
       };
+    },
+
+    /**
+     * M2-00i. Without this the Kit is one-shot and the system has no exit: the only way
+     * to obtain a Kit is a recovery, which requires the Kit you do not have.
+     *
+     * The passphrase is re-derived here rather than held from the unlock — that second
+     * Argon2id pass *is* the re-auth A-17 asks for, and holding `authHash` in memory
+     * for the life of a session to avoid it would be the wrong trade.
+     */
+    async rotateRecoveryKit(input) {
+      if (state !== 'unlocked' || vaultKeyBytes === null || wrapKeyBytes === null) {
+        throw new Error('session is locked');
+      }
+      const saltRaw = await deps.storage.get(KEYS.userSalt);
+      if (saltRaw === null) throw new Error('unknown salt');
+      if (sessionTokens === null) throw new Error('no session token');
+
+      const {
+        authKey,
+        wrapKey: derivedWrap,
+        phantomKey,
+      } = await deriveBranches(input, fromBase64Url(saltRaw));
+      derivedWrap.fill(0);
+      phantomKey.fill(0);
+
+      const recoveryCode = generateRecoveryCode();
+      const recoveryKey = await recoveryKeyFromCode(recoveryCode);
+      const wrapped = await wrapKey(vaultKeyBytes, recoveryKey, 'cypherkey/wrap/vault-key/v1');
+      const recoveryAuthHash = toBase64Url(await recoveryAuthHashFromKey(recoveryKey));
+      recoveryKey.fill(0);
+
+      const device = await loadDevice(wrapKeyBytes);
+      const response = await request(
+        'POST',
+        '/user/recovery-kit',
+        {
+          authHash: toBase64Url(authKey),
+          recoveryWrappedVaultKey: sealedToJson(wrapped),
+          recoveryAuthHash,
+        },
+        device?.priv,
+        device?.id,
+        sessionTokens.accessToken,
+      );
+      authKey.fill(0);
+      device?.priv.fill(0);
+
+      if (response.status !== 200) {
+        throw new Error(`recovery kit rotation failed with status ${response.status}`);
+      }
+      return { recoveryCode };
     },
 
     async refresh() {
