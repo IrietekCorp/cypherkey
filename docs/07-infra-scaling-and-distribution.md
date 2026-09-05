@@ -4,7 +4,7 @@
 
 | Layer | Choice | Monthly cost at launch | Why |
 |---|---|---|---|
-| Edge / DNS / DDoS / static site | Cloudflare (free) + Cloudflare Pages | $0 | Free DDoS absorption is the single best cost decision for a security product likely to be poked |
+| Edge / DNS / DDoS / static site | **GCP** — Cloud CDN + Cloud Storage for the static site, Cloud Armor for DDoS | usage-based | Decided 2026-09-05: the marketing site is part of this application and lives where the rest of it does. Cloudflare Pages was the M0 answer and is retired; keeping the site on a second provider meant two deploy paths and two places to look when something broke |
 | API | Cloud Run (min instances 0 → 1 at launch), 1 vCPU / 512 MB, region us-west1; single `bun --compile` binary in a distroless image | $0–15 | Scale-to-zero before launch; Bun cold start is tens of ms so min=0 is viable longer than usual |
 | Database | Cloud SQL Postgres, `db-f1-micro` (shared core) with automated backups + PITR | ~$10–15 | Same schema as self-host SQLite via Drizzle |
 | Secrets | Secret Manager | ~$0 | `JWT_SECRET`, Resend, Stripe |
@@ -28,7 +28,7 @@ Why not Cloud Run + SQLite (Litestream)? Multiple instances can't share a SQLite
 | Cloud SQL CPU > 60% sustained | Upgrade to `db-custom-1-3840`; add read replica for `/vault/changes` GETs |
 | > 5,000 DAU | Move rate limiting and nonce log to Redis; enable SSE via Cloud Run WebSockets/HTTP streaming |
 | > 50,000 users | Partition `vault_items` by `user_id` hash; move ciphertext blobs > 64 KB to Cloud Storage with signed URLs |
-| Any single-region outage concern | Second region behind Cloudflare load balancing; Postgres cross-region replica |
+| Any single-region outage concern | Second region behind a GCP external load balancer; Postgres cross-region replica |
 
 Because the server holds only ciphertext and scoring is a few hundred float ops, the per-request cost is tiny. The scaling constraints are Argon2id (client-side, not our CPU) and database writes for score history — batch those into a single insert per login.
 

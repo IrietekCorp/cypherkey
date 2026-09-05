@@ -98,7 +98,7 @@ bun run lint
 # Run in-browser demo locally
 bun run dev:site
 
-# Build static site for production (Cloudflare Pages)
+# Build static site for production (deployed to GCP; see M2-16)
 bun run build:site
 ```
 

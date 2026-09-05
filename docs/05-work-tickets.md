@@ -749,7 +749,7 @@ X-3 calls this a feature, not a notification: *"Someone typed your passphrase bu
 
 Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is the existing distroless build; Postgres is reached over the network via `DATABASE_URL` and is never part of the image.
 
-**A doc conflict to settle first, in one line:** `docs/04` and `docs/07` still say Cloudflare Pages, and M0-06 is marked done against it, but hosting is now GCP. Correct both, and say whether the marketing site moves too or stays on Pages.
+**Settled 2026-09-05: everything is GCP, marketing site included.** The site is part of this application, not a separate property, so it deploys here rather than staying on Cloudflare Pages — one deploy path, one place to look when something breaks. `docs/04`, `docs/07` and the README are corrected. This ticket therefore covers Cloud Run + Cloud SQL + Secret Manager **and** the static site (Cloud CDN + Cloud Storage, Cloud Armor in front). The M0-06 Pages config is superseded; remove it here rather than leaving a second deploy path in the repo.
 
 **Acceptance:** a deployed instance passes the e2e against `DATABASE_URL`, and the size budgets still hold.
 

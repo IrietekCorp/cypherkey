@@ -9,7 +9,7 @@ Solo founder, >10 hrs/week, AI-assisted. Dates assume ~15 hrs/week; the model do
 **Goal:** a live website at cypherkey.io that demonstrates the party trick in the browser, plus a credible README and one-pager. The extension is *not* required for the demo; if it works, it's a bonus.
 
 **Deliverables**
-1. Landing page (static, Cloudflare Pages): one-liner, origin story, the live demo, roadmap, "star on GitHub," email capture.
+1. Landing page (static, **GCP** — decided 2026-09-05; the marketing site is part of this application, not a separate property, so it deploys with everything else in M2-16): one-liner, origin story, the live demo, roadmap, "star on GitHub," email capture.
 2. **In-browser demo** (100% client-side, no accounts): enroll a passphrase 8 times with the Rhythm Light → "Now hand your laptop to someone" → they type it → score shown → you type it → score shown. Uses the real `core/` feature extraction and scoring code.
 3. GitHub repo cleaned: README with the honest threat model summary, architecture diagram, license split, `docs/` containing files 02 and 03.
 4. One-pager PDF for Jonathan (text in file 09).
