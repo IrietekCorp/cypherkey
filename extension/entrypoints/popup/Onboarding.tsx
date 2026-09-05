@@ -14,7 +14,7 @@ export type OnboardingProps = {
    * lives in memory for the length of the flow and is never persisted — it is the key
    * sequence, and A-7 permits none of it on disk.
    */
-  onComplete(result: SignupResult, script: string): void;
+  onComplete(result: SignupResult, script: string, username: string): void;
 };
 
 type Captured = { script: string; resolved: string };
@@ -88,8 +88,9 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
 
     setBusy(true);
     try {
+      const enteredUsername = username.current?.value.trim() ?? '';
       const result = await session.signup({
-        username: username.current?.value.trim() ?? '',
+        username: enteredUsername,
         email: email.current?.value.trim() ?? '',
         resolved: sample.resolved,
         script: sample.script,
@@ -101,7 +102,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
         devicePlatform: navigator.platform,
       });
       clearField();
-      onComplete(result, sample.script);
+      onComplete(result, sample.script, enteredUsername);
     } catch (err) {
       setProblems([(err as Error).message]);
       capture.reset();

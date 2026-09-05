@@ -668,7 +668,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-07 · Unlock screen · L · deps: M2-00e, M2-05 · X-3
+### M2-07 · Unlock screen · L · deps: M2-00e, M2-05 · X-3 · **DONE**
 
 **Why.** The ladder in X-3 is the product's answer to "what if my hands are different today", and it is the screen every user sees most.
 
@@ -690,7 +690,16 @@ type StepUpInput =
 
 **Tests:** each band renders its own state; a grey retype that clears unlocks; a Backup Code clears step-up and the used code is reported spent; lockout copy appears before the lock; offline unlock works with a cached blob and fails cleanly without one.
 
-**Acceptance:** the e2e gains a Backup Code step-up leg, driven through `core/client`.
+**Acceptance:** the e2e gains a Backup Code step-up leg, driven through `core/client`. Done — steps 12 and 13, including that a spent code is refused the second time.
+
+**As built.**
+
+- `StepUpInput` is now a discriminated union. The `backup_code` path had existed server-side since M2-00e with **no client able to reach it**, so it shipped untested end to end for two tickets; the e2e now exercises it.
+- **The lockout warning claims no number.** The server answers 401 whether one attempt remains or four, so an exact count would be a lie the moment a second device or an earlier session has spent part of the budget. The screen warns after two failures it has seen itself and says what will happen, not how close it is.
+- **The Recovery Kit is deliberately absent from step-up.** A Backup Code opens a session; the Kit opens a vault. Offering the Kit here would teach people to type it into an unlock screen, which is what A-1 principle 7 forbids. There is a test asserting the string never appears.
+- The backup-code field is uncontrolled, like M2-03's identity fields, and the test asserts the **proof value** travelled rather than only the method — asserting the method alone would have passed even if the field were never read.
+
+**The e2e needed a shared clock.** The A-8 account bucket is ten requests a minute and does not refill on a frozen clock, so adding this leg made a *later* step 429 for reasons unrelated to itself. Client and server now share one injected clock that advances between phases; they must share it, because `verifyDeviceSignature` allows 30 s of skew and moving one side alone invalidates every signature.
 
 ---
 

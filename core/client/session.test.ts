@@ -1004,3 +1004,72 @@ describe('recovery issues a replacement Recovery Kit (X-5)', () => {
     expect(sent).not.toContain(result.recoveryCode);
   });
 });
+
+/**
+ * M2-07. M2-00e built the `backup_code` step-up on the server and no client could
+ * reach it, so the path shipped untested end to end for two tickets.
+ */
+describe('step-up with a Backup Code (M2-07)', () => {
+  const greyLogin = async (session: ReturnType<typeof makeSession>) => {
+    await session.signup(SIGNUP);
+    session.lock();
+    return session.login({ ...CREDENTIAL, username: 'shawn', featureVector: [1] });
+  };
+
+  test('a Backup Code sends a proof and no rhythm', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, memoryStorage());
+    expect((await greyLogin(session)).band).toBe('grey');
+
+    await session.stepUp({ method: 'backup_code', proof: 'ABCDE-FGHJK' });
+
+    const call = grey.state.calls.find((c) => c.path === '/auth/step-up');
+    const body = call?.body as Record<string, unknown>;
+    expect(body.method).toBe('backup_code');
+    expect(body.proof).toBe('ABCDE-FGHJK');
+    // There is no sample to score, so sending one would be meaningless.
+    expect(body).not.toHaveProperty('featureVector');
+    expect(body).not.toHaveProperty('commitments');
+  });
+
+  test('a retype still sends the vector and its commitments', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, memoryStorage());
+    await greyLogin(session);
+
+    await session.stepUp({ method: 'retype', script: CREDENTIAL.script, featureVector: [7] });
+
+    const body = grey.state.calls.find((c) => c.path === '/auth/step-up')?.body as Record<
+      string,
+      unknown
+    >;
+    expect(body.method).toBe('retype');
+    expect(body.featureVector).toEqual([7]);
+    expect(Array.isArray(body.commitments)).toBe(true);
+    expect(body).not.toHaveProperty('proof');
+  });
+
+  test('both factors carry the passphrase, so a code alone is not enough', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, memoryStorage());
+    await greyLogin(session);
+
+    await session.stepUp({ method: 'backup_code', proof: 'ABCDE-FGHJK' });
+    const body = grey.state.calls.find((c) => c.path === '/auth/step-up')?.body as Record<
+      string,
+      unknown
+    >;
+    expect(typeof body.authHash).toBe('string');
+    expect(body.username).toBe('shawn');
+  });
+
+  test('a Backup Code unlocks on success', async () => {
+    const grey = mockServer({ band: 'grey' });
+    const session = makeSession(grey, memoryStorage());
+    await greyLogin(session);
+
+    const result = await session.stepUp({ method: 'backup_code', proof: 'ABCDE-FGHJK' });
+    expect(result.band).toBe('pass');
+    expect(session.state()).toBe('unlocked');
+  });
+});

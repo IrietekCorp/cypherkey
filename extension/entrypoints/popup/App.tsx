@@ -5,6 +5,7 @@ import { memoryArea } from '../../src/storage';
 import { Enroll } from './Enroll';
 import { Onboarding } from './Onboarding';
 import { RecoveryKit } from './RecoveryKit';
+import { Unlock } from './Unlock';
 
 /** A-12: bumped whenever the consent text changes, and recorded with the consent. */
 const CONSENT_POLICY_VERSION = '2026-09-01';
@@ -23,6 +24,9 @@ export function App() {
   /** In memory only, for the length of this flow. A-7 permits no part of it on disk. */
   const [script, setScript] = useState<string | null>(null);
   const [enrolled, setEnrolled] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [username, setUsername] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
 
   const session = useMemo(() => {
     const worker = new Worker(new URL('../../src/kdf-worker.ts', import.meta.url), {
@@ -40,9 +44,10 @@ export function App() {
       <Onboarding
         session={session}
         consentPolicyVersion={CONSENT_POLICY_VERSION}
-        onComplete={(result, captured) => {
+        onComplete={(result, captured, name) => {
           setSignedUp(result);
           setScript(captured);
+          setUsername(name);
         }}
       />
     );

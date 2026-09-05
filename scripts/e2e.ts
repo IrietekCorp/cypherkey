@@ -95,8 +95,25 @@ async function main(): Promise<void> {
   });
   const db = createDb(config.db);
   await migrateDb(db);
+
+  /**
+   * One clock for both sides.
+   *
+   * The A-8 account bucket is ten requests a minute and does not refill on a frozen
+   * clock, so a run long enough to exercise every band eventually 429s on a step that
+   * has nothing to do with rate limiting. Advancing it between phases is also what a
+   * real session looks like. Client and server must share it: `verifyDeviceSignature`
+   * allows 30 s of skew, so moving one without the other invalidates every signature.
+   */
+  const clock = { value: Date.now() };
+  const now = () => clock.value;
+  /** Lets the token bucket refill between phases, as wall-clock time would. */
+  const passTime = (ms: number) => {
+    clock.value += ms;
+  };
+
   // The timing floor is a production defence, not something to sit through here.
-  const app = createApp({ db, config, timingFloorMs: 0 });
+  const app = createApp({ db, config, timingFloorMs: 0, now });
 
   /**
    * The single seam between the client library and the server. Everything below goes
@@ -112,6 +129,7 @@ async function main(): Promise<void> {
       baseUrl: 'https://e2e.cypherkey.test',
       fetch: fetchLike,
       storage,
+      now,
       argonParams: config.argonParams,
     });
 
@@ -222,6 +240,41 @@ async function main(): Promise<void> {
   );
   ok('wrong passphrase → rejected before alignment runs');
 
+  passTime(60_000);
+
+  // ---- grey band cleared with a Backup Code (M2-00e + M2-07) -----------------
+  // The server has accepted `backup_code` since M2-00e, but no client could send one
+  // until M2-07 widened StepUpInput, so this leg had no coverage end to end.
+  for (const scale of [1.15, 1.2, 1.25, 1.3]) {
+    const middling = sampleFor(ENROLLED_KEYS, Math.round(80 * scale), Math.round(120 * scale));
+    const attempt = await login(middling.featureVector);
+    if (attempt.band === 'grey') {
+      const cleared = await sessionOne.stepUp({
+        method: 'backup_code',
+        proof: signup.backupCodes[0] as string,
+      });
+      assert(
+        cleared.band === 'pass',
+        `a Backup Code should clear the grey band, got ${JSON.stringify(cleared)}`,
+      );
+      ok('grey login cleared with a Backup Code, not a retype (M2-07)');
+
+      // X-3: one-time means one time.
+      const reuse = await login(middling.featureVector);
+      if (reuse.band === 'grey') {
+        const second = await sessionOne.stepUp({
+          method: 'backup_code',
+          proof: signup.backupCodes[0] as string,
+        });
+        assert(second.band === 'fail', 'a spent Backup Code must not work twice');
+        ok('a spent Backup Code is refused the second time');
+      }
+      break;
+    }
+  }
+
+  passTime(60_000);
+
   // ---- vault write, through core/client/sync.ts -----------------------------
   const back = await login(enrolled.featureVector);
   assert(back.band === 'pass', 'should be able to log back in after the failures');
@@ -243,6 +296,8 @@ async function main(): Promise<void> {
   ]);
   assert(pushed.conflicts.length === 0 && pushed.applied.length === 1, 'vault write should apply');
   ok('vault write accepted');
+
+  passTime(60_000);
 
   // ---- second device: new-device step-up, then read -------------------------
   const storageTwo = memoryStorage();
@@ -316,6 +371,8 @@ async function main(): Promise<void> {
   });
   assert(afterLogout.status === 401, 'logout must kill the refresh token');
   ok('logout revoked the session');
+
+  passTime(60_000);
 
   // ---- the Recovery Kit really is the escape hatch (A-5, X-5) ---------------
   // M2-00f made this a real server-authenticated flow. It used to read the blob

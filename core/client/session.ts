@@ -95,12 +95,18 @@ export type LoginInput = Credential & { username: string; featureVector: number[
  * (M2-00e adds Backup Codes); passkey and TOTP are M3. A retype is a second scored
  * sample, so it carries a vector and commitments exactly as a login does.
  */
-export type StepUpInput = {
-  method: 'retype';
-  /** The retyped script, which may legitimately differ from the first attempt. */
-  script: string;
-  featureVector: number[];
-};
+export type StepUpInput =
+  | {
+      method: 'retype';
+      /** The retyped script, which may legitimately differ from the first attempt. */
+      script: string;
+      featureVector: number[];
+    }
+  | {
+      method: 'backup_code';
+      /** One of X-3's ten one-time codes. Opens a session, never the vault. */
+      proof: string;
+    };
 
 /**
  * A device-signed, token-bearing request. Handed to the enrollment and sync clients so
@@ -813,19 +819,24 @@ export function createSession(deps: SessionDeps): Session {
       }
       const wrap = wrapKeyBytes;
       const device = provisionalDevice ?? (await loadDevice(wrap));
-      const response = await request(
-        'POST',
-        '/auth/step-up',
-        {
-          username: pending.username,
-          authHash: pending.authHash,
-          method: input.method,
-          featureVector: input.featureVector,
-          commitments: await this.commitmentsFor(input.script),
-        },
-        device?.priv,
-        device?.id,
-      );
+      // The two factors send different things: a retype is a second scored sample, a
+      // Backup Code is a bearer secret with no rhythm to score.
+      const body =
+        input.method === 'retype'
+          ? {
+              username: pending.username,
+              authHash: pending.authHash,
+              method: 'retype' as const,
+              featureVector: input.featureVector,
+              commitments: await this.commitmentsFor(input.script),
+            }
+          : {
+              username: pending.username,
+              authHash: pending.authHash,
+              method: 'backup_code' as const,
+              proof: input.proof,
+            };
+      const response = await request('POST', '/auth/step-up', body, device?.priv, device?.id);
 
       if (response.status !== 200) {
         device?.priv.fill(0);
