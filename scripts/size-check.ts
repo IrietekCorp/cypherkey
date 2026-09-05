@@ -51,6 +51,16 @@ export const BUDGETS: Budget[] = [
     budgetBytes: 120 * KB,
     note: 'A-15: cypherkey.io under 120 KB total',
   },
+  {
+    name: 'extension popup (eager, gzipped)',
+    budgetBytes: 150 * KB,
+    note: 'what every popup open pays: the entry chunk plus its STATIC import closure. This is the unlock-latency number, and it is the one that matters — a dynamic import costs nothing until its screen is reached',
+  },
+  {
+    name: 'extension package (total)',
+    budgetBytes: 3 * MB,
+    note: 'install size. Grows with lazily-loaded screens, which cost nothing at open but everything at download; zxcvbn dictionaries alone are 428 KB',
+  },
 ];
 
 /** Formats a byte count the way a build log should read. */
@@ -104,6 +114,49 @@ async function gzippedSize(path: string): Promise<number> {
   return Bun.gzipSync(await Bun.file(path).bytes()).byteLength;
 }
 
+const OUT = 'extension/.output/chrome-mv3';
+
+/**
+ * What the popup pays on every open: its entry script plus everything that script
+ * *statically* imports, transitively.
+ *
+ * Dynamic `import()` is deliberately not followed. zxcvbn's dictionaries are 225 KB
+ * gzipped and are only fetched on the onboarding screen; counting them here would
+ * budget a cost the unlock path never pays, and would push us to inline things that
+ * are correctly lazy.
+ */
+async function eagerPopupBytes(): Promise<number> {
+  const html = await Bun.file(`${OUT}/popup.html`).text();
+  const seen = new Set<string>();
+
+  const walk = async (relative: string): Promise<void> => {
+    const path = `${OUT}/${relative.replace(/^\//, '')}`;
+    if (seen.has(path)) return;
+    const file = Bun.file(path);
+    if (!(await file.exists())) return;
+    seen.add(path);
+
+    const code = await file.text();
+    const dir = path.slice(0, path.lastIndexOf('/'));
+    // `from "..."` and `import "..."`, which excludes `import(\`...\`)`.
+    for (const match of code.matchAll(/(?:from|import)\s*"([^"]+)"/g)) {
+      const target = match[1];
+      if (target === undefined || !target.startsWith('.')) continue;
+      const resolved = new URL(target, `file:///${dir}/`).pathname.replace(/^\//, '');
+      await walk(resolved.slice(OUT.length + 1));
+    }
+  };
+
+  for (const match of html.matchAll(/src="([^"]+)"/g)) {
+    const src = match[1];
+    if (src !== undefined) await walk(src);
+  }
+
+  let total = 0;
+  for (const path of seen) total += await gzippedSize(path);
+  return total;
+}
+
 async function measure(): Promise<Measurement[]> {
   const out = `${Bun.env.TMPDIR ?? '/tmp'}/cypherkey-size-check`;
 
@@ -136,10 +189,22 @@ async function measure(): Promise<Measurement[]> {
     siteBytes += await gzippedSize(file);
   }
 
+  const extension = Bun.spawnSync(['bun', 'run', 'build:extension']);
+  if (extension.exitCode !== 0) {
+    throw new Error(`extension build failed:\n${extension.stderr.toString()}`);
+  }
+  const eager = await eagerPopupBytes();
+  let packageBytes = 0;
+  for await (const file of new Bun.Glob('extension/.output/chrome-mv3/**/*').scan('.')) {
+    packageBytes += Bun.file(file).size;
+  }
+
   return [
     { name: 'server binary (total)', bytes: binary },
     { name: 'server binary (our payload)', bytes: Math.max(0, binary - runtime) },
     { name: 'site (gzipped)', bytes: siteBytes },
+    { name: 'extension popup (eager, gzipped)', bytes: eager },
+    { name: 'extension package (total)', bytes: packageBytes },
   ];
 }
 

@@ -118,6 +118,8 @@ describe('the real budgets', () => {
       'server binary (total)',
       'server binary (our payload)',
       'site (gzipped)',
+      'extension popup (eager, gzipped)',
+      'extension package (total)',
     ]);
   });
 
