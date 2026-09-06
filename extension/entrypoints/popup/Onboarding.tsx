@@ -14,7 +14,12 @@ export type OnboardingProps = {
    * lives in memory for the length of the flow and is never persisted — it is the key
    * sequence, and A-7 permits none of it on disk.
    */
-  onComplete(result: SignupResult, script: string, username: string): void;
+  /**
+   * `resolved` is handed on for the X-7 party trick, which has to show the passphrase
+   * to a friend. In memory for the length of the flow only; A-7 permits none of it on
+   * disk, and it is dropped as soon as the trick is done.
+   */
+  onComplete(result: SignupResult, script: string, username: string, resolved: string): void;
 };
 
 type Captured = { script: string; resolved: string };
@@ -102,7 +107,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
         devicePlatform: navigator.platform,
       });
       clearField();
-      onComplete(result, sample.script, enteredUsername);
+      onComplete(result, sample.script, enteredUsername, sample.resolved);
     } catch (err) {
       setProblems([(err as Error).message]);
       capture.reset();

@@ -9,6 +9,7 @@ import { type Config, loadConfig } from '../config';
 import type { Db } from '../db/client';
 import { createDb } from '../db/client';
 import { migrateDb } from '../db/migrate';
+import * as schema from '../db/schema/sqlite';
 import { consistencyOf } from './user';
 
 const SECRET_32 = 'x'.repeat(32);
@@ -478,5 +479,153 @@ describe('consistency (X-7)', () => {
   test('stays within 0 and 1', () => {
     expect(consistencyOf([0, 1, 0, 1]) as number).toBeGreaterThanOrEqual(0);
     expect(consistencyOf([0, 1, 0, 1]) as number).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * X-7's party trick needs a score without side effects. Going through `/auth/login`
+ * would march the owner's account toward a lockout during their own demo, and would
+ * file rows in `auth_score_history` describing someone who is not the account holder.
+ */
+describe('POST /user/demo-score', () => {
+  test('it returns a score for a matching sample', async () => {
+    const a = await account();
+    const res = await a.call(
+      'POST',
+      '/user/demo-score',
+      { featureVector: SAME, commitments: commitsFor() },
+      a.plainToken,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { score: number; phantomsMatched: boolean };
+    expect(body.score).toBeGreaterThan(0.6);
+    expect(body.phantomsMatched).toBe(true);
+  });
+
+  test('a stranger scores low, and it is still a 200', async () => {
+    const a = await account();
+    const body = (await (
+      await a.call(
+        'POST',
+        '/user/demo-score',
+        { featureVector: FAR, commitments: commitsFor() },
+        a.plainToken,
+      )
+    ).json()) as { score: number };
+
+    // A refusal would tell the caller nothing the score does not, and the party trick
+    // needs the number to show what "not your rhythm" actually looks like.
+    expect(body.score).toBeLessThan(0.5);
+  });
+
+  /** The whole reason this route exists rather than reusing login. */
+  test('it never touches lockout', async () => {
+    const a = await account();
+    for (let i = 0; i < 6; i++) {
+      await a.call(
+        'POST',
+        '/user/demo-score',
+        { featureVector: FAR, commitments: commitsFor() },
+        a.plainToken,
+      );
+    }
+
+    const lockout = (await a.drizzle.select().from(schema.lockouts))[0];
+    expect(lockout?.failedCount ?? 0).toBe(0);
+    expect(lockout?.lockedUntil ?? null).toBeNull();
+  });
+
+  test('it files nothing in the score history', async () => {
+    const a = await account();
+    const before = (await a.drizzle.select().from(schema.authScoreHistory)).length;
+
+    await a.call(
+      'POST',
+      '/user/demo-score',
+      { featureVector: FAR, commitments: commitsFor() },
+      a.plainToken,
+    );
+
+    const after = (await a.drizzle.select().from(schema.authScoreHistory)).length;
+    expect(after).toBe(before);
+  });
+
+  test('it never adapts the profile', async () => {
+    const a = await account();
+    const before = (await a.drizzle.select().from(schema.biometricProfiles))[0];
+
+    await a.call(
+      'POST',
+      '/user/demo-score',
+      { featureVector: SAME, commitments: commitsFor() },
+      a.plainToken,
+    );
+
+    const after = (await a.drizzle.select().from(schema.biometricProfiles))[0];
+    expect(after?.means).toEqual(before?.means as number[]);
+    expect(after?.updatedAt).toEqual(before?.updatedAt as Date);
+  });
+
+  test('it issues no session', async () => {
+    const a = await account();
+    const body = (await (
+      await a.call(
+        'POST',
+        '/user/demo-score',
+        { featureVector: SAME, commitments: commitsFor() },
+        a.plainToken,
+      )
+    ).json()) as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty('accessToken');
+    expect(body).not.toHaveProperty('serverShare');
+    expect(body).not.toHaveProperty('wrappedVaultKey');
+  });
+
+  test('a phantom mismatch is reported rather than refused', async () => {
+    const a = await account();
+    const body = (await (
+      await a.call(
+        'POST',
+        '/user/demo-score',
+        // Same count, different values: a different script of the same length, which is
+        // what a stranger typing the plain passphrase looks like. Changing the count
+        // instead would fail on vector length and never reach the phantom check.
+        {
+          featureVector: SAME,
+          commitments: Array.from({ length: SCRIPT_LEN }, (_, i) =>
+            toBase64Url(new Uint8Array(16).fill(200 + i)),
+          ),
+        },
+        a.plainToken,
+      )
+    ).json()) as Record<string, unknown>;
+
+    // The demo wants to show the phantom check failing, which needs a body, not a 401.
+    expect(body.error ?? null).toBe(null);
+    expect(body.phantomsMatched).toBe(false);
+  });
+
+  test('it requires a live session', async () => {
+    const a = await account();
+    const res = await a.call('POST', '/user/demo-score', {
+      featureVector: SAME,
+      commitments: commitsFor(),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  test('the account strictness comes back, so the client can re-band', async () => {
+    const a = await account();
+    const body = (await (
+      await a.call(
+        'POST',
+        '/user/demo-score',
+        { featureVector: SAME, commitments: commitsFor() },
+        a.plainToken,
+      )
+    ).json()) as { strictness: string };
+    expect(body.strictness).toBe('medium');
   });
 });

@@ -315,6 +315,12 @@ POST  /user/backup-codes      {authHash}  → {backupCodes[10]}   ← regenerate
                               code. A-17: the passphrase travels in this request, not a flag minted earlier.
 GET   /user/devices
 DELETE /user/devices/:id
+POST  /user/demo-score        {featureVector, commitments} → {score, phantomsMatched, strictness}
+                              X-7's party trick only. Scores and returns: no lockout, no score
+                              history, no adaptation, no tokens. Going through /auth/login would
+                              march the owner toward a lockout during their own demo and file
+                              history rows describing someone who is not the account holder.
+                              Needs a live session, so the caller could already open the vault.
 GET   /user/rhythm            {sampleCount, recentScores[], consistency}
 GET   /healthz
 ```

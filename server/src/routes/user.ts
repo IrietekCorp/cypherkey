@@ -1,13 +1,18 @@
 import { desc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { getFeatureRanges } from '../../../core/biometrics/features';
+import type { Profile } from '../../../core/biometrics/score';
 import { fromBase64Url } from '../../../core/crypto/encoding';
-import { requireAuth } from '../auth/require';
-import { requireReauth } from '../auth/require';
+import { budget } from '../../../core/crypto/phantom';
+import type { Strictness } from '../../../core/crypto/phantom';
+import { requireAuth, requireReauth } from '../auth/require';
+import { scoreAligned } from '../biometrics/score';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import { alignCommitments } from '../phantom/align';
 
 /** How many recent scores `GET /user/rhythm` reports (A-10). */
 const RECENT_SCORES = 20;
@@ -48,6 +53,20 @@ const rekeySchema = z.object({
   wrappedVaultKey: z.object({ ct: b64url(), nonce: b64url(12) }),
   commitments: z.array(z.string().min(1).max(64)).min(1).max(128),
 });
+
+const demoScoreSchema = z.object({
+  featureVector: z.array(z.number().finite()).min(1).max(4096),
+  commitments: z.array(z.string().min(1).max(64)).min(1).max(128),
+});
+
+/** A malformed commitment cannot match anything, so it aligns as a mismatch. */
+function decodeCommitment(value: string): Uint8Array {
+  try {
+    return fromBase64Url(value);
+  } catch {
+    return new Uint8Array(0);
+  }
+}
 
 const settingsSchema = z
   .object({
@@ -281,6 +300,72 @@ export function userRoutes(deps: UserDeps): Hono {
       recentScores,
       consistency: consistencyOf(recentScores),
     });
+  });
+
+  /**
+   * `POST /user/demo-score` — X-7's party trick, and nothing else.
+   *
+   * Scoring a friend's attempt through `/auth/login` would be wrong twice over: three
+   * refused attempts plus the owner's own would march the account toward a lockout
+   * during a demo, and each would leave a row in `auth_score_history` describing
+   * someone who is not the account holder.
+   *
+   * So this scores and returns, and does nothing else: no lockout, no history, no
+   * adaptation, no tokens. It needs a live session, which means the owner has already
+   * unlocked — someone who could call this could already open the vault, so it grants
+   * no reach they did not have.
+   */
+  app.post('/user/demo-score', async (c) => {
+    const rawBody = await c.req.text();
+    const auth = await requireAuth(db, config, c.req, rawBody, now());
+    if (auth === null) return c.json({ error: 'unauthorized' }, 401);
+
+    let raw: unknown;
+    try {
+      raw = JSON.parse(rawBody);
+    } catch {
+      return c.json({ error: 'invalid_json' }, 400);
+    }
+    const parsed = demoScoreSchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'invalid_body' }, 400);
+    const input = parsed.data;
+
+    const [user, profile] = await Promise.all([q.user(auth.userId), q.profile(auth.userId)]);
+    if (user === undefined) return c.json({ error: 'unauthorized' }, 401);
+    if (profile === undefined) return c.json({ error: 'not_enrolled' }, 409);
+
+    const loginLen = input.commitments.length;
+    if (input.featureVector.length !== getFeatureRanges(loginLen).totalLength) {
+      return c.json({ error: 'invalid_vector_length' }, 400);
+    }
+
+    const level: Strictness = user.thresholdsJson?.strictness ?? 'medium';
+    const alignment = alignCommitments(
+      profile.scriptCommitments.map(decodeCommitment),
+      input.commitments.map(decodeCommitment),
+    );
+    const allowed = budget(level, profile.scriptLen);
+    const phantomsMatched =
+      alignment.insertions <= allowed.maxInsertions &&
+      alignment.deletions + alignment.substitutions <= allowed.maxMissing;
+
+    const loaded: Profile = {
+      version: 1,
+      len: profile.scriptLen,
+      means: profile.means,
+      stds: profile.stds,
+      weights: profile.weights,
+      sampleCount: profile.sampleCount,
+    };
+    const score = scoreAligned(
+      loaded,
+      { version: 1 as const, len: loginLen, values: input.featureVector },
+      alignment,
+    );
+
+    // The raw score comes back so the client can re-band it at another Strictness
+    // without asking again — the lever in X-7 re-judges attempts already recorded.
+    return c.json({ score, phantomsMatched, strictness: level });
   });
 
   return app;

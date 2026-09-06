@@ -651,7 +651,7 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-06 · In-app Party Trick · S · deps: M2-05 · X-7
+### M2-06 · In-app Party Trick · S · deps: M2-05 · X-7 · **DONE**
 
 **Why.** It is the moment the product explains itself, and the web demo already taught us its shape.
 
@@ -665,6 +665,15 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 - **Test another person** resets cleanly without re-enrolling.
 
 **Tests:** three attempts then forced give-up; the verdict string is a pure function of the band; the lever re-judges recorded attempts without new capture; reset clears attempt state but not the profile.
+
+**As built.**
+
+- **It could not be built as scoped.** Scoring a friend's attempt through `/auth/login` would march the owner's account toward a lockout during their own demo, and would file rows in `auth_score_history` describing someone who is not the account holder. One file outside the list — `server/src/routes/user.ts` — gained `POST /user/demo-score`, which scores and returns and does nothing else. Tests assert it never touches lockout, history, the profile or tokens.
+- **The raw score comes back to the client**, which is what lets the Strictness lever re-judge attempts already recorded without asking the server again — the lever is the point, and a server-side band would make it a second round trip and a lie about what changed.
+- **A phantom mismatch is reported rather than refused** (200 with `phantomsMatched: false`), because the demo needs to *show* the phantom check failing. A 401 would have nothing to display.
+- **The verdict is a pure function of the band**, exported and tested separately. "0.69 PASS" beside "Stolen password neutralized" was the single most confusing thing in the web demo; deriving one from the other makes that combination unrepresentable.
+- **No raw score is shown.** A number invites hill-climbing and means nothing to the person reading it.
+- It is offered **once, straight after enrolment**, and needs the resolved passphrase — which exists only in memory during that flow. After a reload there is nothing to show a friend, which is the second reason it is a one-time screen.
 
 ---
 
