@@ -922,6 +922,10 @@ Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is
 
 **Acceptance:** a deployed instance passes the e2e against `DATABASE_URL`, and the size budgets still hold.
 
+**Blocked on console work, tracked in `gcp.md`** at the repo root — a step-by-step list with a status column the founder updates as they go. Five values unblock the rest of this ticket: project ID, project number, region, Cloud SQL connection name, and the workload identity provider resource name. Once those exist I can write `deploy/`, the Cloud Run service definition and the deploy workflow without further console access.
+
+**Runtime settings the build already constrains**, recorded there so the service is not misconfigured on the first try: the image is distroless with no shell, so Cloud Run must probe `/healthz` rather than relying on a Docker `HEALTHCHECK`; minimum instances 1, because Argon2id at m=64 MiB on a cold start looks broken and a login is the first thing anyone does; at least 1 GiB of memory and concurrency around 20, because each in-flight hash holds 64 MiB and the default 80-per-instance concurrency is how the limit gets hit.
+
 ---
 
 ### M2-17 · Beta feedback link · S · deps: M2-01 · **DONE**
