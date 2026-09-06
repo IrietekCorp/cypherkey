@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SignupResult } from '../../../core/client/session';
 import { createSync } from '../../../core/client/sync';
+import { bindPopupLifecycle, createLockController } from '../../src/lock';
 import { createExtensionSession } from '../../src/session';
 import { memoryArea } from '../../src/storage';
 import { createCache, indexedDbStore } from '../../src/sync/cache';
@@ -46,16 +47,39 @@ export function App() {
     null,
   );
 
-  const session = useMemo(() => {
+  const { session, lockController } = useMemo(() => {
     const worker = new Worker(new URL('../../src/kdf-worker.ts', import.meta.url), {
       type: 'module',
     });
-    return createExtensionSession({
+    const built = createExtensionSession({
       baseUrl: 'http://localhost:8787',
       area: memoryArea(),
       worker,
     });
+    return { session: built, lockController: createLockController({ session: built, worker }) };
   }, []);
+
+  /**
+   * A-5. The decrypted items are the reason this screen subscribes: `session.lock()`
+   * zeroes the keys and knows nothing about the plaintext this component built from
+   * them. Leaving a `VaultItem[]` alive after a lock would keep every password in
+   * memory behind a locked door.
+   */
+  useEffect(() => {
+    const off = lockController.onLock(() => {
+      setItems([]);
+      setViewing(null);
+      setEditing(null);
+      setUnlocked(false);
+      setNotice('Locked.');
+    });
+    const unbind = bindPopupLifecycle(lockController, window);
+    return () => {
+      off();
+      unbind();
+      lockController.dispose();
+    };
+  }, [lockController]);
 
   /**
    * Decrypts whatever the cache holds, into memory, for as long as the session is

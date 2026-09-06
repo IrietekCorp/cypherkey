@@ -801,13 +801,21 @@ Random-character and passphrase modes, `crypto.getRandomValues` only, with rejec
 
 ---
 
-### M2-12 · Idle lock, lock on close, memory zeroing · S · deps: M2-07
+### M2-12 · Idle lock, lock on close, memory zeroing · S · deps: M2-07 · **DONE**
 
 **Files:** create `extension/src/lock.ts` (+test).
 
 `session.checkIdle()` already implements A-5's 15-minute rule; this wires it to a real timer, to popup close, and to browser lock/sleep. Every `Uint8Array` holding key material is zeroed on lock — `session.lock()` does its own, so the ticket covers what the *extension* holds beyond it.
 
 **Tests:** idle past the timeout locks; activity defers it; closing the popup locks; after lock, `vaultKey()` throws and no key material is reachable from any module-level reference.
+
+**As built.**
+
+- **The decrypted items are the thing that actually needed this.** `session.lock()` zeroes vault, wrap and phantom keys and knows nothing about what the extension built from them; a `VaultItem[]` in React state is a list of plaintext passwords. Zeroing a 32-byte key while leaving those alive locks the door and leaves the window open. The popup subscribes and clears them.
+- **Subscribers run before the session zeroes its keys**, so a future subscriber that needs the vault key to tidy up — re-encrypting a draft — is not handed a zeroed one. Nothing does that today; the ordering exists so nothing has to discover it later. A throwing subscriber cannot stop the others: locking is not optional.
+- **The KDF worker is terminated on lock.** It received `kdfInput`, which is the passphrase, and another thread's heap cannot be zeroed from here — ending it is the only assurance available.
+- **`dispose()` deliberately does not lock.** It is teardown, and a re-render must not throw the user out.
+- **`forget()` is honest about its limit.** A JavaScript string is immutable and may already have been copied by the engine, so only the last *reference* can be dropped; a test asserts exactly that rather than pretending the bytes were erased. Anything that must be truly zeroable is a `Uint8Array` from the start, which is why every key in `core/crypto` is one.
 
 ---
 
