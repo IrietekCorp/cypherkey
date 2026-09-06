@@ -10,6 +10,7 @@ import { createQueue } from '../../src/sync/queue';
 import { decodeItem, encodeItem } from '../../src/vault/codec';
 import type { VaultItem } from '../../src/vault/item';
 import { Enroll } from './Enroll';
+import { Feedback } from './Feedback';
 import { Import } from './Import';
 import { ItemEdit } from './ItemEdit';
 import { ItemView } from './ItemView';
@@ -21,6 +22,9 @@ import { VaultList } from './VaultList';
 
 /** A-12: bumped whenever the consent text changes, and recorded with the consent. */
 const CONSENT_POLICY_VERSION = '2026-09-01';
+
+/** Kept in step with `extension/wxt.config.ts`, so a report names the build it came from. */
+const EXTENSION_VERSION = '0.1.0';
 
 /**
  * The popup shell: Onboarding (M2-03) → Recovery Kit (M2-04) → Enrollment (M2-05) →
@@ -263,6 +267,7 @@ export function App() {
       >
         Import from another manager
       </button>
+      <Feedback version={EXTENSION_VERSION} userAgent={navigator.userAgent} />
     </>
   );
 }

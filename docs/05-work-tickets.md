@@ -907,13 +907,22 @@ Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is
 
 ---
 
-### M2-17 · Beta feedback link · S · deps: M2-01
+### M2-17 · Beta feedback link · S · deps: M2-01 · **DONE**
 
 **Files:** create `extension/entrypoints/popup/Feedback.tsx` (+test).
 
 Opens a prefilled GitHub issue template. **It must not attach logs, scores, vectors or vault contents** — the template asks the user to describe what happened, and carries only the extension version and browser. Anything auto-attached from a zero-knowledge client is a leak waiting to be discovered.
 
 **Tests:** the generated URL contains version and browser and nothing else; no capture or vault state is reachable from the component.
+
+**As built.**
+
+- **The user-agent is reduced to a name and major version.** The full string is a fingerprint — platform, architecture, build number, often enough to single someone out — and "Chrome 141" is all a maintainer needs to reproduce a bug. Tests assert no build number, platform or architecture survives, and that Edge and Opera are not reported as Chrome.
+- **The component takes no session, vault or capture prop.** That is structural rather than disciplinary: there is nothing here that *could* attach diagnostics, so an edit that wanted to would have to add a prop and explain itself in review. A test greps the source for those names.
+- **The screen says outright that nothing is attached**, and shows the exact line that will be sent before sending it. A bug report from a password manager *sounds* like it might carry diagnostics; saying it does not is worth more than being quietly correct.
+- The body warns against pasting a passphrase, Recovery Kit or Backup Code, because a GitHub issue is public and someone will otherwise paste a screenshot.
+
+**Needs your action before any beta build ships.** `FEEDBACK_REPO` points at `IrietekCorp/cypherkey`, which is private — a tester who is not a collaborator will see a 404 and have no way to report anything. Point it at a public feedback repo, or swap the link for a mailto, before handing a build to anyone outside the org. It is one constant.
 
 
 ---
