@@ -360,7 +360,7 @@ The real trap is below the pass band. A user 14% slower scores 0.572, never prod
 
 **Do not, in any case, ask users to type deliberately slowly or quickly during enrolment** — measured harmful, see docs/02 A-4.5.
 
-### M2-00h · Capture without a DOM · M · deps: M1-16 · **approved in principle**
+### M2-00h · Capture without a DOM · M · deps: M1-16 · **DONE**
 
 `startCapture(input: HTMLInputElement, light: HTMLElement)` is DOM-bound and throws without a visible Rhythm Light element. A terminal has neither, and M4's CLI ticket walks straight into it; mobile and desktop interfaces will too.
 
@@ -369,6 +369,15 @@ AGENTS already anticipates the split — "no DOM imports except `core/biometrics
 **The division that must hold.** `core` owns the `KeyEvent` contract, the A-14.1 tokenizer, the feature layout and the *rule* that capture requires a visible consent indicator. Each platform supplies an adapter that proves it has one: a visible element in the browser, a rendered indicator line in a TTY, the platform equivalent elsewhere. The rule is not that a DOM node exists; it is that the person can see the light. X-1 says a service that hides the light gets no data, and that has to survive the move off the DOM rather than being quietly dropped as untestable.
 
 **Files:** create `core/biometrics/capture-contract.ts` (the adapter interface plus a `RhythmLight` proof type) and a test; refactor `core/biometrics/capture.ts` into the DOM adapter behind it. No behaviour change in the browser.
+
+**As built.**
+
+- **The visibility check happens before a single listener is attached.** A platform that hides its indicator never sees an event, rather than seeing them and discarding them afterwards — the second version has the timings in memory at some point, and this one never does.
+- **`RhythmIndicator` has exactly two methods, and a test pins that.** Anything richer invites an adapter to report "visible" from configuration rather than from the world, which is the failure X-1 exists to prevent. There is no `headless` flag and no way to start capture without an indicator.
+- **Which keys pulse is platform knowledge, not contract knowledge.** A-14.1 records a modifier's down/up pair, but a lone Shift is not a keystroke anyone expects to see pulse — and only the adapter knows what its platform calls Shift. `onPulse` is therefore separate from `onEvent`.
+- **`isLightVisible` is exported and delegated to rather than reimplemented.** What "visible" means is the one question X-1 turns on, and two answers to it would be one too many.
+
+**Deliberately not done: `startCapture` is not yet collapsed onto `startCaptureWith`.** Rewriting the most security-sensitive module in the same change that introduces the contract it would sit on is how a subtle regression gets in. Until it happens there are two capture paths, and `capture-dom.test.ts` asserts they produce the same events for the same typing — because if they ever disagreed about what a keystroke is, an account enrolled through one would fail to unlock through the other and nothing else would notice. Collapsing them is a small follow-up with that test already in place.
 
 ### M3-xx · Per-keyboard profiles, and what "identify the keyboard" can honestly mean · M · **researched, see below**
 

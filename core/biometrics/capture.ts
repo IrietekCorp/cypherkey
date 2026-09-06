@@ -18,8 +18,12 @@ const IGNORED_KEYS = new Set(['NumLock', 'ScrollLock']);
 
 /**
  * Checks whether the given Rhythm Light element is currently visible in the document.
+ *
+ * Exported so `capture-dom.ts` can delegate to it rather than reimplementing it. What
+ * "visible" means is the one question X-1 turns on, and two answers to it would be one
+ * too many.
  */
-function isLightVisible(light: HTMLElement): boolean {
+export function isLightVisible(light: HTMLElement): boolean {
   if (!light.isConnected) {
     return false;
   }
