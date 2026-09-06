@@ -791,13 +791,21 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 
 ---
 
-### M2-11 · Generator · S · deps: M2-08
+### M2-11 · Generator · S · deps: M2-08 · **DONE**
 
 **Files:** create `extension/src/generator.ts` (+test), `extension/entrypoints/popup/Generator.tsx` (+test).
 
 Random-character and passphrase modes, `crypto.getRandomValues` only, with rejection sampling so the alphabet is unbiased — the modulo shortcut is fine for a 32-symbol alphabet and wrong for most others. One-click fill into the item being edited.
 
 **Tests:** the distribution is unbiased across the alphabet; length and class options are honoured; `Math.random` appears nowhere in the file.
+
+**As built.**
+
+- **Rejection sampling, tested by construction rather than by sampling.** Feeding every byte 0–255 through a 62-symbol alphabet produces an exactly flat distribution; a `byte % 62` shortcut would map 248–255 onto the first eight symbols and make `a`–`h` 25% more likely. A second test feeds *only* the bytes a modulo shortcut would fold and asserts none of them yields a symbol.
+- **Entropy is stated in bits, not implied by a colour.** A green bar tells the user they did well; a number tells them what an attacker faces, and for a value we generated ourselves that is the only claim we can stand behind. There is a test that no `progressbar` or "Strong"/"Weak" label exists to mislead with.
+- **The word list is exactly 256 words**, so a word is exactly 8 bits and the figure shown is whole. It was 233 when first written, which made the "8 bits a word" comment quietly false — a test now pins the count. A larger list (EFF's 7776) would buy shorter passphrases at roughly 100 KB in the popup.
+- **Ambiguous characters are excluded from every class**: no `l`, `I`, `O`, `0`, `1`. A generated password gets read aloud and retyped from a screenshot; `0` versus `O` costs more in support than the fraction of a bit it adds.
+- The generator sits **inside the item editor**, one click from the field it fills. Behind a separate screen it is one people stop using, and the password they invent instead is the problem it exists to solve.
 
 ---
 

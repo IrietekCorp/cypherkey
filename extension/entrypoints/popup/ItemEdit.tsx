@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { type VaultItem, newItemId } from '../../src/vault/item';
+import { Generator } from './Generator';
 
 export type ItemEditProps = {
   /** Absent when adding. */
@@ -25,6 +26,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
   const notes = useRef<HTMLTextAreaElement>(null);
   const body = useRef<HTMLTextAreaElement>(null);
   const [problems, setProblems] = useState<string[]>([]);
+  const [generating, setGenerating] = useState(false);
 
   const effectiveKind = item?.kind ?? kind;
   const value = (ref: { current: { value: string } | null }) => ref.current?.value.trim() ?? '';
@@ -118,6 +120,28 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
               className="rounded border border-neutral-300 px-2 py-1 font-mono"
             />
           </Labelled>
+          {/*
+            One click from the field it fills. A generator behind a separate screen is
+            one people stop using, and a password they invent instead is the whole
+            problem this exists to solve.
+          */}
+          <button
+            type="button"
+            data-testid="toggle-generator"
+            onClick={() => setGenerating((g) => !g)}
+            className="self-start text-xs text-neutral-500 underline"
+          >
+            {generating ? 'Hide generator' : 'Generate a password'}
+          </button>
+          {generating && (
+            <Generator
+              onUse={(generated) => {
+                if (password.current !== null) password.current.value = generated;
+                setGenerating(false);
+              }}
+            />
+          )}
+
           <Labelled label="Notes" htmlFor="field-notes">
             <textarea
               ref={notes}

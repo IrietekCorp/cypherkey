@@ -287,3 +287,59 @@ describe('ItemEdit', () => {
     expect(saved).toHaveLength(0);
   });
 });
+
+describe('the generator fills the password field (M2-11)', () => {
+  const render = async () => {
+    const saved: VaultItem[] = [];
+    await act(async () => {
+      root.render(
+        <ItemEdit kind="login" now={() => 1} onSave={(i) => saved.push(i)} onCancel={() => {}} />,
+      );
+    });
+    return saved;
+  };
+
+  test('it is one click from the field it fills', async () => {
+    await render();
+    // A generator behind a separate screen is one people stop using.
+    expect(el('toggle-generator')).not.toBeNull();
+    expect(el('generate')).toBeNull();
+
+    await click('toggle-generator');
+    expect(el('generate')).not.toBeNull();
+  });
+
+  test('using a generated value writes it into the password field and closes', async () => {
+    await render();
+    await click('toggle-generator');
+    await click('generate');
+    const generated = el('value')?.textContent ?? '';
+
+    await click('use');
+
+    expect((el('password') as unknown as HTMLInputElement).value).toBe(generated);
+    expect(generated.length).toBeGreaterThan(0);
+    // Closing afterwards keeps the value visible only as long as it is being chosen.
+    expect(el('generate')).toBeNull();
+  });
+
+  test('a generated password saves as typed, untrimmed and unaltered', async () => {
+    const saved = await render();
+    await setValue('title', 'Bank');
+    await setValue('host', 'bank.example');
+    await click('toggle-generator');
+    await click('generate');
+    const generated = el('value')?.textContent ?? '';
+    await click('use');
+    await click('save');
+
+    expect(saved[0]?.kind === 'login' ? saved[0].password : null).toBe(generated);
+  });
+
+  test('a note has no generator, because it has no password', async () => {
+    await act(async () => {
+      root.render(<ItemEdit kind="note" now={() => 1} onSave={() => {}} onCancel={() => {}} />);
+    });
+    expect(el('toggle-generator')).toBeNull();
+  });
+});
