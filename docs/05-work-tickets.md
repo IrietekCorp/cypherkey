@@ -827,13 +827,21 @@ Random-character and passphrase modes, `crypto.getRandomValues` only, with rejec
 
 ---
 
-### M2-13 · Import Bitwarden JSON and Chrome CSV · M · deps: M2-08
+### M2-13 · Import Bitwarden JSON and Chrome CSV · M · deps: M2-08 · **DONE**
 
 **Files:** create `extension/src/import/{bitwarden,chrome-csv}.ts` (+tests), `extension/entrypoints/popup/Import.tsx` (+test).
 
 Parse, map to `VaultItem`, report per-row failures without aborting the batch, and never write an imported file to disk. A malformed row is skipped with a reason, not silently dropped.
 
 **Tests:** fixtures for both formats including malformed rows; totals reconcile (imported + skipped = rows); an absence test that no imported plaintext is logged.
+
+**As built.**
+
+- **The CSV reader is hand-rolled to RFC 4180 rather than `split(',')`.** That shortcut corrupts any field containing a comma — and a password is exactly that field. The row still parses, the import still reports success, and the user finds out weeks later when a site rejects a password they can no longer recover. Quoted fields, `""` escapes and newlines-inside-quotes are all tested, as is a password of `a,b,c` surviving end to end.
+- **A skipped row says why, by name.** "Visa is a card, which CypherKey cannot hold yet" rather than a silent drop. Reshaping a card into a login would lose the number and present it as something it is not; saying what was left behind is the honest option.
+- **A whole-file problem is one message**, not a per-row complaint about every line — an encrypted Bitwarden export says how to export unencrypted instead.
+- **Nothing is saved until the preview has been seen**, and the totals reconcile: `imported + skipped = rows`.
+- The parsed plaintext is dropped as soon as the import completes; holding it would keep every imported password alive for no reason. A test asserts the screen writes nothing to disk, storage or the console, and that a skipped reason never quotes a password.
 
 ---
 

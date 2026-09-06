@@ -10,6 +10,7 @@ import { createQueue } from '../../src/sync/queue';
 import { decodeItem, encodeItem } from '../../src/vault/codec';
 import type { VaultItem } from '../../src/vault/item';
 import { Enroll } from './Enroll';
+import { Import } from './Import';
 import { ItemEdit } from './ItemEdit';
 import { ItemView } from './ItemView';
 import { Onboarding } from './Onboarding';
@@ -43,6 +44,7 @@ export function App() {
   const [engine, setEngine] = useState<SyncEngine | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewing, setViewing] = useState<VaultItem | null>(null);
+  const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );
@@ -189,6 +191,20 @@ export function App() {
     setViewing(null);
   };
 
+  if (importing) {
+    return (
+      <Import
+        onImport={async (imported) => {
+          // Saved one at a time through the engine, so each gets its own cursor and a
+          // failure partway leaves the ones already stored intact.
+          for (const item of imported) await save(item);
+          setImporting(false);
+        }}
+        onCancel={() => setImporting(false)}
+      />
+    );
+  }
+
   if (editing !== null) {
     return (
       <ItemEdit
@@ -216,6 +232,13 @@ export function App() {
         <p className="bg-neutral-100 px-4 pt-3 font-sans text-xs text-neutral-600">{notice}</p>
       )}
       <VaultList items={items} onOpen={setViewing} onAdd={(kind) => setEditing({ kind })} />
+      <button
+        type="button"
+        onClick={() => setImporting(true)}
+        className="self-start px-4 pb-3 font-sans text-xs text-neutral-500 underline"
+      >
+        Import from another manager
+      </button>
     </>
   );
 }
