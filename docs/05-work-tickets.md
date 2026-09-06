@@ -866,7 +866,7 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 
 ---
 
-### M2-15 · "Not your rhythm" email · S · deps: none
+### M2-15 · "Not your rhythm" email · S · deps: none · **DONE**
 
 **Files:** create `server/src/mail/{client,templates}.ts` (+tests); modify `server/src/routes/login.ts`.
 
@@ -875,6 +875,14 @@ X-3 calls this a feature, not a notification: *"Someone typed your passphrase bu
 `resend` is the dependency; the transport must be injectable so tests send nothing.
 
 **Tests:** a fail sends once and a second within the hour does not; a grey or pass sends nothing; the body contains no score, no vector and no device detail beyond a coarse location; the transport is never called in tests.
+
+**As built.**
+
+- **The throttle lives in `audit_log`, not `rate_limits`.** Reusing the rate-limit table looked obvious until reading its `prune`, which deletes anything idle for ten minutes — a one-hour throttle stored there would have silently let a second email through at minute eleven. A throttle that quietly does not hold is worse than none. There is a test that advances eleven minutes and asserts it still holds. "We emailed this user" is also a genuinely auditable event, so the row belongs there.
+- **`resend` was not added.** It is one POST, and the seam that matters — `Transport` — is already injected. A dependency would buy typed errors for a call whose only outcomes are "sent" and "did not send". A hand-rolled `resendTransport` and a `noopTransport` ship instead.
+- **A provider outage is not a login failure.** A throwing transport is reported rather than raised, and a failed send is *not* recorded — so the next failure retries instead of being throttled out by a send that never happened.
+- **The mailer is optional on `createApp`.** A self-hosted instance with no provider simply does not send, rather than failing logins it cannot email about.
+- **The body carries no score.** A score would tell an attacker how close they got, which is a hill-climbing signal, and a mailbox is often the first account an attacker compromises. Location is coarse or absent — it says "somewhere" rather than inventing precision.
 
 ---
 

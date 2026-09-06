@@ -14,6 +14,7 @@ import type { Config } from '../config';
 import type { Db } from '../db/client';
 import * as pgSchema from '../db/schema/pg';
 import * as sqliteSchema from '../db/schema/sqlite';
+import type { Mailer } from '../mail/client';
 import { MAX_SEQUENCE, alignCommitments } from '../phantom/align';
 
 /** A-3: ±30 s of clock skew. */
@@ -35,7 +36,17 @@ const loginSchema = z.object({
   commitments: z.array(z.string().min(1).max(64)).min(1).max(MAX_SEQUENCE),
 });
 
-export type LoginDeps = { db: Db; config: Config; timingFloorMs: number; now?: () => number };
+export type LoginDeps = {
+  db: Db;
+  config: Config;
+  timingFloorMs: number;
+  now?: () => number;
+  /**
+   * X-3's failure notice. Optional so a self-hosted instance with no mail provider
+   * simply does not send one, rather than failing logins it cannot email about.
+   */
+  mailer?: Mailer;
+};
 
 /** A malformed commitment cannot match anything, so it aligns as a mismatch. */
 function decodeCommitment(value: string): Uint8Array {
@@ -311,6 +322,15 @@ export function loginRoutes(deps: LoginDeps): Hono {
 
       if (result === 'fail') {
         await recordFailure(user.id);
+        /**
+         * X-3: the dark-web-breach email inverted. Someone had the passphrase and it
+         * did not work, which is the clearest evidence a user ever gets that this
+         * product did its job.
+         *
+         * Only on `fail`. A grey band is as often a bad day as an attacker, and
+         * emailing about it would teach people to ignore the one that matters.
+         */
+        await deps.mailer?.notifyRhythmFailure(user.id, user.email);
         return c.json({ band: 'fail', error: 'rhythm_mismatch' }, 401);
       }
       if (result === 'grey') {

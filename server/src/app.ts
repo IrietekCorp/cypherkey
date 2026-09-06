@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Config } from './config';
 import type { Db } from './db/client';
+import type { Mailer } from './mail/client';
 import { auditLog } from './middleware/audit';
 import { rateLimit } from './middleware/rate-limit';
 import { authRoutes } from './routes/auth';
@@ -21,6 +22,11 @@ export type AppDeps = {
   db: Db;
   config?: Config;
   timingFloorMs?: number;
+  /**
+   * X-3's failure notice. Absent by default, so a self-hosted instance with no mail
+   * provider simply does not send one rather than failing logins it cannot email about.
+   */
+  mailer?: Mailer;
   now?: () => number;
 };
 
@@ -52,6 +58,7 @@ export function createApp(deps: AppDeps): Hono {
         config: deps.config,
         timingFloorMs: deps.timingFloorMs ?? DEFAULT_TIMING_FLOOR_MS,
         now: deps.now,
+        ...(deps.mailer === undefined ? {} : { mailer: deps.mailer }),
       }),
     );
     app.route(
