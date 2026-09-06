@@ -1,10 +1,16 @@
 import { useState } from 'react';
+import type { BrowserApi } from '../../src/autofill';
 import type { VaultItem } from '../../src/vault/item';
 
 export type ItemViewProps = {
   item: VaultItem;
   onEdit(): void;
   onBack(): void;
+  /**
+   * Absent when the extension APIs are not there — the options page, a test. Autofill
+   * is then simply not offered rather than offered and broken.
+   */
+  browser?: BrowserApi;
 };
 
 /**
@@ -14,9 +20,36 @@ export type ItemViewProps = {
  * than the default — a popup sits over whatever page is open, often in a shared room
  * or on a shared screen. Copying does not reveal.
  */
-export function ItemView({ item, onEdit, onBack }: ItemViewProps) {
+export function ItemView({ item, onEdit, onBack, browser }: ItemViewProps) {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [fillMessage, setFillMessage] = useState<string | null>(null);
+  const [filling, setFilling] = useState(false);
+
+  /**
+   * The decision is made here, in the popup, before anything is injected. A page on
+   * the wrong host never receives the script at all.
+   */
+  const fill = async () => {
+    if (browser === undefined || item.kind !== 'login') return;
+    setFilling(true);
+    try {
+      /**
+       * Loaded on demand, not on import. `decideFill` needs the public suffix list,
+       * which is ~250 KB gzipped — and it belongs to the one action that needs it, not
+       * to every popup open. Importing it eagerly took the popup from 106 KB to
+       * 216 KB and broke the A-15 budget, which is how this was noticed.
+       */
+      const { autofillActiveTab, outcomeMessage } = await import('../../src/autofill');
+      const outcome = await autofillActiveTab(browser, item.host, {
+        username: item.username,
+        password: item.password,
+      });
+      setFillMessage(outcomeMessage(outcome, item.host));
+    } finally {
+      setFilling(false);
+    }
+  };
 
   const copy = async (label: string, value: string) => {
     await navigator.clipboard?.writeText(value);
@@ -73,6 +106,25 @@ export function ItemView({ item, onEdit, onBack }: ItemViewProps) {
               </button>
             </div>
           </div>
+
+          {browser !== undefined && (
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                data-testid="fill"
+                disabled={filling}
+                onClick={fill}
+                className="self-start rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+              >
+                Fill this page
+              </button>
+              {fillMessage !== null && (
+                <p data-testid="fill-message" className="text-xs text-neutral-600">
+                  {fillMessage}
+                </p>
+              )}
+            </div>
+          )}
 
           {item.notes !== undefined && <Field label="Notes" value={item.notes} testId="notes" />}
         </>

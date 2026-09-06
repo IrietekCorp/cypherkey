@@ -771,7 +771,7 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 
 ---
 
-### M2-10 · Content script: detection and domain-bound autofill · L · deps: M2-09 · X-6 · **DONE (first pass)**
+### M2-10 · Content script: detection and domain-bound autofill · L · deps: M2-09 · X-6 · **DONE**
 
 **Why.** Highest bug risk in the milestone, and the only place a mistake fills a credential into the wrong site. **Budget two passes.**
 
@@ -796,7 +796,15 @@ AAD is the item id, as `encryptItem` already requires, so a ciphertext cannot be
 
 **The cost, stated rather than absorbed:** nothing runs on pages the user has not pointed the extension at, so **the punycode lookalike warning now appears when a fill is requested rather than when the page loads**. That is still before any credential is released, but it cannot help someone who types a password by hand on a lookalike domain — which was the case the eager banner was most useful for. If beta shows people meeting lookalikes that way, the options are an opt-in per-site permission or a narrow `<all_urls>` script that *only* warns and never fills.
 
-**Left for the second pass:** the popup-side fill UI (choosing which item, the inline icon, and the `chrome.scripting.executeScript` call that injects `fill.js` into the active tab), and a wider fixture set of real-world form shapes.
+**Second pass, done.**
+
+- **The credential travels as an `executeScript` argument, not by message.** Arguments are structured-cloned into the one call and go nowhere else; a message listener sitting in the page waiting to be told a password is a strictly larger target for anything else running there. A test asserts no `onMessage`/`sendMessage` appears in the module.
+- **Nothing is injected unless `decideFill` allowed it.** The decision happens in the popup, so a page on the wrong host never receives the script at all — the refusal costs it no information beyond the fact that the popup was opened.
+- **The A-15 budget caught a 110 KB regression.** Importing `autofill.ts` from `ItemView` pulled `decideFill` and therefore `tldts` into the eager popup chunk: 105.7 KB → **216.4 KB**, against a 150 KB budget. The suffix list belongs to the one action that needs it, so the import is now dynamic and the popup is back to 105.9 KB. Without the budget this would have shipped as a slower popup nobody could explain.
+- **The injected function is tested by running it**, against a real DOM, rather than by grepping its source — `executeScript` serialises it, so a mistake inside only surfaces when it executes. Two password fields fill nothing; a disabled field is not a field; an empty username does not overwrite what is there.
+- **Every refusal has its own sentence**, and a test asserts the six are distinct. "It did not work" is indistinguishable from a bug.
+
+**Still not done, and worth stating:** the inline in-page icon. The `activeTab` posture makes it awkward — an icon that appears on a page requires something running on that page, which is the standing access the posture gives up. Filling is driven from the popup instead. Revisit only if beta shows people cannot find it.
 
 ---
 

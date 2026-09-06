@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SignupResult } from '../../../core/client/session';
 import { createSync } from '../../../core/client/sync';
+import type { BrowserApi } from '../../src/autofill';
 import { bindPopupLifecycle, createLockController } from '../../src/lock';
 import { createExtensionSession } from '../../src/session';
 import { memoryArea } from '../../src/storage';
@@ -56,6 +57,15 @@ export function App() {
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );
+
+  /**
+   * The extension APIs, when they exist. Absent in the options page and in tests, and
+   * autofill is then not offered rather than offered and broken.
+   */
+  const browserApi = useMemo(() => {
+    const api = (globalThis as { chrome?: BrowserApi }).chrome;
+    return api?.tabs !== undefined && api.scripting !== undefined ? api : null;
+  }, []);
 
   const { session, lockController } = useMemo(() => {
     const worker = new Worker(new URL('../../src/kdf-worker.ts', import.meta.url), {
@@ -250,6 +260,7 @@ export function App() {
         item={viewing}
         onEdit={() => setEditing({ kind: viewing.kind, item: viewing })}
         onBack={() => setViewing(null)}
+        {...(browserApi === null ? {} : { browser: browserApi })}
       />
     );
   }

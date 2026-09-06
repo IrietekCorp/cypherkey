@@ -343,3 +343,83 @@ describe('the generator fills the password field (M2-11)', () => {
     expect(el('toggle-generator')).toBeNull();
   });
 });
+
+describe('filling the active page from an item (M2-10)', () => {
+  const fakeBrowser = (url: string | undefined) => {
+    const injections: unknown[][] = [];
+    const api = {
+      tabs: {
+        async query() {
+          return url === undefined ? [] : [{ id: 1, url }];
+        },
+      },
+      scripting: {
+        async executeScript(injection: { args: unknown[] }) {
+          injections.push(injection.args);
+          return [];
+        },
+      },
+    };
+    return { api, injections };
+  };
+
+  const render = async (url: string | undefined) => {
+    const { api, injections } = fakeBrowser(url);
+    await act(async () => {
+      root.render(
+        <ItemView item={LOGIN} onEdit={() => {}} onBack={() => {}} browser={api as never} />,
+      );
+    });
+    return injections;
+  };
+
+  test('a matching site fills, and says so', async () => {
+    const injections = await render('https://github.com/login');
+    await click('fill');
+
+    expect(injections).toHaveLength(1);
+    expect(injections[0]?.[0]).toEqual({ username: 'shawn', password: 'hunter2' });
+    expect(el('fill-message')?.textContent).toBe('Filled.');
+  });
+
+  /** The wrong page never receives the script at all. */
+  test('a different site is refused and names the site the item is for', async () => {
+    const injections = await render('https://evil.com/login');
+    await click('fill');
+
+    expect(injections).toHaveLength(0);
+    expect(el('fill-message')?.textContent).toContain('github.com');
+  });
+
+  test('a punycode page is refused and points at the address bar', async () => {
+    const injections = await render('https://xn--80ak6aa92e.com/');
+    await click('fill');
+
+    expect(injections).toHaveLength(0);
+    expect(el('fill-message')?.textContent).toContain('address bar');
+  });
+
+  test('a note offers no fill, because there is nothing to fill with', async () => {
+    const { api } = fakeBrowser('https://github.com/');
+    await act(async () => {
+      root.render(
+        <ItemView item={NOTE} onEdit={() => {}} onBack={() => {}} browser={api as never} />,
+      );
+    });
+    expect(el('fill')).toBeNull();
+  });
+
+  /** Offered-and-broken is worse than not offered. */
+  test('without the browser API the button is absent', async () => {
+    await act(async () => {
+      root.render(<ItemView item={LOGIN} onEdit={() => {}} onBack={() => {}} />);
+    });
+    expect(el('fill')).toBeNull();
+  });
+
+  test('the password is not revealed by filling', async () => {
+    await render('https://github.com/login');
+    await click('fill');
+    expect(el('password')?.textContent).not.toContain('hunter2');
+  });
+});
