@@ -163,6 +163,21 @@ jobs:
           done
           echo "healthz never reported a postgres connection"; exit 1
 
+      # /healthz is not proof the API exists. The deployed server once answered it with
+      # 200 while every other route 404'd, and this job went green on that. A health
+      # check that shares no code with the API is not a check of the API.
+      - name: the API is actually mounted, not just healthy
+        run: |
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            'https://api.cypherkey.io/auth/salt?username=deploy-smoke-test')
+          echo "/auth/salt -> $CODE"
+          # 200 is the salt oracle answering for an unknown user, which is the point of
+          # A-4: an invented username is indistinguishable from a real one. A 404 means
+          # the route is not mounted at all.
+          if [ "$CODE" != "200" ]; then
+            echo "/auth/salt returned $CODE — the API routes are not mounted"; exit 1
+          fi
+
       # The ingress restriction was once written into the revision template instead of
       # the service, where Cloud Run accepted the deploy, reported success, and silently
       # ignored it -- leaving the bypass open while the config claimed it was shut. A

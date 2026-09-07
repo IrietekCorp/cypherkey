@@ -7,5 +7,5 @@ const db = createDb(config.db);
 
 export default {
   port: config.port,
-  fetch: createApp({ db }).fetch,
+  fetch: createApp({ db, config }).fetch,
 };

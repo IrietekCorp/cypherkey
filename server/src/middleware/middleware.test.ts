@@ -33,6 +33,17 @@ async function fresh() {
   const get = (path: string, ip = '203.0.113.9') =>
     app.request(path, { headers: { 'x-forwarded-for': ip } });
 
+  /**
+   * A cheap GET that the limiter actually sees.
+   *
+   * These tests used `/healthz`, which is now mounted before the middleware and is
+   * deliberately exempt: Cloud Run probes it every 30 seconds, so counting those
+   * against a real budget would let a liveness check throttle the service it is
+   * checking. `/auth/salt` is the cheapest route that is still behind the limiter --
+   * it answers 200 for an unknown username by design (A-4's salt oracle).
+   */
+  const limited = (ip = '203.0.113.9') => get('/auth/salt?username=nobody', ip);
+
   const login = (username: string, ip = '203.0.113.9') =>
     app.request('/auth/login', {
       method: 'POST',
@@ -46,16 +57,16 @@ async function fresh() {
       }),
     });
 
-  return { app, drizzle: db.drizzle, config, get, login };
+  return { app, drizzle: db.drizzle, config, get, login, limited };
 }
 
 describe('per-IP token bucket', () => {
   test('allows the capacity, then answers 429 with Retry-After', async () => {
     const a = await fresh();
     for (let i = 0; i < IP_LIMIT.capacity; i++) {
-      expect((await a.get('/healthz')).status).toBe(200);
+      expect((await a.limited()).status).toBe(200);
     }
-    const blocked = await a.get('/healthz');
+    const blocked = await a.limited();
     expect(blocked.status).toBe(429);
     expect(await blocked.json()).toEqual({ error: 'rate_limited' });
     expect(blocked.headers.get('retry-after')).toBe('60');
@@ -63,31 +74,31 @@ describe('per-IP token bucket', () => {
 
   test('one address being throttled does not throttle another', async () => {
     const a = await fresh();
-    for (let i = 0; i < IP_LIMIT.capacity + 1; i++) await a.get('/healthz', '198.51.100.1');
-    expect((await a.get('/healthz', '198.51.100.1')).status).toBe(429);
-    expect((await a.get('/healthz', '203.0.113.7')).status).toBe(200);
+    for (let i = 0; i < IP_LIMIT.capacity + 1; i++) await a.limited('198.51.100.1');
+    expect((await a.limited('198.51.100.1')).status).toBe(429);
+    expect((await a.limited('203.0.113.7')).status).toBe(200);
   });
 
   test('refills continuously, so a boundary does not hand back a full burst', async () => {
     const a = await fresh();
-    for (let i = 0; i < IP_LIMIT.capacity; i++) await a.get('/healthz');
-    expect((await a.get('/healthz')).status).toBe(429);
+    for (let i = 0; i < IP_LIMIT.capacity; i++) await a.limited();
+    expect((await a.limited()).status).toBe(429);
 
     // Six seconds is a tenth of the window, so ten tokens come back — not a hundred.
     CLOCK.value += 6_000;
     for (let i = 0; i < 10; i++) {
-      expect((await a.get('/healthz')).status).toBe(200);
+      expect((await a.limited()).status).toBe(200);
     }
-    expect((await a.get('/healthz')).status).toBe(429);
+    expect((await a.limited()).status).toBe(429);
   });
 
   test('a full window restores the whole bucket', async () => {
     const a = await fresh();
-    for (let i = 0; i < IP_LIMIT.capacity + 1; i++) await a.get('/healthz');
-    expect((await a.get('/healthz')).status).toBe(429);
+    for (let i = 0; i < IP_LIMIT.capacity + 1; i++) await a.limited();
+    expect((await a.limited()).status).toBe(429);
 
     CLOCK.value += IP_LIMIT.windowMs;
-    expect((await a.get('/healthz')).status).toBe(200);
+    expect((await a.limited()).status).toBe(200);
   });
 });
 
