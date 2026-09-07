@@ -215,20 +215,20 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-600">Username</span>
-        <input
-          ref={username}
-          data-testid="username"
-          className="rounded border border-neutral-300 px-2 py-1"
-        />
-      </label>
-
-      <label className="flex flex-col gap-1">
         <span className="text-xs text-neutral-600">Email</span>
         <input
           ref={email}
           type="email"
           data-testid="email"
+          className="rounded border border-neutral-300 px-2 py-1"
+        />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-neutral-600">Username</span>
+        <input
+          ref={username}
+          data-testid="username"
           className="rounded border border-neutral-300 px-2 py-1"
         />
       </label>

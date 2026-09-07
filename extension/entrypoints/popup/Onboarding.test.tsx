@@ -235,6 +235,34 @@ describe('nothing below the passphrase field can void a sample', () => {
   });
 });
 
+/**
+ * Field order is deliberate. The username is the one field the server can refuse, so it
+ * is the last thing decided before the passphrase -- a rejection then costs the least
+ * back-tracking. Reported after a real signup: "I wish I would have known that my
+ * username was already taken. I think I should enter that after email."
+ */
+describe('the fields are ordered so a refusal costs least', () => {
+  const order = async () => {
+    const { session } = fakeSession();
+    await render(session);
+    const ids = ['consent', 'email', 'username', 'passphrase'];
+    const nodes = ids.map((id) => el(id));
+    for (const [i, node] of nodes.entries()) expect(node, ids[i]).not.toBeNull();
+    return nodes;
+  };
+
+  test('consent, then email, then username, then the passphrase', async () => {
+    const nodes = await order();
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const following = (nodes[i] as unknown as Node).compareDocumentPosition(
+        nodes[i + 1] as unknown as Node,
+      );
+      // 4 === DOCUMENT_POSITION_FOLLOWING
+      expect(following & 4).toBe(4);
+    }
+  });
+});
+
 /** The status must never claim to be armed when it is not. */
 describe('the light says which state it is actually in', () => {
   test('idle before the field is touched, ready once it is', async () => {
