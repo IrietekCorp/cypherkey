@@ -12,6 +12,30 @@ export const CSP_EXTENSION_PAGES = "script-src 'self' 'wasm-unsafe-eval'; object
  */
 export const API_HOST_PERMISSION = 'https://api.cypherkey.io/*';
 
+/**
+ * The extra origin a development build needs, and production must never carry.
+ *
+ * A build pointed at a local server by `VITE_CYPHERKEY_API` cannot reach it without a
+ * matching host permission -- an MV3 page's cross-origin fetch is refused otherwise.
+ * Deriving it from the same variable that sets the base URL means the two cannot drift:
+ * there is no way to permit an origin the build does not talk to, and no way to talk to
+ * one it has not permitted.
+ *
+ * Unset in any normal build, so `host_permissions` is exactly the production API. A
+ * test asserts that.
+ */
+export function devHostPermission(
+  apiBaseUrl: string | undefined = process.env.VITE_CYPHERKEY_API,
+): string[] {
+  if (apiBaseUrl === undefined || apiBaseUrl.trim() === '') return [];
+  try {
+    const origin = new URL(apiBaseUrl).origin;
+    return origin === 'https://api.cypherkey.io' ? [] : [`${origin}/*`];
+  } catch {
+    return [];
+  }
+}
+
 export const manifest: {
   name: string;
   description: string;
@@ -49,7 +73,7 @@ export const manifest: {
    * The rule to hold: this list may contain the API and nothing else. A browsing origin
    * here is the failure the tests are watching for.
    */
-  host_permissions: [API_HOST_PERMISSION],
+  host_permissions: [API_HOST_PERMISSION, ...devHostPermission()],
   content_security_policy: {
     // Requirement 1 of M2-01: without 'wasm-unsafe-eval' the Argon2 module will not
     // instantiate under MV3, and the failure surfaces only in a real browser.

@@ -20,7 +20,9 @@
     "size-check": "bun scripts/size-check.ts",
     "build:server": "bun build --compile --minify --target=bun server/src/index.ts --outfile dist/cypherkey",
     "build:extension": "cd extension && wxt build",
-    "dev:extension": "cd extension && wxt dev"
+    "dev:extension": "cd extension && wxt dev",
+    "browser-e2e": "bun scripts/browser-e2e.ts",
+    "build:extension:dev": "cd extension && wxt build"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",
@@ -46,6 +48,7 @@
     "@wxt-dev/module-react": "^1.2.2",
     "drizzle-kit": "^0.31.10",
     "happy-dom": "^20.14.0",
+    "puppeteer-core": "^25.10.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.3",
     "vite": "^8.2.2",

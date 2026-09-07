@@ -15,6 +15,49 @@ export const REPLACEMENT_WARNING = 'The old one no longer works — save this on
 export const CONFIRM_COUNT = 4;
 
 /**
+ * The Kit as a file, carrying everything the printed sheet carried.
+ *
+ * Whoever opens this has nothing else -- possibly years later, possibly after losing
+ * every device -- so the consequences travel with the code rather than living in a UI
+ * they will never see again.
+ */
+export function kitFileContents(
+  recoveryCode: string,
+  backupCodes: string[],
+  variant: 'signup' | 'replacement' = 'signup',
+): string {
+  const lines = [
+    'CypherKey Recovery Kit',
+    '',
+    recoveryCode,
+    '',
+    'This Kit is the only way back into your vault if you forget your passphrase or',
+    'lose every device. It is not kept on our servers and cannot be re-sent.',
+    '',
+    AUTHENTICATOR_WARNING,
+  ];
+  if (variant === 'replacement') lines.push('', REPLACEMENT_WARNING);
+  if (backupCodes.length > 0) {
+    lines.push(
+      '',
+      'Backup Codes',
+      'Ten one-time codes. Each one gets you past a rhythm check when your typing does',
+      'not match -- they open a session, not your vault.',
+      '',
+      ...backupCodes,
+    );
+  }
+  lines.push(
+    '',
+    '---',
+    'This file is plain text. Anyone who reads it can recover your vault, so print it',
+    'or write it down, then delete the file.',
+    '',
+  );
+  return lines.join('\n');
+}
+
+/**
  * The Kit's symbols with formatting removed, so a position refers to what the user
  * counts on the sheet rather than to an index into a hyphenated string.
  */
@@ -84,6 +127,20 @@ export function RecoveryKit({
   const answers = useRef<Array<HTMLInputElement | null>>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const saveKit = () => {
+    const blob = new Blob([kitFileContents(recoveryCode, backupCodes ?? [], variant)], {
+      type: 'text/plain',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'cypherkey-recovery-kit.txt';
+    link.click();
+    // Revoked on the next tick: revoking synchronously after click() cancels the
+    // download in some builds, and a live blob URL keeps the Kit in memory.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
   const confirm = () => {
     const given = positions.map((_, i) => answers.current[i]?.value ?? '');
     if (checkAnswers(recoveryCode, positions, given)) {
@@ -135,14 +192,30 @@ export function RecoveryKit({
       </section>
 
       <div className="no-print flex flex-col gap-2">
+        {/*
+          A download, not `window.print()`.
+
+          Printing from an MV3 popup does nothing: the print dialog takes focus, the
+          popup closes because it lost focus, and the print is cancelled with no error.
+          The button sat there looking functional and doing nothing at all -- on the one
+          screen whose whole job is making sure the user keeps a copy.
+
+          A blob download works from a popup and needs no permission. It does put the
+          Kit on disk in plain text, which the file itself says, along with what to do
+          about it.
+        */}
         <button
           type="button"
-          data-testid="print"
-          onClick={() => window.print()}
+          data-testid="save-kit"
+          onClick={saveKit}
           className="rounded border border-neutral-300 px-2 py-1"
         >
-          Print this Kit
+          Save this Kit as a file
         </button>
+        <p className="text-xs text-neutral-500">
+          Saves a plain-text file to your downloads. Print it or write it down, then delete the file
+          — anyone who reads it can recover your vault.
+        </p>
 
         <p className="text-xs text-neutral-700">
           To confirm you have saved it, type the characters at these positions. Positions are

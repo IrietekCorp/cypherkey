@@ -9,6 +9,7 @@ import {
   REPLACEMENT_WARNING,
   RecoveryKit,
   checkAnswers,
+  kitFileContents,
   kitSymbols,
   pickPositions,
 } from './RecoveryKit';
@@ -260,6 +261,38 @@ describe('the screen', () => {
     test('it says the dashes are not counted', async () => {
       await render();
       expect(host.textContent).toContain('dashes are not counted');
+    });
+  });
+
+  /**
+   * `window.print()` does nothing from an MV3 popup: the dialog takes focus, the popup
+   * closes because it lost focus, and the print is cancelled silently. The button sat
+   * there looking functional on the one screen whose whole job is making sure a copy
+   * gets kept. It is a download now.
+   */
+  describe('the Kit can actually be saved', () => {
+    test('the file carries the code, the consequences and the backup codes', () => {
+      const text = kitFileContents('ABCD-EFGH', ['CODE1-AAAAA', 'CODE2-BBBBB']);
+      expect(text).toContain('ABCD-EFGH');
+      // The sentence that has to survive: someone reads this with no other context.
+      expect(text).toContain(AUTHENTICATOR_WARNING);
+      expect(text).toContain('CODE1-AAAAA');
+      expect(text).toContain('CODE2-BBBBB');
+      // It must say what the file is, because it is plaintext on a disk.
+      expect(text).toContain('delete the file');
+    });
+
+    test('a replacement Kit says the old one is dead', () => {
+      const text = kitFileContents('ABCD-EFGH', [], 'replacement');
+      expect(text).toContain('The old one no longer works');
+    });
+
+    test('no backup codes means no empty Backup Codes heading', () => {
+      // Checking for the heading LINE, not the words: the authenticator warning says
+      // "Your Backup Codes will still work", so a substring match always finds them.
+      const lines = kitFileContents('ABCD-EFGH', []).split('\n');
+      expect(lines).not.toContain('Backup Codes');
+      expect(kitFileContents('ABCD-EFGH', ['X-Y']).split('\n')).toContain('Backup Codes');
     });
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { API_HOST_PERMISSION, CSP_EXTENSION_PAGES, manifest } from './manifest';
+import { API_HOST_PERMISSION, CSP_EXTENSION_PAGES, devHostPermission, manifest } from './manifest';
 
 describe('manifest', () => {
   /**
@@ -36,6 +36,33 @@ describe('manifest', () => {
   test('host_permissions grants the API and nothing else', () => {
     expect(manifest.host_permissions).toEqual([API_HOST_PERMISSION]);
     expect(API_HOST_PERMISSION).toBe('https://api.cypherkey.io/*');
+  });
+
+  /**
+   * A development build talking to a local server needs that origin permitted, and a
+   * shipped build must never carry it. Both come from `VITE_CYPHERKEY_API`, so the
+   * permission cannot name an origin the build does not use.
+   */
+  describe('the development origin', () => {
+    test('is empty unless a dev API is configured', () => {
+      expect(devHostPermission(undefined)).toEqual([]);
+      expect(devHostPermission('')).toEqual([]);
+      expect(devHostPermission('   ')).toEqual([]);
+    });
+
+    test('is added for a local server', () => {
+      expect(devHostPermission('http://localhost:3000')).toEqual(['http://localhost:3000/*']);
+      expect(devHostPermission('http://127.0.0.1:8787/')).toEqual(['http://127.0.0.1:8787/*']);
+    });
+
+    test('never duplicates production', () => {
+      expect(devHostPermission('https://api.cypherkey.io')).toEqual([]);
+    });
+
+    test('a value that is not a URL grants nothing', () => {
+      // Failing closed: a typo must not become a permission.
+      expect(devHostPermission('not a url')).toEqual([]);
+    });
   });
 
   test('host_permissions contains no browsing origin', () => {

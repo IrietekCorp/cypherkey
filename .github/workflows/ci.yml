@@ -119,6 +119,36 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  browser:
+    name: onboarding in a real Chrome
+    runs-on: ubuntu-latest
+    # Argon2id at production cost runs for real here; the rest is fast.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+
+      # Pointed at the local server this job starts, never at api.cypherkey.io: signing
+      # up creates a real account on every run, and a test that writes to production is
+      # a test people learn to skip. The same variable adds the matching host permission,
+      # so the build cannot talk to an origin it has not been granted.
+      - name: build the extension against the local server
+        env:
+          VITE_CYPHERKEY_API: http://127.0.0.1:8791
+        run: bun run build:extension
+
+      # The gap this closes: scripts/e2e.ts injects `fetch`, builds the Hono app in
+      # process and controls the clock, so it is blind to an unbound `fetch`, an
+      # entrypoint that mounts no routes, and any UI that only misbehaves in a browser.
+      # All three shipped. This runs the production entrypoint and a real extension.
+      - name: onboarding end to end
+        env:
+          CHROME_PATH: /usr/bin/google-chrome-stable
+        run: bun run browser-e2e
+
   docker:
     name: docker image builds and answers /healthz
     runs-on: ubuntu-latest
