@@ -162,8 +162,12 @@ const render = async (props: Partial<Parameters<typeof RecoveryKit>[0]> = {}) =>
 const answerCorrectly = async () => {
   const symbols = kitSymbols(CODE);
   const labels = [...host.querySelectorAll('[data-testid^="answer-"]')];
-  const shown = [...host.querySelectorAll('.no-print span')].map((s) =>
-    Number((s.textContent ?? '').replace('#', '')),
+  // Target the labels themselves. This used to scrape every span inside `.no-print`,
+  // which silently took the position numbers from whatever else the panel happened to
+  // render -- so adding the position ruler broke it in a way that looked like the
+  // confirmation logic had failed.
+  const shown = [...host.querySelectorAll('[data-testid="position-label"]')].map((s) =>
+    Number((s.textContent ?? '').replace('#', '').trim()),
   );
   await act(async () => {
     labels.forEach((node, i) => {
@@ -217,6 +221,46 @@ describe('the screen', () => {
     await click('confirm');
     expect(confirmed.count).toBe(1);
     expect(el('error')).toBeNull();
+  });
+
+  /**
+   * A real first user answered two of four positions with the symbols four places
+   * along, and the screen told them their correctly-saved Kit did not match. The code
+   * groups with dashes, the positions ignore dashes, nothing said so, and the code
+   * rewraps at popup width -- so "count to the 15th character" was a trap.
+   *
+   * The ruler removes the counting entirely: every symbol carries its own position.
+   */
+  describe('the positions do not have to be counted', () => {
+    test('every symbol is shown with its own 1-based position', async () => {
+      await render();
+      const ruler = host.querySelector('[data-testid="position-ruler"]');
+      expect(ruler).not.toBeNull();
+      const symbols = kitSymbols(CODE);
+      const text = ruler?.textContent ?? '';
+      // First, last and a middle one: each symbol adjacent to its index.
+      expect(text).toContain(`${symbols[0]}1`);
+      expect(text).toContain(`${symbols[14]}15`);
+      expect(text).toContain(`${symbols[symbols.length - 1]}${symbols.length}`);
+    });
+
+    test('the ruler holds exactly the dash-free symbols, in order', async () => {
+      await render();
+      const cells = [...(host.querySelectorAll('[data-testid="position-ruler"] > span') ?? [])];
+      const symbols = kitSymbols(CODE);
+      expect(cells).toHaveLength(symbols.length);
+      // Read the symbol span itself: stripping trailing digits from the cell text would
+      // also eat a symbol that IS a digit, and the Kit alphabet is full of them.
+      // A dash in here would reintroduce the ambiguity the ruler exists to remove.
+      const shownSymbols = cells.map((c) => c.querySelector('span')?.textContent ?? '');
+      expect(shownSymbols).toEqual(symbols);
+      expect(shownSymbols).not.toContain('-');
+    });
+
+    test('it says the dashes are not counted', async () => {
+      await render();
+      expect(host.textContent).toContain('dashes are not counted');
+    });
   });
 
   test('a wrong confirmation explains and does not complete', async () => {

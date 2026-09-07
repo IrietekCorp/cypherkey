@@ -145,12 +145,46 @@ export function RecoveryKit({
         </button>
 
         <p className="text-xs text-neutral-700">
-          To confirm you have saved it, type the characters at these positions.
+          To confirm you have saved it, type the characters at these positions. Positions are
+          numbered below; the dashes are not counted.
         </p>
+
+        {/*
+          The Kit again, with every character's position under it.
+
+          Asking someone to find "character 15" of a 33-symbol code was a counting
+          exercise the layout worked against: the sheet groups the code with dashes, the
+          positions ignore dashes, nothing said so, and `break-all` rewraps the whole
+          thing at popup width. A real first user answered two of four with the symbols
+          four places along -- the code was saved correctly and the check said it was
+          not, which is the one failure this screen must never produce.
+
+          Screen-only. The printed sheet keeps the plain grouped code, because a ruler of
+          index numbers is noise on paper and this prompt is not printed at all.
+        */}
+        <div data-testid="position-ruler" className="flex flex-wrap gap-x-1 gap-y-1 font-mono">
+          {symbols.map((symbol, index) => {
+            const asked = positions.includes(index);
+            return (
+              <span
+                key={`${index}-${symbol}`}
+                className={`flex w-5 flex-col items-center rounded text-center ${
+                  asked ? 'bg-amber-100 font-semibold text-neutral-900' : 'text-neutral-700'
+                }`}
+              >
+                <span className="text-sm leading-tight">{symbol}</span>
+                <span className="text-[9px] leading-tight text-neutral-500">{index + 1}</span>
+              </span>
+            );
+          })}
+        </div>
+
         <div className="flex gap-2">
           {positions.map((position, i) => (
             <label key={position} className="flex flex-col items-center gap-1 text-xs">
-              <span className="text-neutral-500">#{position + 1}</span>
+              <span data-testid="position-label" className="text-neutral-500">
+                #{position + 1}
+              </span>
               <input
                 ref={(node) => {
                   answers.current[i] = node;
