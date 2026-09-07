@@ -134,19 +134,31 @@ jobs:
             --region="$REGION" --project="$PROJECT_ID"
 
       # The startup probe already gates the rollout on /healthz, but that is Cloud Run
-      # talking to itself. This proves the service answers from outside.
-      - name: smoke test the deployed revision
+      # talking to itself. This proves the service answers from outside, through the
+      # path real clients use.
+      #
+      # It deliberately does NOT test the *.run.app URL: ingress is restricted to the
+      # load balancer, so that URL 404s by design -- it would otherwise be a public
+      # bypass around Cloud Armor. api.cypherkey.io is the only door, so it is the only
+      # thing worth asserting.
+      #
+      # Asserting on the body, not just the status: /healthz reports the live driver,
+      # and "db":"postgres" is what proves the Cloud SQL socket is actually wired. A
+      # 200 alone would still pass if the service came up on its SQLite default.
+      - name: smoke test through the load balancer
         run: |
-          URL=$(gcloud run services describe "$SERVICE" \
-            --region="$REGION" --project="$PROJECT_ID" --format='value(status.url)')
-          echo "service: $URL"
-          for i in $(seq 1 30); do
-            if curl -fsS "$URL/healthz"; then
-              echo; echo "healthz answered"
-              echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
-              echo "$URL — revision \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            sleep 2
+          for i in $(seq 1 40); do
+            BODY=$(curl -fsS --max-time 15 https://api.cypherkey.io/healthz || true)
+            case "$BODY" in
+              *'"db":"postgres"'*)
+                echo "healthz: $BODY"
+                {
+                  echo '### Deployed'
+                  echo "https://api.cypherkey.io — revision \`${GITHUB_SHA}\`"
+                  echo "\`$BODY\`"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0 ;;
+            esac
+            sleep 5
           done
-          echo "healthz never answered"; exit 1
+          echo "healthz never reported a postgres connection"; exit 1
