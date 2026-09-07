@@ -41,7 +41,7 @@ Behavioral biometrics is an established, validated enterprise category (used by 
 - **M4 (Mar 31, 2027):** Paid Pro tier live; native CLI; target: 100 paying customers.
 
 ### The Creator
-**Shawn J. Stewart** — VP of Engineering; technical executive and venture builder with 25+ years scaling global engineering organizations. Currently at Apartment List; previously Gusto, LinkedIn, Ultimate Software and Fidelity Investments. Built the first working keystroke dynamics prototype at **CBSSports.com in 2010** ("KeyStroke Captcha"); CypherKey is that idea with a sixteen-year head start, built solo with modern AI agentic tooling.
+**Shawn J. Stewart** — President, Irietek Corporation; technical executive and venture builder with 25+ years scaling global engineering organizations. Previously Apartment List, Gusto, LinkedIn, Ultimate Software and Fidelity Investments. Built the first working keystroke dynamics prototype at **CBSSports.com in 2010** ("KeyStroke Captcha"); CypherKey is that idea with a sixteen-year head start, built at Irietek with modern AI agentic tooling.
 
 [piscopour.com](https://piscopour.com) · [linkedin.com/in/irietek](https://www.linkedin.com/in/irietek) · [github.com/irietek](https://github.com/irietek)
 
