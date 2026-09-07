@@ -27,6 +27,32 @@ export const PERSISTED_KEYS = [
 ] as const;
 
 /**
+ * The username, written by the popup rather than by `core/client`.
+ *
+ * Not in `PERSISTED_KEYS`, which is core's list. `Unlock` needs a username to log in
+ * with, and it only ever existed in React state -- so reopening the popup could not
+ * offer to unlock an account that plainly existed, and started onboarding again for a
+ * user who already had one. It is not secret and it is not key material: it is the same
+ * name the account was created with.
+ */
+export const USERNAME_KEY = 'cypherkey.user.name';
+
+/**
+ * The real `chrome.storage.local`, or null where there is none -- tests, the options
+ * page preview, anything not running as an extension.
+ *
+ * The popup ran on `memoryArea()` until now, which meant nothing survived closing it:
+ * no device identity, no salt, no cached vault. For a password manager that is not a
+ * limitation, it is the whole product missing.
+ */
+export function localArea(): StorageArea | null {
+  const chrome = (globalThis as { chrome?: { storage?: { local?: unknown } } }).chrome;
+  const local = chrome?.storage?.local;
+  if (local === undefined || local === null) return null;
+  return local as StorageArea;
+}
+
+/**
  * `SessionStorage` over a `chrome.storage` area.
  *
  * Values are strings by contract; anything else in the area was not written by us and

@@ -5,7 +5,7 @@ import type { BrowserApi } from '../../src/autofill';
 import { API_BASE_URL } from '../../src/config';
 import { bindPopupLifecycle, createLockController } from '../../src/lock';
 import { createExtensionSession } from '../../src/session';
-import { memoryArea } from '../../src/storage';
+import { USERNAME_KEY, localArea, memoryArea } from '../../src/storage';
 import { createCache, indexedDbStore } from '../../src/sync/cache';
 import { type SyncEngine, createSyncEngine } from '../../src/sync/engine';
 import { createQueue } from '../../src/sync/queue';
@@ -33,10 +33,17 @@ const EXTENSION_VERSION = '0.1.0';
  * Unlock (M2-07) → Vault (M2-08).
  *
  * The vault is cached in IndexedDB as ciphertext and decrypted into memory for the
- * length of the unlock (M2-09). Session storage is still the in-memory area rather than
- * `chrome.storage.local`: persisting device keys belongs with the settings screen that
- * can revoke them (M2-14), and until then a half-made account would leave the next
- * popup open in a state no screen recovers from.
+ * length of the unlock (M2-09).
+ *
+ * Session storage is `chrome.storage.local`. It was the in-memory area until M2-14
+ * shipped the settings screen that can revoke device keys, and the deferral outlived
+ * its reason: nothing survived closing the popup, so every open started onboarding
+ * again -- for an account that already existed, on a product whose entire job is
+ * remembering things. A-7 still decides *what* may persist; this only decides where.
+ *
+ * The half-made account the old note worried about is now the case that is handled:
+ * signup completes, enrolment does not, and login says so -- `enrolled: false` with a
+ * token to finish, so the popup resumes enrolment instead of stranding the account.
  */
 export function App() {
   const [signedUp, setSignedUp] = useState<SignupResult | null>(null);
@@ -46,6 +53,16 @@ export function App() {
   const [username, setUsername] = useState('');
   const [enrolled, setEnrolled] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
+  /**
+   * Which account this popup is for, decided once from storage.
+   *
+   * `checking` until storage has answered: rendering onboarding first and correcting
+   * afterwards would show "create an account" to someone who has one, which is the
+   * exact confusion this fixes.
+   */
+  const [resume, setResume] = useState<'checking' | 'new' | 'returning'>('checking');
+  /** Handed back by a login that found the account unenrolled, so it can be finished. */
+  const [resumeToken, setResumeToken] = useState<string | null>(null);
 
   const [items, setItems] = useState<VaultItem[]>([]);
   const [engine, setEngine] = useState<SyncEngine | null>(null);
@@ -74,7 +91,7 @@ export function App() {
     });
     const built = createExtensionSession({
       baseUrl: API_BASE_URL,
-      area: memoryArea(),
+      area: localArea() ?? memoryArea(),
       worker,
     });
     return { session: built, lockController: createLockController({ session: built, worker }) };
@@ -103,6 +120,43 @@ export function App() {
   }, [lockController]);
 
   /**
+   * Is there an account on this device already?
+   *
+   * A device id means signup completed here at some point, and the username is what
+   * `Unlock` logs in with. Both must be present: an id with no name would offer an
+   * unlock nobody can complete.
+   */
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const area = localArea();
+      if (area === null) {
+        if (live) setResume('new');
+        return;
+      }
+      try {
+        const found = await area.get(['cypherkey.device.id', USERNAME_KEY]);
+        const id = found['cypherkey.device.id'];
+        const name = found[USERNAME_KEY];
+        if (!live) return;
+        if (typeof id === 'string' && typeof name === 'string' && name !== '') {
+          setUsername(name);
+          setResume('returning');
+        } else {
+          setResume('new');
+        }
+      } catch {
+        // Unreadable storage is not a reason to refuse to work: fall back to a fresh
+        // start, which is what the user would get anyway.
+        if (live) setResume('new');
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  /**
    * Decrypts whatever the cache holds, into memory, for as long as the session is
    * unlocked (A-5). The cache itself never holds plaintext (A-7).
    */
@@ -121,7 +175,13 @@ export function App() {
     setItems(decoded);
   }, [session]);
 
-  if (signedUp === null) {
+  // Storage has not answered yet. One frame of nothing beats a frame of the wrong
+  // screen, and the wrong screen here says "create an account" to someone who has one.
+  if (resume === 'checking') {
+    return <main className="p-4 font-sans text-sm text-neutral-600">Checking this device…</main>;
+  }
+
+  if (resume === 'new' && signedUp === null) {
     return (
       <Onboarding
         session={session}
@@ -131,12 +191,15 @@ export function App() {
           setScript(captured);
           setUsername(name);
           setResolved(plain);
+          // So the next open knows whose account this is. The device keys core wrote
+          // are useless to `Unlock` without a name to log in with.
+          void localArea()?.set({ [USERNAME_KEY]: name });
         }}
       />
     );
   }
 
-  if (!kitSaved) {
+  if (signedUp !== null && !kitSaved) {
     return (
       <RecoveryKit
         recoveryCode={signedUp.recoveryCode}
@@ -146,15 +209,37 @@ export function App() {
     );
   }
 
-  if (!enrolled) {
+  /*
+    Enrolment, from a fresh signup or resumed after the popup was closed.
+
+    The token comes from signup when there is one, and otherwise from a login that found
+    the account unenrolled. Without that second source, closing the popup between samples
+    stranded the account: the passphrase still worked and login still passed, but nothing
+    could authenticate to `/enroll/*` ever again.
+
+    A returning device has to unlock first -- the token is issued by the login.
+  */
+  const enrollmentToken = signedUp?.enrollmentToken ?? resumeToken;
+  if (!enrolled && enrollmentToken !== null && enrollmentToken !== undefined) {
     return (
       <Enroll
         session={session}
-        enrollmentToken={signedUp.enrollmentToken}
+        enrollmentToken={enrollmentToken}
         {...(script === null ? {} : { script })}
         onBuilt={() => {
           setScript(null);
+          setResumeToken(null);
           setEnrolled(true);
+          /*
+            Unlock again, even on the resumed path where the session is already open.
+            Unlocking is what builds the sync engine, and a resumed enrolment reached
+            this screen through a login that returned early without one -- landing
+            straight in the vault would show a list that cannot save anything.
+
+            It is also the first time the new profile is used, which is the moment the
+            user should see their rhythm actually work.
+          */
+          setUnlocked(false);
         }}
       />
     );
@@ -166,7 +251,20 @@ export function App() {
         session={session}
         username={username}
         strictness="medium"
-        onUnlocked={async (keyVersion) => {
+        onUnlocked={async (keyVersion, enrollment) => {
+          /*
+            An unenrolled account goes back to enrolment rather than to the vault. There
+            is no profile, so no rhythm has ever guarded anything here, and the vault is
+            empty by construction -- opening it would present a finished account to
+            someone who never finished one.
+          */
+          if (enrollment !== undefined) {
+            setResumeToken(enrollment.token ?? null);
+            setEnrolled(false);
+            setUnlocked(true);
+            return;
+          }
+          setEnrolled(true);
           const store = indexedDbStore();
           const active = createSyncEngine({
             sync: createSync({

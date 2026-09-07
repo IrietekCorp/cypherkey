@@ -529,5 +529,27 @@ describe('a user who has not enrolled yet', () => {
     expect(payload.enrolled).toBe(false);
     // No profile means nothing to score, so nothing is recorded as a score.
     expect(await db.drizzle.select().from(schema.authScoreHistory)).toHaveLength(0);
+
+    /*
+      An unfinished account must be finishable. `/enroll/*` needs an `enroll`-scoped
+      token, and only signup issued one -- it lived in the popup's memory, so closing
+      the popup between samples stranded the account for good: the passphrase worked,
+      the device was trusted, login passed, and the one screen that could complete the
+      account could no longer authenticate.
+    */
+    expect(typeof payload.enrollmentToken).toBe('string');
+    expect((payload.enrollmentToken as string).length).toBeGreaterThan(0);
+  });
+
+  test('an enrolled login is not handed an enrollment token', async () => {
+    // Widening this to every login would hand a complete account a credential for a
+    // flow it has already finished.
+    const a = await enrolledAccount();
+    const res = await a.login(SAME);
+    expect(res.status).toBe(200);
+    const payload = (await res.json()) as Record<string, unknown>;
+    expect(payload.band).toBe('pass');
+    expect(payload.enrolled).toBe(true);
+    expect(payload.enrollmentToken).toBeUndefined();
   });
 });

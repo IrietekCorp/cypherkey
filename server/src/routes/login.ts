@@ -9,6 +9,7 @@ import { fromBase64Url, utf8Encode } from '../../../core/crypto/encoding';
 import { budget, rhythmBands } from '../../../core/crypto/phantom';
 import type { Strictness } from '../../../core/crypto/phantom';
 import { issueSession } from '../auth/session-tokens';
+import { mintToken } from '../auth/token';
 import { scoreAligned } from '../biometrics/score';
 import type { Config } from '../config';
 import type { Db } from '../db/client';
@@ -47,6 +48,9 @@ export type LoginDeps = {
    */
   mailer?: Mailer;
 };
+
+/** Matches signup's: an hour is enough to type eight samples, and no longer. */
+const ENROLLMENT_TOKEN_TTL_MS = 60 * 60_000;
 
 /** A malformed commitment cannot match anything, so it aligns as a mismatch. */
 function decodeCommitment(value: string): Uint8Array {
@@ -272,6 +276,31 @@ export function loginRoutes(deps: LoginDeps): Hono {
           device.id,
           now(),
         );
+        /*
+          A user who signed up but never finished enrolling gets an enrollment token
+          back, because otherwise there is no way to ever finish.
+
+          `/enroll/*` needs an `enroll`-scoped token, and only signup issued one. It
+          lived in the popup's memory, so closing the popup between samples stranded the
+          account for good: the passphrase still worked, the device was still trusted,
+          login still passed -- and the one screen that could complete the account could
+          no longer authenticate to the server. The client had nothing to resume from.
+
+          Only when there is no profile to score against. An enrolled user is not
+          offered one, so this widens nothing for an account that is already complete,
+          and the token still requires the device signature the login just proved.
+        */
+        const resumeEnrollment =
+          profile === undefined
+            ? {
+                enrollmentToken: mintToken(
+                  { sub: user.id, scope: 'enroll' },
+                  config.jwtSecret,
+                  now(),
+                  ENROLLMENT_TOKEN_TTL_MS,
+                ),
+              }
+            : {};
         return c.json({
           band: 'pass',
           enrolled: profile !== undefined,
@@ -280,6 +309,7 @@ export function loginRoutes(deps: LoginDeps): Hono {
           refreshToken,
           wrappedVaultKey: user.wrappedVaultKey,
           serverShare: user.serverShare,
+          ...resumeEnrollment,
         });
       }
 

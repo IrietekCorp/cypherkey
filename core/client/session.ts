@@ -129,6 +129,17 @@ export type LoginResult =
        * cache compares this against what it holds and re-syncs from zero on a change.
        */
       keyVersion: number;
+      /**
+       * False for an account that signed up but never finished enrolling. The popup
+       * needs it to decide whether to open the vault or resume enrolment.
+       */
+      enrolled?: boolean;
+      /**
+       * Present only when `enrolled` is false: the `enroll`-scoped token that lets the
+       * client finish. Without it a half-enrolled account cannot be completed at all --
+       * the only other one is issued at signup and lives in a popup's memory.
+       */
+      enrollmentToken?: string;
     }
   | { band: 'grey'; stepUp: string[] }
   | { band: 'fail'; error: string };
@@ -856,7 +867,19 @@ export function createSession(deps: SessionDeps): Session {
         state = 'locked';
         throw err;
       }
-      return { band: 'pass', keyVersion: lastKeyVersion };
+      /*
+        `enrolled` and the resume token are passed through rather than interpreted. A
+        popup reopened mid-enrolment had no way to learn either: the signup response was
+        gone with the page, and nothing else said the account was unfinished.
+      */
+      const resume =
+        typeof payload.enrollmentToken === 'string' ? payload.enrollmentToken : undefined;
+      return {
+        band: 'pass',
+        keyVersion: lastKeyVersion,
+        enrolled: payload.enrolled !== false,
+        ...(resume === undefined ? {} : { enrollmentToken: resume }),
+      };
     },
 
     async stepUp(input) {

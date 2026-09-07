@@ -71,6 +71,32 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
     }
   };
 
+  const armNext = () => capture.reset();
+
+  const submitted = progress?.submitted ?? 0;
+  const required = progress?.required ?? 0;
+  const complete = progress !== null && progress.remaining === 0 && !progress.built;
+
+  /**
+   * Arms the next sample once the field can take one.
+   *
+   * Enrolment asks for the same passphrase eight times, and capture is armed by
+   * `onFocus` -- but neither way of submitting moves focus, so nothing re-armed and
+   * every sample after the first went nowhere: the light sat at Idle and the count
+   * never moved. Re-arming inside `submit` did not work either, because the field is
+   * `disabled` while the sample is in flight, and disabling it takes the focus away.
+   *
+   * So it is done here, when `busy` clears and the input is interactive again. Only
+   * from `idle`, so this never restarts a capture already in progress, and never while
+   * the screen is complete.
+   */
+  useEffect(() => {
+    if (busy || complete || input === null || light === null) return;
+    if (capture.state.status !== 'idle') return;
+    input.focus();
+    capture.start(input, light);
+  }, [busy, complete, input, light, capture.state.status, capture.start]);
+
   const submit = async () => {
     const sample = capture.stop();
     if (sample === null) return; // the hook is already saying why
@@ -80,7 +106,7 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
     // trip on it. `scriptsEqual` is constant-time.
     if (script !== undefined && !scriptsEqual(script, sample.script)) {
       setMessage(MISMATCH_MESSAGE);
-      capture.reset();
+      armNext();
       return;
     }
 
@@ -89,11 +115,11 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
       const commitments = await session.commitmentsFor(sample.script);
       await enroller.sample({ featureVector: sample.featureVector, commitments });
       await refresh();
-      capture.reset();
+      armNext();
     } catch (err) {
       const reason = (err as Error).message;
       setMessage(MISMATCH_ERRORS.has(reason) ? MISMATCH_MESSAGE : reason);
-      capture.reset();
+      armNext();
     } finally {
       setBusy(false);
     }
@@ -110,10 +136,6 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
       setBusy(false);
     }
   };
-
-  const submitted = progress?.submitted ?? 0;
-  const required = progress?.required ?? 0;
-  const complete = progress !== null && progress.remaining === 0 && !progress.built;
 
   return (
     <main className="flex flex-col gap-3 p-4 font-sans text-sm">
@@ -152,6 +174,17 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
         type="password"
         data-testid="passphrase"
         onFocus={begin}
+        /*
+          Eight samples in a row is the one screen where reaching for the mouse between
+          each is worst: it breaks the rhythm being measured. Enter ends a sample without
+          the pointer leaving the field, and A-14.1 treats it as a terminator that
+          produces no token, so it tokenizes identically to a click.
+        */
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || busy || complete) return;
+          e.preventDefault();
+          void submit();
+        }}
         disabled={complete || busy}
         className="rounded border border-neutral-300 px-2 py-1"
       />

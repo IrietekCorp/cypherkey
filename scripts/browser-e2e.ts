@@ -242,6 +242,61 @@ async function main(): Promise<void> {
     );
     ok('the Kit confirmation was accepted');
 
+    // ---- enrolment, and surviving a closed popup -----------------------------
+    await page.waitForFunction(() => document.body.textContent?.includes('of 8') === true, {
+      timeout: 30_000,
+    });
+    ok('enrolment asked for the first of eight samples');
+
+    const submitted = async () =>
+      Number(
+        (await page.$eval('main', (el) => el.textContent ?? '')).match(/(\d+) of 8/)?.[1] ?? '-1',
+      );
+
+    await page.focus('[data-testid="passphrase"]');
+    await page.keyboard.type(PASSPHRASE, { delay: 45 });
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.body.textContent?.includes('1 of 8') === true, {
+      timeout: 60_000,
+    });
+    ok('the first sample was accepted');
+
+    // The bug this guards: capture is armed by `onFocus` and neither Enter nor the
+    // button moves focus, so nothing re-armed and every later sample went nowhere.
+    await waitFor('the next sample to be armed without re-focusing', async () =>
+      (await page.$eval(light, (el) => el.parentElement?.textContent ?? '')).includes('Ready'),
+    );
+    await page.keyboard.type(PASSPHRASE, { delay: 45 });
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.body.textContent?.includes('2 of 8') === true, {
+      timeout: 60_000,
+    });
+    ok('a second sample was accepted without touching the field again');
+
+    /*
+      Close the popup and open it again -- which is what a person does, and what used to
+      throw the account away: session storage was in memory, so every open started
+      onboarding afresh for an account that already existed.
+    */
+    const before = await submitted();
+    await page.close();
+    const reopened = await browser.newPage();
+    await reopened.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
+    await reopened.waitForFunction(
+      () => document.body.textContent?.includes('Checking this device') !== true,
+      { timeout: 30_000 },
+    );
+    const text = await reopened.$eval('main', (el) => el.textContent ?? '');
+    if (text.includes('Create your CypherKey')) {
+      throw new Error('reopening the popup started onboarding again for an existing account');
+    }
+    ok('reopening the popup did not start onboarding again');
+
+    if (!text.includes('Unlock') && !text.includes('passphrase')) {
+      throw new Error(`reopened to an unexpected screen: ${text.slice(0, 120)}`);
+    }
+    ok(`the reopened popup offers to unlock the existing account (${before} of 8 already sent)`);
+
     if (consoleErrors.length > 0) {
       throw new Error(`the page logged errors:\n  ${consoleErrors.join('\n  ')}`);
     }

@@ -33,7 +33,13 @@ export type UnlockProps = {
   /** True when the network is unreachable; drives the A-7 offline path. */
   offline?: boolean;
   /** The account's current key version, which the cache uses to detect a re-key. */
-  onUnlocked(keyVersion: number): void;
+  /**
+   * `enrollment` is present when the login found the account unenrolled: the token that
+   * lets the caller finish what a closed popup interrupted. The vault is not worth
+   * opening in that state -- there is no profile, so nothing has ever been protected by
+   * a rhythm check.
+   */
+  onUnlocked(keyVersion: number, enrollment?: { token?: string }): void;
   onForgotPassphrase(): void;
 };
 
@@ -73,7 +79,12 @@ export function Unlock({
 
   const applyResult = (result: LoginResult) => {
     if (result.band === 'pass') {
-      onUnlocked(result.keyVersion);
+      onUnlocked(
+        result.keyVersion,
+        result.enrolled === false
+          ? { ...(result.enrollmentToken === undefined ? {} : { token: result.enrollmentToken }) }
+          : undefined,
+      );
       return;
     }
     if (result.band === 'grey') {
