@@ -82,6 +82,52 @@ describe('createExtensionSession', () => {
     expect(seen[0]).toBe('warm');
   });
 
+  /**
+   * `fetch` is a method of the global object, and a browser enforces its receiver:
+   * pulled off `globalThis` and passed on as a bare function, it throws
+   *   TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation
+   * on the first real request. Bun and Node do not enforce it, so the detached
+   * reference passed every test and failed on the first live signup.
+   *
+   * This substitutes a global that *does* enforce the receiver, which is what a browser
+   * does, so the binding is checked here rather than by a person clicking Sign up.
+   */
+  test('the default fetch is bound to the global, not passed by reference', async () => {
+    const realFetch = globalThis.fetch;
+    let calledWithThis: unknown = 'never called';
+    const strict = function (this: unknown) {
+      calledWithThis = this;
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    };
+    (globalThis as { fetch: unknown }).fetch = strict;
+
+    try {
+      const { worker } = fakeWorker();
+      const session = createExtensionSession({
+        baseUrl: 'https://api.test',
+        area: memoryArea(),
+        worker,
+        argonParams: FAST,
+      });
+      // Any call that reaches the network is enough; it must not throw on the receiver.
+      await session
+        .login({
+          username: 'someone',
+          resolved: 'x',
+          script: 'x',
+          strictness: 'medium',
+          featureVector: [1, 2, 3],
+        })
+        .catch(() => {});
+      expect(calledWithThis).toBe(globalThis);
+    } finally {
+      (globalThis as { fetch: unknown }).fetch = realFetch;
+    }
+  });
+
   test('routes the session KDF through the worker', async () => {
     const { worker, seen } = fakeWorker();
     const area = memoryArea();

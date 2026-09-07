@@ -137,6 +137,22 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
   const stage = first === null ? 'first' : 'second';
 
   /**
+   * The way out.
+   *
+   * Every failure path re-arms the *current* attempt, which is right for a slip but
+   * useless for anything that will fail again: a server that is down, a passphrase the
+   * user has changed their mind about, or a first capture they no longer remember
+   * typing. Without this the screen kept the error, kept the first script, and asked
+   * for the same second attempt forever -- the reported "stayed in the error state the
+   * whole time... no way to reset".
+   */
+  const startOver = () => {
+    setFirst(null);
+    setProblems([]);
+    resetForRetry();
+  };
+
+  /**
    * Checked on click rather than used to disable the button. A disabled control with
    * no stated reason is its own usability bug — the user is left guessing which field
    * is at fault.
@@ -268,16 +284,35 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
         can change it later in Settings.
       </p>
 
-      <button
-        type="button"
-        data-testid="submit"
-        disabled={busy}
-        onMouseDown={preventFocusSteal}
-        onClick={submit}
-        className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
-      >
-        {stage === 'first' ? 'Next' : 'Create account'}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          data-testid="submit"
+          disabled={busy}
+          onMouseDown={preventFocusSteal}
+          onClick={submit}
+          className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+        >
+          {stage === 'first' ? 'Next' : 'Create account'}
+        </button>
+
+        {/*
+          Only once there is something to abandon. Offering "start over" on a blank
+          screen is noise; withholding it after a failure is the trap.
+        */}
+        {(first !== null || problems.length > 0) && (
+          <button
+            type="button"
+            data-testid="start-over"
+            disabled={busy}
+            onMouseDown={preventFocusSteal}
+            onClick={startOver}
+            className="rounded border border-neutral-300 px-2 py-1 text-neutral-700 disabled:opacity-40"
+          >
+            Start over
+          </button>
+        )}
+      </div>
     </main>
   );
 }

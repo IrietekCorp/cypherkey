@@ -338,6 +338,47 @@ describe('Enter advances to the second attempt with capture still armed', () => 
   });
 });
 
+/**
+ * Reported from real onboarding: a signup error "stayed in the error state the whole
+ * time. There didn't seem to be a way to reset". Every failure path re-arms the current
+ * attempt, which is right for a slip and useless for anything that will fail again --
+ * the screen kept the error, kept the first script, and asked for the same second
+ * attempt forever.
+ */
+describe('there is always a way out', () => {
+  test('no escape hatch on a blank screen', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    expect(el('start-over')).toBeNull();
+  });
+
+  test('a failed signup can be abandoned and restarted', async () => {
+    const session: Pick<Session, 'signup'> = {
+      signup: async () => {
+        throw new Error("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      },
+    };
+    await render(session);
+    await identify();
+
+    await typePassphrase(PHRASE);
+    await click('submit');
+    await typePassphrase(PHRASE);
+    await click('submit');
+
+    // Stuck: the error is shown and the screen still wants the second attempt.
+    expect(text()).toContain('Illegal invocation');
+    expect(text()).toContain('Type it again');
+
+    await click('start-over');
+
+    // Back to a first attempt, with the error and the captured script both gone.
+    expect(text()).not.toContain('Illegal invocation');
+    expect(text()).toContain('Choose a passphrase');
+    expect(el('counts')).toBeNull();
+  });
+});
+
 describe('the script is captured twice and must be token-identical (A-14)', () => {
   test('two identical scripts complete signup', async () => {
     const { session, calls } = fakeSession();

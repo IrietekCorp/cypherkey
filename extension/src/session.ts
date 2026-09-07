@@ -58,7 +58,17 @@ export function createExtensionSession(deps: ExtensionSessionDeps): Session {
   deps.worker.postMessage('warm');
   return createSession({
     baseUrl: deps.baseUrl,
-    fetch: deps.fetch ?? globalThis.fetch,
+    /*
+      Bound, not passed by reference. `fetch` is a method of the global object and
+      throws `TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`
+      when called with the wrong `this` -- which is exactly what happens once it is
+      pulled off `globalThis` and handed on as a bare function.
+
+      Nothing caught this: every test injects its own `fetch`, and the runtimes the
+      tests run in (Bun, Node) do not enforce the receiver, so the detached reference
+      works everywhere except a real browser. It surfaced on the first live signup.
+    */
+    fetch: deps.fetch ?? globalThis.fetch.bind(globalThis),
     storage: extensionStorage(deps.area),
     deriveKey: workerKdf(deps.worker),
     ...(deps.argonParams === undefined ? {} : { argonParams: deps.argonParams }),
