@@ -1,0 +1,145 @@
+name: Deploy
+
+# M2-16. Builds the distroless image, migrates Cloud SQL, proves the stack with the e2e,
+# then rolls the Cloud Run service forward. Authentication is Workload Identity
+# Federation — there is no long-lived service-account key in a GitHub secret, because
+# that is a credential that cannot be rotated automatically and does not expire.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys race the same service or the same database.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: <GCP_PROJECT_ID>
+  REGION: us-central1
+  SERVICE: cypherkey-api
+  IMAGE: us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/cypherkey/server
+  SQL_CONNECTION: <GCP_SQL_CONNECTION>
+  WIF_PROVIDER: <GCP_WIF_PROVIDER>
+  DEPLOY_SA: <GCP_DEPLOY_SA>
+
+jobs:
+  deploy:
+    name: build, migrate, deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for Workload Identity Federation. Without it the OIDC token that
+      # google-github-actions/auth exchanges is never minted.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: authenticate docker to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # The same Dockerfile CI already builds and probes. Tagged with the commit SHA so
+      # a revision is always traceable to a commit; `latest` is a convenience only.
+      - name: build and push the image
+        run: |
+          docker build -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${GITHUB_SHA}"
+          docker push "$IMAGE:latest"
+
+      - name: report image size against the A-15 budget
+        run: |
+          SIZE=$(docker image inspect "$IMAGE:${GITHUB_SHA}" --format '{{.Size}}')
+          echo "image: $((SIZE / 1024 / 1024)) MB"
+          {
+            echo '### Container image'
+            echo "\`$IMAGE:${GITHUB_SHA}\` — $((SIZE / 1024 / 1024)) MB (A-15 budget: 130 MB)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIZE" -gt $((130 * 1024 * 1024)) ]; then
+            echo "image exceeds the A-15 budget"; exit 1
+          fi
+
+      # Migrations run from the repo, never at server boot (A-15 cold-start budget), so
+      # they need a route to Cloud SQL from the runner. The proxy in TCP mode is that
+      # route; the socket form the service uses is not available here.
+      - name: start the Cloud SQL Auth proxy
+        run: |
+          curl -fsSL -o cloud-sql-proxy \
+            https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.1/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+          ./cloud-sql-proxy --port 5432 "$SQL_CONNECTION" &
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/5432) 2>/dev/null; then
+              echo "proxy is listening"; exit 0
+            fi
+            sleep 1
+          done
+          echo "the Cloud SQL proxy never came up"; exit 1
+
+      - name: read the database password
+        id: dbpw
+        run: |
+          PW=$(gcloud secrets versions access latest --secret=PGPASSWORD --project="$PROJECT_ID")
+          echo "::add-mask::$PW"
+          echo "pw=$PW" >> "$GITHUB_OUTPUT"
+
+      # Over the proxy's TCP listener an ordinary URL is correct — the PG* indirection
+      # the service needs exists only because a unix socket path cannot survive
+      # postgres.js's URL parsing. See deploy/service.yaml for the detail.
+      - name: migrate production
+        env:
+          DATABASE_URL: postgres://cypherkey_app:${{ steps.dbpw.outputs.pw }}@127.0.0.1:5432/cypherkey
+          # migrate-cli goes through loadConfigOrExit, which demands a JWT_SECRET even
+          # though a migration never signs a token. A throwaway keeps the real secret
+          # out of the runner entirely.
+          JWT_SECRET: migrations-do-not-sign-tokens-32-bytes-min
+        run: bun run db:migrate
+
+      # M2-16 acceptance: the e2e passes against the hosted DATABASE_URL. It runs against
+      # a sibling database on the same instance rather than production, so it exercises
+      # the identical driver, socket and network path without writing test accounts into
+      # real data.
+      - name: e2e against Cloud SQL
+        env:
+          DATABASE_URL: postgres://cypherkey_app:${{ steps.dbpw.outputs.pw }}@127.0.0.1:5432/cypherkey_e2e
+          JWT_SECRET: e2e-only-secret-not-used-in-production-32b
+        run: |
+          bun run db:migrate
+          bun run e2e
+
+      - name: deploy the service
+        run: |
+          sed "s|:IMAGE_TAG|:${GITHUB_SHA}|" deploy/service.yaml > /tmp/service.yaml
+          gcloud run services replace /tmp/service.yaml \
+            --region="$REGION" --project="$PROJECT_ID"
+
+      # The startup probe already gates the rollout on /healthz, but that is Cloud Run
+      # talking to itself. This proves the service answers from outside.
+      - name: smoke test the deployed revision
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" \
+            --region="$REGION" --project="$PROJECT_ID" --format='value(status.url)')
+          echo "service: $URL"
+          for i in $(seq 1 30); do
+            if curl -fsS "$URL/healthz"; then
+              echo; echo "healthz answered"
+              echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+              echo "$URL — revision \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "healthz never answered"; exit 1

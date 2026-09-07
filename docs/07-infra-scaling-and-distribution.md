@@ -5,8 +5,8 @@
 | Layer | Choice | Monthly cost at launch | Why |
 |---|---|---|---|
 | Edge / DNS / DDoS / static site | **GCP** — Cloud CDN + Cloud Storage for the static site, Cloud Armor for DDoS | usage-based | Decided 2026-09-05: the marketing site is part of this application and lives where the rest of it does. Cloudflare Pages was the M0 answer and is retired; keeping the site on a second provider meant two deploy paths and two places to look when something broke |
-| API | Cloud Run (min instances 0 → 1 at launch), 1 vCPU / 512 MB, region us-west1; single `bun --compile` binary in a distroless image | $0–15 | Scale-to-zero before launch; Bun cold start is tens of ms so min=0 is viable longer than usual |
-| Database | Cloud SQL Postgres, `db-f1-micro` (shared core) with automated backups + PITR | ~$10–15 | Same schema as self-host SQLite via Drizzle |
+| API | Cloud Run `cypherkey-api`, **min instances 1**, 1 vCPU / **1 GiB**, concurrency 20, region **us-central1**; single `bun --compile` binary in a distroless image | $15–20 | **As built, M2-16.** Scale-to-zero was the M0 plan and is wrong here: Argon2id at m=64 MiB on a cold start looks broken, and a login is the first thing anyone does. 512 MB is also wrong — each in-flight hash holds 64 MiB, so the default 80-per-instance concurrency OOMs; 20 against 1 GiB leaves headroom |
+| Database | Cloud SQL Postgres 16 `cypherkey-db`, `db-f1-micro` (shared core, **Enterprise edition** — Enterprise Plus rejects shared-core tiers), automated backups + PITR, 7-day retention | ~$10–15 | Same schema as self-host SQLite via Drizzle. Public IP with **zero authorized networks**: the only route in is the Cloud SQL Auth proxy authenticated by IAM |
 | Secrets | Secret Manager | ~$0 | `JWT_SECRET`, Resend, Stripe |
 | Email | Resend free tier (3k/mo) | $0 | "Not your rhythm" + recovery emails |
 | Rate limit / cache | DB-backed until M5, then Memorystore Redis (~$35) or Upstash (~$0–10) | $0 | |
@@ -16,6 +16,19 @@
 
 **Launch-month total: roughly $15–40.** First serious cost step is Redis at M5.
 
+**As deployed (M2-16, 2026-09-07).** Project `<GCP_PROJECT_ID>` (number `<GCP_PROJECT_NUMBER>`),
+region `us-central1`. The service definition is `deploy/service.yaml` and the pipeline is
+`.github/workflows/deploy.yml`; both are the source of truth, and a console edit is
+reverted by the next deploy. One-time console setup is recorded in `gcp.md`. CI
+authenticates through Workload Identity Federation restricted to this repository — there
+is no long-lived service-account key anywhere. DNS is Cloud DNS (zone `cypherkey-io`),
+not the registrar.
+
+One trap worth carrying forward: **postgres.js ignores a `?host=` query parameter**, so
+the connection string every Cloud Run guide shows silently dials TCP `localhost` instead
+of the Cloud SQL socket. The service passes `PGHOST`/`PGUSER`/`PGPASSWORD` separately for
+that reason. `deploy/README.md` has the detail.
+
 **Why not Firestore?** No Drizzle support means two data layers (one for SQLite self-host, one for hosted) — double the bug surface for a cheaper model; per-read/write billing spikes on login-heavy, sync-polling, nonce-churning traffic; hot-document contention for rate-limit counters. Pre-launch, Neon's free Postgres tier gives scale-to-zero pricing with zero code change. Decision recorded in docs/02 A-15.
 
 Why not Cloud Run + SQLite (Litestream)? Multiple instances can't share a SQLite file; the moment you set `max-instances > 1` you need Postgres. Drizzle makes that free, so start there for hosted and keep SQLite for self-host.
@@ -24,7 +37,7 @@ Why not Cloud Run + SQLite (Litestream)? Multiple instances can't share a SQLite
 
 | Signal | Action |
 |---|---|
-| p95 API latency > 800 ms (excluding the 500 ms floor) | Cloud Run: raise concurrency to 80, min instances 2 |
+| p95 API latency > 800 ms (excluding the 500 ms floor) | Cloud Run: raise min instances to 2 first. **Do not raise concurrency to 80 without raising memory to match** — 80 concurrent Argon2id hashes at 64 MiB each is 5 GiB, and the instance OOMs long before latency improves |
 | Cloud SQL CPU > 60% sustained | Upgrade to `db-custom-1-3840`; add read replica for `/vault/changes` GETs |
 | > 5,000 DAU | Move rate limiting and nonce log to Redis; enable SSE via Cloud Run WebSockets/HTTP streaming |
 | > 50,000 users | Partition `vault_items` by `user_id` hash; move ciphertext blobs > 64 KB to Cloud Storage with signed URLs |
