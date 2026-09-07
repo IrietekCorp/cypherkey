@@ -943,7 +943,7 @@ Opens a prefilled GitHub issue template. **It must not attach logs, scores, vect
 - **The screen says outright that nothing is attached**, and shows the exact line that will be sent before sending it. A bug report from a password manager *sounds* like it might carry diagnostics; saying it does not is worth more than being quietly correct.
 - The body warns against pasting a passphrase, Recovery Kit or Backup Code, because a GitHub issue is public and someone will otherwise paste a screenshot.
 
-**Needs your action before any beta build ships.** `FEEDBACK_REPO` points at `IrietekCorp/cypherkey`, which is private — a tester who is not a collaborator will see a 404 and have no way to report anything. Point it at a public feedback repo, or swap the link for a mailto, before handing a build to anyone outside the org. It is one constant.
+**Resolved 2026-09-07: no code change needed.** `FEEDBACK_REPO` points at `IrietekCorp/cypherkey`, which is the repo that will be made public. The constant is already correct; the remaining action is flipping the repo's visibility before a build goes to anyone outside the org. Until that happens a non-collaborator tester still sees a 404, so this is a release gate rather than a bug.
 
 
 ---
