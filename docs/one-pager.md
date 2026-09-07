@@ -40,10 +40,12 @@ Behavioral biometrics is an established, validated enterprise category (used by 
 - **M3 (Jan 20, 2027):** Public launch (Hacker News / Product Hunt); target: 5,000 GitHub stars, 1,000 active users.
 - **M4 (Mar 31, 2027):** Paid Pro tier live; native CLI; target: 100 paying customers.
 
-### Founder
-Built the first working keystroke dynamics prototype at **CBSSports.com in 2010** ("KeyStroke Captcha"). Over 15 years later, building with modern AI agentic tooling to execute this long-standing vision end-to-end.
+### The Creator
+**Shawn J. Stewart** — VP of Engineering; technical executive and venture builder with 25+ years scaling global engineering organizations. Currently at Apartment List; previously Gusto, LinkedIn, Ultimate Software and Fidelity Investments. Built the first working keystroke dynamics prototype at **CBSSports.com in 2010** ("KeyStroke Captcha"); CypherKey is that idea with a sixteen-year head start, built solo with modern AI agentic tooling.
 
-### The Ask
-- Introductions to founders and angel investors in developer tools and cybersecurity.
-- Advice and insights from founders who have successfully launched open-source tools on Hacker News.
-- Candid feedback on the in-browser demo experience.
+[piscopour.com](https://piscopour.com) · [linkedin.com/in/irietek](https://www.linkedin.com/in/irietek) · [github.com/irietek](https://github.com/irietek)
+
+### What Would Help
+- **Investors:** introductions in cybersecurity and developer tools, and candid feedback on the model.
+- **Engineers and designers:** the codebase is open — cryptography review, extension work and design contributions are all welcome.
+- **Prospective users:** a seat in the private beta, and an honest verdict on whether the browser demo convinces you.

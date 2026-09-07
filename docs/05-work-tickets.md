@@ -948,6 +948,23 @@ Opens a prefilled GitHub issue template. **It must not attach logs, scores, vect
 
 ---
 
+# E-DESIGN — Visual and experience redesign · **epic, not yet ticketed**
+
+Raised 2026-09-07. The site, the one-pager and the extension UI all grew out of M0's
+"make it credible fast" pass and have never had a deliberate design phase. This is that
+phase, kept as a separate epic so it does not get half-done inside feature tickets.
+
+**Not yet scoped.** Before it is ticketed, decide what it covers: the marketing site, the
+one-pager, the extension's screens, or all three; whether there is a design system worth
+naming (type scale, colour, spacing, the Rhythm Light's visual language) or only a
+tidy-up; and whether any of it blocks the private beta or waits until after it.
+
+**Standing constraints for whoever does it.** The Rhythm Light is a consent indicator
+before it is an aesthetic element — X-1 says a service that hides the light gets no data,
+so it may be restyled but never made subtle. The Recovery Kit screen is printable and the
+line that must survive printing is load-bearing. Nothing in a redesign may add a network
+request to a page that currently makes none.
+
 # M3+ (summary; ticket out when you get there)
 
 **M3:** adaptive thresholds (per-user pass/grey from score history percentiles), per-device profiles (keyed on the Ed25519 `device_id`; no within-device rhythm clustering — see the keyboard ticket), passkey and TOTP step-up (`@simplewebauthn`, `otpauth`), **M2-00g** (adapt after a verified step-up — deferred here because it cannot be built until step-up exists), Rhythm Signature view, Precision Mode flag, Firefox build, docs site (Astro Starlight), SECURITY review fixes, launch checklist.

@@ -70,7 +70,7 @@ Because the server holds only ciphertext and scoring is a few hundred float ops,
 | −7 | Blog post: "I built a keystroke captcha at CBS Sports in 2010. Here's what it became." | Long-form, personal |
 | 0 (Tue, 8–9am PT) | **Show HN: CypherKey – open-source password manager where your password only works when you type it** | Landing page + demo + repo. Founder present in comments all day, answering every crypto question honestly |
 | 0 | r/privacy, r/selfhosted, r/Bitwarden ("I built an alternative"), r/MechanicalKeyboards (Precision Mode angle) | Tailored posts, not cross-posts |
-| 0 | LinkedIn: the origin story, 60-second demo video, ask for reshares from Jonathan's network | Target 10K likes |
+| 0 | LinkedIn: the origin story, 60-second demo video, ask for reshares from your own network | Target 10K likes |
 | +1 | Product Hunt | Reuse assets |
 | +3 | Podcasts/newsletters: Security Now, Risky Business, tl;dr sec, Console.dev, Changelog | Pitch the honest-limits angle |
 | +7 | Follow-up post: "What HN taught us; here's what we changed" | Turns criticism into a second wave |
