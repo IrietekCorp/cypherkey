@@ -114,6 +114,38 @@ describe('the light pulses once per keystroke', () => {
   });
 
   /**
+   * The tokenizer knows exactly which condition tripped and on which key, and that
+   * detail used to be computed and thrown away: every `malformed` sample showed the
+   * same sentence about held keys, whether a key was held, none were captured, or the
+   * feature vector disagreed with the script length. A real onboarding failure was
+   * reported against that message while the actual cause was something else, so the
+   * detail is now surfaced and pinned here.
+   */
+  test('a still-held key is named, not guessed at', async () => {
+    await act(async () => root.render(<Harness />));
+    await act(async () => field()?.dispatchEvent(new win.Event('focusin', { bubbles: true })));
+    await type(['a', 'b']);
+    // A final key pressed and never released -- the sample ends while it is down.
+    await act(async () => {
+      field()?.dispatchEvent(
+        new win.KeyboardEvent('keydown', { key: 'c', bubbles: true, cancelable: true }),
+      );
+    });
+
+    await act(async () => {
+      host
+        .querySelector('[data-testid="stop"]')
+        ?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    });
+
+    // The generic sentence still tells the user what to do...
+    expect(host.textContent).toContain('could not be measured');
+    // ...and the detail says which key, so the next report is diagnosable.
+    expect(host.textContent).toContain('still held when the sample ended');
+    expect(host.textContent).toContain('c');
+  });
+
+  /**
    * `startCapture` reports `unsupported_key` for paste, drop and composition alike --
    * one reason for three different mistakes, which is the M1-18 failure one layer down.
    * The hook listens for them itself so each gets its own sentence.

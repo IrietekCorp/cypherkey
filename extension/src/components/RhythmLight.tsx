@@ -72,7 +72,12 @@ function label(state: CaptureState, band?: 'pass' | 'grey' | 'fail'): string {
 }
 
 function message(state: CaptureState): string {
-  if (state.status === 'cancelled' || state.status === 'unavailable') return state.message;
+  if (state.status === 'cancelled') {
+    // The detail names the key and the condition. It is derived from the script, never
+    // from timings, so it reveals nothing a script-length error would not already.
+    return state.detail === undefined ? state.message : `${state.message} (${state.detail})`;
+  }
+  if (state.status === 'unavailable') return state.message;
   if (state.status === 'capturing') {
     // Stating it outright is the point of X-1: the user should never have to infer it.
     return 'Your typing rhythm is being measured while this light is on.';

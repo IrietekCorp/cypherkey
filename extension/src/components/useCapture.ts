@@ -33,8 +33,14 @@ export const CANCEL_MESSAGES: Record<ScriptError | 'paste' | 'drop' | 'compositi
     'That attempt could not be measured. Type the passphrase using characters, Backspace, Delete and Escape.',
   unsupported_combo:
     'That looked like a shortcut rather than typing. Ctrl, Alt and Command combinations are not part of a passphrase.',
+  // Deliberately does NOT name a cause. `malformed` covers at least four distinct
+  // conditions -- a key still down at the end, a key released more times than pressed,
+  // a release before its press, and no keystrokes at all -- plus a feature-vector
+  // length mismatch. Naming one of them here told users the wrong thing for the other
+  // four, which is precisely the failure M1-18 was about. The tokenizer already
+  // computes exactly which condition tripped and on which key; `detail` carries it.
   malformed:
-    'Some keys were still held when the attempt ended. Let every key come back up before you finish.',
+    'That attempt could not be measured. Type it again, letting every key come back up before you finish.',
   paste: 'Pasting cannot be measured — the rhythm is the point. Type the passphrase out.',
   drop: 'Dropped text cannot be measured. Type the passphrase out.',
   composition:
@@ -46,7 +52,7 @@ export type CaptureReason = keyof typeof CANCEL_MESSAGES;
 export type CaptureState =
   | { status: 'idle' }
   | { status: 'capturing'; pulses: number }
-  | { status: 'cancelled'; reason: CaptureReason; message: string }
+  | { status: 'cancelled'; reason: CaptureReason; message: string; detail?: string }
   | { status: 'unavailable'; message: string }
   | { status: 'done'; events: KeyEvent[] };
 
@@ -136,10 +142,13 @@ export function useCapture() {
     const events = active.stop();
     const script = eventsToScript(events);
     if ('error' in script) {
+      // `detail` names the condition and the key it happened on. Dropping it was how a
+      // still-held key and an empty sample became the same sentence on screen.
       setState({
         status: 'cancelled',
         reason: script.error,
         message: CANCEL_MESSAGES[script.error],
+        detail: script.detail,
       });
       return null;
     }
@@ -149,7 +158,13 @@ export function useCapture() {
     const features = extractFeatures(events, scriptLength(script.script));
     if ('error' in features) {
       const reason = features.error === 'length_mismatch' ? 'malformed' : features.error;
-      setState({ status: 'cancelled', reason, message: CANCEL_MESSAGES[reason] });
+      // A length mismatch is not "some keys were still held", and saying so sent anyone
+      // debugging it after the wrong thing entirely.
+      const detail =
+        features.error === 'length_mismatch'
+          ? 'the feature vector did not match the script length'
+          : undefined;
+      setState({ status: 'cancelled', reason, message: CANCEL_MESSAGES[reason], detail });
       return null;
     }
 
