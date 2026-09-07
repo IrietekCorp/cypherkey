@@ -41,6 +41,10 @@ jobs:
         with:
           bun-version: '1.4.0'
 
+      # The migration and e2e steps run from the repo, not from the image, so they need
+      # the dependency tree the image builds for itself.
+      - run: bun install --frozen-lockfile
+
       - id: auth
         uses: google-github-actions/auth@v2
         with:
