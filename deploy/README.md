@@ -71,6 +71,45 @@ unix socket, ignoring the host entirely.
 Auth proxy's TCP listener, where an ordinary `postgres://user:pw@127.0.0.1:5432/db` URL
 is correct. The PG* indirection exists only for the socket.
 
+## The static site, and the headers that nearly went missing
+
+`cypherkey.io` and `www` are a Cloud Storage bucket (`<GCP_SITE_BUCKET>`) behind a
+CDN-enabled backend bucket; `api.cypherkey.io` is the Cloud Run service. One load
+balancer, one IP, one certificate covering all three names.
+
+The site used to be Cloudflare Pages, and it carried two files that looked like dead
+config after the move — `site/public/_headers` and `site/public/_redirects`. They were
+not dead. Between them they set the site's **entire** security header policy (CSP, HSTS,
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) and both redirects (www→apex,
+http→https). **Cloud Storage ignores both files completely**, so publishing the same
+`dist/` to a bucket serves a site with no CSP and no HSTS, and nothing warns you.
+
+Their behaviour now lives in the load balancer, which is why the files are gone from the
+repo rather than uploaded:
+
+- **Headers** → `customResponseHeaders` on the `cypherkey-site-backend` backend bucket.
+- **www → apex** → a `defaultUrlRedirect` in the `cypherkey-lb` URL map.
+- **http → https** → the `cypherkey-http-redirect` URL map on the port-80 proxy.
+
+If you add a header, add it to the backend bucket. There is no file in the repo that does
+it any more, and re-adding one would be a second source of truth that silently loses.
+
+**The bucket also needs `--web-main-page-suffix=index.html`.** Without it a request for
+`/` returns the bucket's public XML object listing with a 200, which looks like a working
+deploy until you read the content type.
+
+## Cloud Armor
+
+`cypherkey-armor` fronts the API. Two deliberate choices:
+
+- **The per-IP throttle (100 req/min) is enforced.** It is behaviour-independent and
+  cannot false-positive on payload content.
+- **The OWASP preconfigured rules are in `preview` — logging, not blocking.** A
+  zero-knowledge client posts base64 ciphertext, and SQLi/XSS signature rules are a
+  well-known source of false positives against exactly that shape of body. A false
+  positive here does not degrade a page; it silently breaks a user's vault sync. Read the
+  Cloud Armor logs against real beta traffic before promoting any of them to enforcing.
+
 ## Running a deploy
 
 Push to `main`, or trigger **Deploy** manually from the Actions tab. The workflow refuses

@@ -28,6 +28,9 @@ jobs:
   deploy:
     name: build, migrate, deploy
     runs-on: ubuntu-latest
+    # Argon2id at m=64 MiB is slow on a 2-vCPU runner and the e2e does a lot of it, so
+    # this is generous -- but without a bound a genuinely stuck step burns six hours.
+    timeout-minutes: 45
     permissions:
       contents: read
       # Required for Workload Identity Federation. Without it the OIDC token that
