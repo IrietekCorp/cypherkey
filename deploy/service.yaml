@@ -9,6 +9,17 @@ metadata:
   name: cypherkey-api
   labels:
     cloud.googleapis.com/location: us-central1
+  annotations:
+    # SERVICE level, not template level. `ingress` is a property of the service; put it
+    # under `spec.template.metadata.annotations` next to minScale and Cloud Run accepts
+    # the deploy, reports success, and silently ignores it -- which left the `*.run.app`
+    # URL open while the config claimed otherwise.
+    #
+    # Only the load balancer may reach this service. That URL would otherwise be a
+    # public bypass around Cloud Armor: the WAF and the per-IP throttle live on the
+    # backend service, so anything talking to Cloud Run directly is unthrottled and
+    # uninspected. api.cypherkey.io is the only door.
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing
 spec:
   template:
     metadata:
@@ -22,11 +33,6 @@ spec:
         run.googleapis.com/cloudsql-instances: <GCP_SQL_CONNECTION>
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: 'true'
-        # Only the load balancer may reach this service. The `*.run.app` URL would
-        # otherwise be a public bypass around Cloud Armor: the WAF and the per-IP
-        # throttle live on the backend service, so anything that talks to Cloud Run
-        # directly is unthrottled and uninspected. api.cypherkey.io is the only door.
-        run.googleapis.com/ingress: internal-and-cloud-load-balancing
     spec:
       serviceAccountName: <GCP_RUNTIME_SA>
       # Each in-flight Argon2id hash holds 64 MiB. Cloud Run's default of 80 concurrent

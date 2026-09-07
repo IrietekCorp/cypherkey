@@ -162,3 +162,27 @@ jobs:
             sleep 5
           done
           echo "healthz never reported a postgres connection"; exit 1
+
+      # The ingress restriction was once written into the revision template instead of
+      # the service, where Cloud Run accepted the deploy, reported success, and silently
+      # ignored it -- leaving the bypass open while the config claimed it was shut. A
+      # setting that fails open is worth asserting against the running service rather
+      # than trusting the file that requested it.
+      - name: the run.app bypass is shut
+        run: |
+          INGRESS=$(gcloud run services describe "$SERVICE" --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --format='value(metadata.annotations["run.googleapis.com/ingress"])')
+          echo "ingress: $INGRESS"
+          if [ "$INGRESS" != "internal-and-cloud-load-balancing" ]; then
+            echo "ingress is '$INGRESS' — Cloud Run is reachable around Cloud Armor"; exit 1
+          fi
+          # Belt and braces: prove it from outside, not just from the annotation.
+          for URL in $(gcloud run services describe "$SERVICE" --region="$REGION" \
+            --project="$PROJECT_ID" --format='value(status.url)'); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL/healthz" || echo 000)
+            echo "$URL/healthz -> $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "$URL answers publicly — it bypasses the WAF and the rate limit"; exit 1
+            fi
+          done
