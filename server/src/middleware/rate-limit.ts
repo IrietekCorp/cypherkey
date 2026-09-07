@@ -34,10 +34,26 @@ async function take(db: Db, key: string, bucket: Bucket, now: number): Promise<b
   const row = rows[0];
 
   const refillPerMs = bucket.capacity / bucket.windowMs;
+  /*
+    Elapsed time is clamped at zero, so a clock that appears to run backwards can only
+    fail to refill -- it can never *drain* a bucket.
+
+    Without the clamp, `now - updatedAt` goes negative whenever a stored row is dated
+    ahead of the current time, and the negative refill is subtracted from the caller's
+    tokens: a bucket can be pushed arbitrarily far below zero and stay there. An NTP
+    correction, a clock skew between instances sharing one Postgres, or a replayed
+    database snapshot is enough to lock a caller out of an endpoint for as long as the
+    gap lasts, with no way to tell it from a real throttle.
+
+    It bit the e2e first, which runs on a frozen clock it advances forward and shares
+    the `unknown` IP bucket across runs: one run dated the row into the future and the
+    next was throttled at its fourth login on a bucket it had never used.
+  */
+  const elapsedMs = Math.max(0, now - (row?.updatedAt.getTime() ?? now));
   const tokens =
     row === undefined
       ? bucket.capacity
-      : Math.min(bucket.capacity, row.tokens + (now - row.updatedAt.getTime()) * refillPerMs);
+      : Math.min(bucket.capacity, row.tokens + elapsedMs * refillPerMs);
 
   if (tokens < 1) {
     // Still record the attempt time so the refill maths stays continuous.

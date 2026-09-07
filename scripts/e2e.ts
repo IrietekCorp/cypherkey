@@ -119,9 +119,22 @@ async function main(): Promise<Db> {
    * The single seam between the client library and the server. Everything below goes
    * through `core/client`, which reaches the app only through this.
    */
+  /*
+    A distinct source address per run.
+
+    In-process requests carry no `x-forwarded-for`, so `clientIp` calls them all
+    `unknown` and every run of this suite shares one per-IP bucket in whatever database
+    it is pointed at. Against a persistent Postgres that makes runs interfere: one run's
+    consumption throttles the next, and a run that advances its clock leaves a row dated
+    in the future. The server clamps that now, but runs should not be sharing a bucket
+    in the first place -- an e2e that fails because of the previous e2e teaches nothing.
+  */
+  const runIp = `203.0.113.${Math.floor(Math.random() * 254) + 1}`;
   const fetchLike = (async (url: string | URL, init?: RequestInit) => {
     const parsed = new URL(String(url));
-    return await app.request(parsed.pathname + parsed.search, init);
+    const headers = new Headers(init?.headers);
+    headers.set('x-forwarded-for', runIp);
+    return await app.request(parsed.pathname + parsed.search, { ...init, headers });
   }) as unknown as typeof fetch;
 
   const clientFor = (storage: SessionStorage) =>

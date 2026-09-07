@@ -60,6 +60,36 @@ async function fresh() {
   return { app, drizzle: db.drizzle, config, get, login, limited };
 }
 
+/**
+ * A bucket must never be drained by the clock.
+ *
+ * `now - updatedAt` used to be applied unclamped, so a row dated ahead of the current
+ * time produced a NEGATIVE refill that was subtracted from the caller's tokens. A clock
+ * that appears to move backwards -- an NTP correction, skew between instances sharing
+ * one Postgres, a restored snapshot -- could then lock a caller out for as long as the
+ * gap lasted, indistinguishable from a real throttle.
+ */
+describe('a clock that runs backwards cannot drain a bucket', () => {
+  test('a bucket dated in the future still serves the request', async () => {
+    const a = await fresh();
+    // Spend one token, writing a row stamped at the current fake time.
+    expect((await a.limited()).status).toBe(200);
+
+    // Now move the clock backwards, so the stored row is dated in the future.
+    CLOCK.value -= 10 * 60_000;
+
+    // Unclamped, the negative refill would push the bucket far below zero and 429.
+    expect((await a.limited()).status).toBe(200);
+  });
+
+  test('a far-future row does not lock the caller out', async () => {
+    const a = await fresh();
+    for (let i = 0; i < 5; i++) expect((await a.limited()).status).toBe(200);
+    CLOCK.value -= 24 * 60 * 60_000;
+    expect((await a.limited()).status).toBe(200);
+  });
+});
+
 describe('per-IP token bucket', () => {
   test('allows the capacity, then answers 429 with Retry-After', async () => {
     const a = await fresh();
