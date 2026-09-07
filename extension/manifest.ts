@@ -13,6 +13,26 @@ export const CSP_EXTENSION_PAGES = "script-src 'self' 'wasm-unsafe-eval'; object
 export const API_HOST_PERMISSION = 'https://api.cypherkey.io/*';
 
 /**
+ * A fixed extension id for development builds.
+ *
+ * Chrome derives the id from the packed key; an unpacked build without one gets an id
+ * from its path, so it changes per machine and per checkout. The browser test then has
+ * to discover it, and the only handle is the MV3 service-worker target -- which starts
+ * on demand and is not reliably registered by the time a test looks. That raced, passed
+ * locally and timed out on CI.
+ *
+ * This is a PUBLIC key. It pins the id and grants nothing: the matching private key is
+ * not in this repository and is not needed for an unpacked load. Development builds
+ * only, gated on the same variable as the dev host permission, so a shipped build takes
+ * its identity from the store rather than from here.
+ */
+export const DEV_EXTENSION_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyiWbfyIv67ra6NcrW7q8jOgQNkJjdLAFve5QmCTQBUfslVpSAVuYMhhPQbrxKO6SIA7GyJjTLDfC8NVWAqpnpc1vqmMGMxXDznDs78z/gsNwvvOlzFIuYLXh9n0om6lr2dYmmcw9Em48WPewQ0NqyyMpIdkEpsHjoc+JMmkNDL0RgZ8dsEPpaAk8UJHzkdescs8aGmaBUUZSD+27w4OY5vu28myaotfBfLhOpWeggu78wtN5iZya5Jl0xABsWMeGCkiu6o/CjpdyXlsIyTjByUBn95Y2/x88BxfI+kozgUMe6JEOBvjm+eca6MVN8UXhO5IftXR9EqZ0RUUyrnMMVQIDAQAB';
+
+/** The id Chrome derives from `DEV_EXTENSION_KEY`, so the test can go straight there. */
+export const DEV_EXTENSION_ID = 'flkbobnbhkhgcmollbjbnedjlilkjlob';
+
+/**
  * The extra origin a development build needs, and production must never carry.
  *
  * A build pointed at a local server by `VITE_CYPHERKEY_API` cannot reach it without a
@@ -41,6 +61,7 @@ export const manifest: {
   description: string;
   permissions: string[];
   host_permissions: string[];
+  key?: string;
   content_security_policy: { extension_pages: string };
 } = {
   name: 'CypherKey',
@@ -74,6 +95,7 @@ export const manifest: {
    * here is the failure the tests are watching for.
    */
   host_permissions: [API_HOST_PERMISSION, ...devHostPermission()],
+  ...(devHostPermission().length > 0 ? { key: DEV_EXTENSION_KEY } : {}),
   content_security_policy: {
     // Requirement 1 of M2-01: without 'wasm-unsafe-eval' the Argon2 module will not
     // instantiate under MV3, and the failure surfaces only in a real browser.

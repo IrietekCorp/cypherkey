@@ -241,6 +241,41 @@ function requireString(value: unknown, field: string): string {
 }
 
 /**
+ * What to tell a person when a request fails.
+ *
+ * The server answers a duplicate username with `{ error: 'username_taken' }` and a 409.
+ * The client threw "signup failed with status 409", and that is what a real user saw --
+ * an HTTP status code, on a screen offering no clue that the fix is to pick a different
+ * name. The server's code is the only part of that response written for a human to act
+ * on, and it was the part being discarded.
+ *
+ * Unknown codes keep the status, because a message invented for a condition we have not
+ * thought about is worse than an honest one that can be looked up.
+ */
+const FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  username_taken: 'That username is already taken. Choose a different one.',
+  already_registered: 'This device is already registered to that account.',
+  rate_limited: 'Too many attempts. Wait a minute, then try again.',
+  invalid_body: 'The request was malformed. This is a bug — please report it.',
+  unauthorized: 'That passphrase or rhythm was not accepted.',
+  locked_out: 'Too many failed attempts. This account is locked for a short time.',
+};
+
+/** Turns a failed response into a sentence, preferring the server's own error code. */
+export function failureMessage(action: string, status: number, body: unknown): string {
+  const code =
+    typeof body === 'object' && body !== null && 'error' in body
+      ? (body as { error: unknown }).error
+      : undefined;
+  if (typeof code === 'string') {
+    const known = FAILURE_MESSAGES[code];
+    if (known !== undefined) return known;
+    return `${action} failed: ${code}`;
+  }
+  return `${action} failed with status ${status}`;
+}
+
+/**
  * The client-side session state machine of A-5. Pure TypeScript, no DOM: everything
  * that touches the outside world — the network, persistence, the clock — is injected.
  */
@@ -687,7 +722,7 @@ export function createSession(deps: SessionDeps): Session {
         vaultShare.fill(0);
         wrap.fill(0);
         phantom.fill(0);
-        throw new Error(`signup failed with status ${created.status}`);
+        throw new Error(failureMessage('Signup', created.status, created.body));
       }
 
       const payload = asRecord(created.body);
@@ -792,7 +827,7 @@ export function createSession(deps: SessionDeps): Session {
         wrap.fill(0);
         phantom.fill(0);
         state = 'locked';
-        throw new Error(`login failed with status ${response.status}`);
+        throw new Error(failureMessage('Login', response.status, response.body));
       }
 
       const payload = asRecord(response.body);

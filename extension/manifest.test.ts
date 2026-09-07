@@ -59,6 +59,12 @@ describe('manifest', () => {
       expect(devHostPermission('https://api.cypherkey.io')).toEqual([]);
     });
 
+    test('a production build carries no dev key', () => {
+      // The pinned id is a development convenience. A shipped build takes its identity
+      // from the store, and a key here would silently override that.
+      expect(manifest).not.toHaveProperty('key');
+    });
+
     test('a value that is not a URL grants nothing', () => {
       // Failing closed: a typo must not become a permission.
       expect(devHostPermission('not a url')).toEqual([]);

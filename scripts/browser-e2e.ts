@@ -30,6 +30,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import puppeteer, { type Browser } from 'puppeteer-core';
+import { DEV_EXTENSION_ID } from '../extension/manifest';
 
 const EXTENSION_DIR = join(import.meta.dir, '..', 'extension', '.output', 'chrome-mv3');
 const PORT = Number(Bun.env.BROWSER_E2E_PORT ?? 8791);
@@ -148,11 +149,17 @@ async function main(): Promise<void> {
       ],
     });
 
-    const worker = await browser.waitForTarget((t) => t.type() === 'service_worker', {
-      timeout: 30_000,
-    });
-    const extensionId = new URL(worker.url()).host;
-    ok(`the extension loaded (${extensionId})`);
+    /*
+      The id is pinned by the dev build's manifest key rather than discovered.
+
+      Discovery meant waiting for the MV3 service-worker target, which starts on demand
+      and is not reliably registered by the time a test looks for it: locally it was
+      there, on a CI runner it never appeared and the run timed out having proved
+      nothing. A fixed id removes the race entirely -- opening the popup is what starts
+      the worker anyway.
+    */
+    const extensionId = DEV_EXTENSION_ID;
+    ok(`the extension loaded with a pinned id (${extensionId})`);
 
     const page = await browser.newPage();
     const consoleErrors: string[] = [];
