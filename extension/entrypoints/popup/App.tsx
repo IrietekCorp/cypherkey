@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SignupResult } from '../../../core/client/session';
 import { createSync } from '../../../core/client/sync';
 import type { BrowserApi } from '../../src/autofill';
+import { API_BASE_URL } from '../../src/config';
 import { bindPopupLifecycle, createLockController } from '../../src/lock';
 import { createExtensionSession } from '../../src/session';
 import { memoryArea } from '../../src/storage';
@@ -72,7 +73,7 @@ export function App() {
       type: 'module',
     });
     const built = createExtensionSession({
-      baseUrl: 'http://localhost:8787',
+      baseUrl: API_BASE_URL,
       area: memoryArea(),
       worker,
     });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { CSP_EXTENSION_PAGES, manifest } from './manifest';
+import { API_HOST_PERMISSION, CSP_EXTENSION_PAGES, manifest } from './manifest';
 
 describe('manifest', () => {
   /**
@@ -25,7 +25,26 @@ describe('manifest', () => {
     // `activeTab` + `scripting` instead of an <all_urls> content script: access to one
     // tab, only after the user invokes the extension on it.
     expect(manifest.permissions).toEqual(['storage', 'activeTab', 'scripting']);
-    expect(manifest).not.toHaveProperty('host_permissions');
+  });
+
+  /**
+   * `host_permissions` was empty until the extension had a server to talk to. It now
+   * holds exactly one entry, and the point of this test is that it stays that way: an
+   * MV3 page cannot reach its own API without it, but a browsing origin here would be
+   * the standing access the posture exists to refuse.
+   */
+  test('host_permissions grants the API and nothing else', () => {
+    expect(manifest.host_permissions).toEqual([API_HOST_PERMISSION]);
+    expect(API_HOST_PERMISSION).toBe('https://api.cypherkey.io/*');
+  });
+
+  test('host_permissions contains no browsing origin', () => {
+    for (const entry of manifest.host_permissions) {
+      expect(entry.startsWith('https://')).toBe(true);
+      expect(entry).not.toBe('<all_urls>');
+      // `https://*/*` and friends are the shapes that quietly mean "everything".
+      expect(entry).not.toMatch(/^https:\/\/\*/);
+    }
   });
 });
 
@@ -42,11 +61,13 @@ describe('the generated manifest', () => {
       manifest_version: number;
       content_security_policy?: { extension_pages?: string };
       permissions?: string[];
+      host_permissions?: string[];
     };
 
     expect(generated.manifest_version).toBe(3);
     expect(generated.content_security_policy?.extension_pages).toContain("'wasm-unsafe-eval'");
     expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
+    expect(generated.host_permissions).toEqual([API_HOST_PERMISSION]);
   });
 });
 
@@ -89,8 +110,9 @@ describe('the extension has no standing access to browsing', () => {
 
     // Nothing runs on a page the user has not pointed the extension at.
     expect(generated.content_scripts ?? []).toHaveLength(0);
-    expect(generated).not.toHaveProperty('host_permissions');
     expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
+    // The API origin is allowed; a browsing origin is what this is guarding.
+    expect(generated.host_permissions).toEqual([API_HOST_PERMISSION]);
   });
 
   test.skipIf(!existsSync(built))('the filler is built but not registered', async () => {
