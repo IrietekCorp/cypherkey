@@ -115,6 +115,24 @@ const typePassphrase = async (keys: string[]) => {
   }
 };
 
+const focusField = () => (el('passphrase') as unknown as { focus(): void }).focus();
+const fieldValue = () => (el('passphrase') as unknown as { value: string }).value;
+
+/** Types into whichever field already holds focus, without re-focusing it. */
+const typeIntoFocusedField = async (keys: string[]) => {
+  const field = el('passphrase');
+  for (const key of keys) {
+    await act(async () => {
+      field?.dispatchEvent(
+        new win.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+      field?.dispatchEvent(
+        new win.KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }),
+      );
+    });
+  }
+};
+
 /** "correct horse" with a Phantom Key: a doubled r that is corrected away. */
 const PHRASE = [...'correct horse'];
 const WITH_PHANTOM = [...'corr', 'r', 'Backspace', ...'ect horse'];
@@ -261,6 +279,62 @@ describe('passphrase strength', () => {
     await typePassphrase([...'short']);
     await click('submit');
     expect(text()).toContain('has 5');
+  });
+});
+
+/**
+ * Reported from real onboarding: after pressing Enter, "the input for the 2nd try
+ * doesn't fully re-render... I see an input with idle status. It's only when I click
+ * away and click back into the input that I see the prompt to enter the passphrase a
+ * 2nd time."
+ *
+ * Capture is armed by `onFocus`, and Enter submits without ever leaving the field, so
+ * the second sample was never armed: the value cleared, the light dropped to Idle, and
+ * the keystrokes went nowhere. Clicking out and back in was the only recovery, and
+ * nothing on screen suggested it.
+ */
+describe('Enter advances to the second attempt with capture still armed', () => {
+  const pressEnter = async () => {
+    await act(async () => {
+      el('passphrase')?.dispatchEvent(
+        new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+  };
+
+  test('the second attempt is armed without re-entering the field', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    await identify();
+
+    // `focus()` rather than a synthetic focusin: the re-arm is guarded on the field
+    // genuinely holding focus, so the test has to give it focus for real.
+    await act(async () => focusField());
+    await typeIntoFocusedField(PHRASE);
+    await pressEnter();
+
+    // It advanced...
+    expect(text()).toContain('Type it again');
+    // ...the field is empty for the retype...
+    expect(fieldValue()).toBe('');
+    // ...and it is recording again, rather than sitting Idle until clicked away and back.
+    expect(text()).not.toContain('Idle');
+    expect(text()).toContain('Ready');
+  });
+
+  test('a field the user has left is not armed behind their back', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    await identify();
+
+    await act(async () => focusField());
+    await typeIntoFocusedField(PHRASE);
+    // Focus elsewhere before the sample is submitted by the button.
+    await act(async () => (el('username') as unknown as { focus(): void }).focus());
+    await click('submit');
+
+    // Whatever happened, capture must not have re-armed a field nobody is typing in.
+    expect(text()).not.toContain('Recording your rhythm');
   });
 });
 

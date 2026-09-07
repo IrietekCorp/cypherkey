@@ -57,6 +57,27 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
     if (input.current !== null) input.current.value = '';
   };
 
+  /**
+   * Ends one sample and arms the next, without requiring the field to be re-entered.
+   *
+   * Capture is armed by `onFocus`, and Enter submits without ever leaving the input --
+   * so after the first passphrase the field cleared itself, the light dropped to Idle,
+   * and nothing was recording. The only way back was to click away and click in again,
+   * which is not a thing anyone should have to discover. Focus never moved, so `begin`
+   * is called explicitly here instead of waiting for an event that will not fire.
+   *
+   * Guarded on the field actually holding focus: re-arming a field the user has left
+   * would start a sample they cannot see themselves typing into.
+   */
+  const resetForRetry = () => {
+    capture.reset();
+    clearField();
+    const field = input.current;
+    if (field !== null && light.current !== null && field.ownerDocument.activeElement === field) {
+      capture.start(field, light.current);
+    }
+  };
+
   /** First pass: check strength, then ask for it again. */
   const takeFirst = async () => {
     const sample = capture.stop();
@@ -64,13 +85,11 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
     const strength = await assessPassphrase(sample.resolved);
     if (!strength.acceptable) {
       setProblems([...strength.problems, ...strength.suggestions]);
-      capture.reset();
-      clearField();
+      resetForRetry();
       return;
     }
     setFirst({ script: sample.script, resolved: sample.resolved });
-    capture.reset();
-    clearField();
+    resetForRetry();
   };
 
   /**
@@ -86,8 +105,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
       setProblems([
         'That was a different sequence of keys. Type it exactly as before, including any Backspace, Delete or Escape.',
       ]);
-      capture.reset();
-      clearField();
+      resetForRetry();
       return;
     }
 
@@ -110,8 +128,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
       onComplete(result, sample.script, enteredUsername, sample.resolved);
     } catch (err) {
       setProblems([(err as Error).message]);
-      capture.reset();
-      clearField();
+      resetForRetry();
     } finally {
       setBusy(false);
     }
@@ -147,8 +164,7 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
       */
       const armed = capture.state.status === 'capturing' && capture.state.pulses > 0;
       if (armed) {
-        capture.reset();
-        clearField();
+        resetForRetry();
       }
       setProblems(armed ? [...blocking, 'Then type your passphrase again.'] : blocking);
       return;
