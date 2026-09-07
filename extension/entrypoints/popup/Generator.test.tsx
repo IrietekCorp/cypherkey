@@ -85,10 +85,18 @@ describe('generating', () => {
 });
 
 describe('modes', () => {
+  /**
+   * Flaky until 2026-09-07: this asserted the value contains no '-'. But '-' is in the
+   * symbol alphabet ('!@#$%^&*-_=+?') as well as being the passphrase separator, so a
+   * perfectly good password containing one failed the test roughly three runs in eight.
+   * The discriminator is the *shape* -- words joined by hyphens -- not the character.
+   */
   test('password mode produces characters, not words', async () => {
     await render();
     await click('generate');
-    expect(el('value')?.textContent).not.toContain('-');
+    const value = el('value')?.textContent ?? '';
+    expect(value.length).toBeGreaterThan(0);
+    expect(value).not.toMatch(/^[a-z]+(-[a-z]+)+$/);
   });
 
   test('passphrase mode produces words from the list', async () => {

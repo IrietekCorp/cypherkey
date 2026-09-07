@@ -33,9 +33,11 @@ export function RhythmLight({ state, band, ref }: RhythmLightProps) {
       ? BAND_CLASS[band]
       : capturing
         ? 'bg-sky-500'
-        : state.status === 'cancelled' || state.status === 'unavailable'
-          ? 'bg-neutral-400'
-          : 'bg-neutral-300';
+        : state.status === 'done'
+          ? 'bg-emerald-500'
+          : state.status === 'cancelled' || state.status === 'unavailable'
+            ? 'bg-neutral-400'
+            : 'bg-neutral-300';
 
   return (
     <div className="flex flex-col gap-1">
@@ -62,13 +64,28 @@ export function RhythmLight({ state, band, ref }: RhythmLightProps) {
   );
 }
 
+/**
+ * The four states a person can actually be in, named the way they expect.
+ *
+ * This used to answer 'Ready' for idle, cancelled *and* done, so the label said the
+ * same thing before the field was focused, after a sample was captured, and after one
+ * was thrown away. "Ready" while nothing is armed is worse than uninformative: it
+ * claims the opposite of the truth.
+ *
+ * Idle → nothing is armed. Ready → armed, waiting for the first keystroke.
+ * Recording → keystrokes are arriving. Captured → a sample was taken.
+ */
 function label(state: CaptureState, band?: 'pass' | 'grey' | 'fail'): string {
   if (band === 'pass') return 'Rhythm matched';
   if (band === 'grey') return 'Rhythm looks different';
   if (band === 'fail') return 'Rhythm did not match';
-  if (state.status === 'capturing') return 'Recording your rhythm';
   if (state.status === 'unavailable') return 'Not recording';
-  return 'Ready';
+  if (state.status === 'capturing') {
+    return state.pulses === 0 ? 'Ready' : 'Recording your rhythm';
+  }
+  if (state.status === 'done') return 'Captured';
+  if (state.status === 'cancelled') return 'Discarded';
+  return 'Idle';
 }
 
 function message(state: CaptureState): string {
@@ -80,7 +97,17 @@ function message(state: CaptureState): string {
   if (state.status === 'unavailable') return state.message;
   if (state.status === 'capturing') {
     // Stating it outright is the point of X-1: the user should never have to infer it.
-    return 'Your typing rhythm is being measured while this light is on.';
+    return state.pulses === 0
+      ? 'Your typing rhythm will be measured while this light is on. Start typing.'
+      : `Your typing rhythm is being measured while this light is on. ${state.pulses} ${
+          state.pulses === 1 ? 'keystroke' : 'keystrokes'
+        } so far.`;
+  }
+  // A silent success is indistinguishable from nothing having happened, which is how a
+  // voided sample and a good one came to look the same on screen.
+  if (state.status === 'done') {
+    const strokes = state.events.filter((e) => e.type === 'down').length;
+    return `Captured — ${strokes} ${strokes === 1 ? 'key' : 'keys'} recorded.`;
   }
   return '';
 }

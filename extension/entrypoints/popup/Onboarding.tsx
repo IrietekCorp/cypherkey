@@ -137,7 +137,20 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
   const submit = async () => {
     const blocking = identityProblems();
     if (blocking.length > 0) {
-      setProblems(blocking);
+      /*
+        The sample in progress is already doomed: every field that could be at fault is
+        somewhere else on the screen, and reaching it blurs the passphrase input, which
+        voids the sample (A-14.1). Leaving it armed meant the user fixed the named
+        problem, pressed the button again, and got an unrelated capture error for a
+        sample that had died in between. Discard it here and say so, so the failure is
+        stated once instead of surfacing later wearing someone else's message.
+      */
+      const armed = capture.state.status === 'capturing' && capture.state.pulses > 0;
+      if (armed) {
+        capture.reset();
+        clearField();
+      }
+      setProblems(armed ? [...blocking, 'Then type your passphrase again.'] : blocking);
       return;
     }
     await (stage === 'first' ? takeFirst() : takeSecond());
@@ -146,6 +159,28 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
   return (
     <main className="flex flex-col gap-3 p-4 font-sans text-sm">
       <h1 className="text-base font-semibold">Create your CypherKey</h1>
+
+      {/*
+        First, and deliberately so. This used to sit below the passphrase field, which
+        made it a trap: ticking it means leaving the passphrase input, leaving the input
+        fires `blur`, and a blur voids the sample (A-14.1). Anyone who typed their
+        passphrase before ticking was told to tick the box, and ticking it destroyed the
+        sample they had just typed — with no way out except to notice and retype.
+
+        Consent also belongs before the thing it consents to, not after it.
+      */}
+      <label className="flex items-start gap-2 rounded border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-700">
+        <input
+          type="checkbox"
+          data-testid="consent"
+          checked={consented}
+          onChange={(e) => setConsented(e.target.checked)}
+        />
+        <span>
+          I agree that CypherKey may measure my typing rhythm on this passphrase, and only while the
+          Rhythm Light is visible. (Policy {consentPolicyVersion})
+        </span>
+      </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-xs text-neutral-600">Username</span>
@@ -175,6 +210,18 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
           type="password"
           data-testid="passphrase"
           onFocus={begin}
+          /*
+            Enter finishes the sample without the pointer ever leaving the field, which
+            is the only way to end a sample that cannot possibly blur it. A-14.1 already
+            treats Enter as a terminator that produces no token, so submitting from
+            keydown -- while Enter is still physically down -- is safe and tokenizes
+            identically to a click.
+          */
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            void submit();
+          }}
           className="rounded border border-neutral-300 px-2 py-1"
         />
       </label>
@@ -204,19 +251,6 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
         Strictness is set to Medium. It decides how much your typing may vary from day to day; you
         can change it later in Settings.
       </p>
-
-      <label className="flex items-start gap-2 text-xs text-neutral-700">
-        <input
-          type="checkbox"
-          data-testid="consent"
-          checked={consented}
-          onChange={(e) => setConsented(e.target.checked)}
-        />
-        <span>
-          I agree that CypherKey may measure my typing rhythm on this passphrase, and only while the
-          Rhythm Light is visible. (Policy {consentPolicyVersion})
-        </span>
-      </label>
 
       <button
         type="button"

@@ -165,6 +165,80 @@ describe('identity and consent gate the button', () => {
   });
 });
 
+/**
+ * Reported from real onboarding: the passphrase "doesn't seem to be captured
+ * consistently". The consent checkbox sat below the passphrase field, which made it a
+ * trap rather than a checkbox. Ticking it means leaving the input, leaving the input
+ * fires `blur`, and a blur voids the sample. Anyone who typed the passphrase before
+ * ticking was told to tick the box, and ticking it destroyed what they had just typed.
+ */
+describe('nothing below the passphrase field can void a sample', () => {
+  test('consent comes before the passphrase in the document', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    const consent = el('consent');
+    const passphrase = el('passphrase');
+    expect(consent).not.toBeNull();
+    expect(passphrase).not.toBeNull();
+    // Node.compareDocumentPosition: 4 === DOCUMENT_POSITION_FOLLOWING, i.e. the
+    // passphrase comes after consent. Order is the whole fix, so order is the assertion.
+    const following = (consent as unknown as Node).compareDocumentPosition(
+      passphrase as unknown as Node,
+    );
+    expect(following & 4).toBe(4);
+  });
+
+  test('consent is above the username too, so the flow reads top to bottom', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    const consent = el('consent');
+    const username = el('username');
+    const following = (consent as unknown as Node).compareDocumentPosition(
+      username as unknown as Node,
+    );
+    expect(following & 4).toBe(4);
+  });
+
+  /**
+   * If a blocking field is still empty, the sample in progress is already doomed --
+   * fixing that field means leaving the passphrase input. It is discarded here and said
+   * so, rather than surfacing later as an unrelated capture error.
+   */
+  test('a blocked submit discards the doomed sample and says to retype', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    await check('consent');
+    // Username deliberately left empty.
+    await typePassphrase(PHRASE);
+    await click('submit');
+
+    expect(el('problems')?.textContent).toContain('Enter a username');
+    expect(el('problems')?.textContent).toContain('type your passphrase again');
+  });
+});
+
+/** The status must never claim to be armed when it is not. */
+describe('the light says which state it is actually in', () => {
+  test('idle before the field is touched, ready once it is', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    expect(host.textContent).toContain('Idle');
+
+    await act(async () =>
+      el('passphrase')?.dispatchEvent(new win.Event('focusin', { bubbles: true })),
+    );
+    expect(host.textContent).toContain('Ready');
+    expect(host.textContent).not.toContain('Idle');
+  });
+
+  test('recording once keys arrive', async () => {
+    const { session } = fakeSession();
+    await render(session);
+    await typePassphrase([...'abc']);
+    expect(host.textContent).toContain('Recording your rhythm');
+  });
+});
+
 describe('passphrase strength', () => {
   test('a weak passphrase is refused and never reaches the second pass', async () => {
     const { session, calls } = fakeSession();
