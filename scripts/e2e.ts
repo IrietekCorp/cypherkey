@@ -27,7 +27,7 @@ import { kdfInput, scriptCommitments } from '../core/crypto/phantom';
 import { generateRecoveryCode } from '../core/crypto/recovery';
 import { createApp } from '../server/src/app';
 import { loadConfigOrExit } from '../server/src/config';
-import { createDb } from '../server/src/db/client';
+import { type Db, createDb } from '../server/src/db/client';
 import { migrateDb } from '../server/src/db/migrate';
 
 /**
@@ -86,7 +86,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<Db> {
   const config = loadConfigOrExit({
     ...Bun.env,
     // A fresh SQLite file per run unless CI points us at Postgres.
@@ -491,6 +491,24 @@ async function main(): Promise<void> {
   ok('a wrong Recovery Kit is refused before anything is released');
 
   console.log(`\n  ${stepNumber} steps passed on ${db.dialect}\n`);
+  return db;
 }
 
-await main();
+/*
+  Close the pool and exit explicitly.
+
+  The script used to end at `await main()`, leaving the Postgres pool open. Against
+  SQLite there is nothing holding the loop, so it exited and looked fine; against Cloud
+  SQL the pooled sockets kept Bun alive after the last assertion passed. In CI that read
+  as a hung deploy: the log said "25 steps passed on postgres" and the job then sat for
+  44 minutes until the job timeout killed it, failing a run whose work had succeeded.
+
+  `process.exit` after the close because a pooled driver can still hold a timer that
+  keeps the loop alive; a suite that has printed its result has nothing left to wait for.
+*/
+const db = await main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});
+await db.close();
+process.exit(0);
