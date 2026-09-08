@@ -6,44 +6,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CypherKey — Keystroke-Rhythm Zero-Knowledge Password Manager</title>
   <meta name="description" content="Open-source zero-knowledge password manager where your password only works when you type it. Built-in typing rhythm second factor." />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%230d9488'/></svg>" />
-  <style>
-    .setup-choice { border-color: rgb(203 213 225); background: rgb(248 250 252); }
-    .setup-choice:hover { border-color: rgb(148 163 184); }
-    .setup-choice[aria-pressed="true"] { border-color: rgb(13 148 136); background: rgb(240 253 250); }
-    .setup-choice .choice-marker { border-color: rgb(148 163 184); }
-    .setup-choice[aria-pressed="true"] .choice-marker { border-color: rgb(13 148 136); background: rgb(13 148 136); box-shadow: inset 0 0 0 2px white; }
-    .strictness-option { background: white; color: rgb(71 85 105); }
-    .strictness-option:hover { background: rgb(241 245 249); }
-    .strictness-option[aria-pressed="true"] { background: rgb(13 148 136); color: white; }
-  </style>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%239184d9'/></svg>" />
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen antialiased selection:bg-teal-600 selection:text-white flex flex-col justify-between">
+<body class="bg-ck-bg text-ck-text min-h-screen antialiased selection:bg-ck-accent-900 selection:text-ck-text flex flex-col justify-between">
 
   <!-- Top Announcement / Keyboard Notice -->
-  <div class="bg-slate-900 text-slate-200 text-xs sm:text-sm px-4 py-2 text-center flex items-center justify-center gap-2 border-b border-slate-800">
-    <span class="inline-block w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>
-    <span><strong>CypherKey Demo Day:</strong> Keystroke biometrics is best experienced on a physical keyboard.</span>
+  <div class="bg-ck-surface text-ck-text text-xs sm:text-sm px-4 py-2 text-center flex items-center justify-center gap-2 border-b border-ck-border">
+    <span class="inline-block w-2 h-2 rounded-full bg-ck-accent-400 animate-pulse"></span>
+    <span><strong>Private beta:</strong> the extension is being tested now. The demo below is best on a physical keyboard.</span>
   </div>
 
   <!-- Navigation Bar -->
-  <nav class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+  <nav class="sticky top-0 z-40 bg-ck-bg/90 backdrop-blur-md border-b border-ck-border shadow-xs">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
       <a href="#" class="flex items-center gap-2.5 group">
-        <span class="w-3.5 h-3.5 rounded-full bg-teal-600 shadow-[0_0_10px_rgba(13,148,136,0.6)] group-hover:scale-125 transition-transform duration-200"></span>
-        <span class="text-xl font-extrabold tracking-tight text-slate-900">Cypher<span class="text-teal-600">Key</span></span>
+        <span class="w-3.5 h-3.5 rounded-full bg-ck-accent shadow-[0_0_10px_rgba(145,132,217,0.55)] group-hover:scale-125 transition-transform duration-200"></span>
+        <span class="text-xl font-extrabold tracking-tight text-ck-text">Cypher<span class="text-ck-accent-300">Key</span></span>
       </a>
       <div class="flex items-center gap-4 sm:gap-8 text-sm font-medium">
-        <a href="#demo" class="text-slate-600 hover:text-teal-600 transition">Live Demo</a>
-        <a href="#how-it-works" class="text-slate-600 hover:text-teal-600 transition hidden sm:inline">How It Works</a>
-        <a href="#safety" class="text-slate-600 hover:text-teal-600 transition hidden md:inline">Threat Model</a>
-        <a href="./one-pager.html" class="text-slate-600 hover:text-teal-600 transition">One-Pager</a>
+        <a href="#demo" class="text-ck-muted hover:text-ck-accent-300 transition">Live Demo</a>
+        <a href="#how-it-works" class="text-ck-muted hover:text-ck-accent-300 transition hidden sm:inline">How It Works</a>
+        <a href="#safety" class="text-ck-muted hover:text-ck-accent-300 transition hidden md:inline">Threat Model</a>
+        <a href="./one-pager.html" class="text-ck-muted hover:text-ck-accent-300 transition">One-Pager</a>
         <!-- HIDDEN UNTIL PUBLIC RELEASE — the repository is private; this 404s. Restore by removing this comment and its closing marker.
         <a
           href="https://github.com/IrietekCorp/cypherkey"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition"
+          class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-ck-surface hover:bg-ck-raised text-ck-text text-xs font-semibold shadow-xs transition"
         >
           <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -57,23 +47,23 @@
 
   <!-- Hero Section -->
   <header class="max-w-5xl mx-auto px-4 sm:px-6 pt-16 pb-12 text-center">
-    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-50 border border-teal-200/80 text-teal-800 text-xs font-semibold tracking-wide mb-6 shadow-xs">
-      <span class="w-2 h-2 rounded-full bg-teal-600 animate-pulse"></span>
+    <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-xs font-semibold tracking-wide mb-6 shadow-xs">
+      <span class="w-2 h-2 rounded-full bg-ck-accent-900 animate-pulse"></span>
       Zero-Knowledge Vault &bull; Behavioral 2FA &bull; Open Source
     </div>
 
-    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 mb-6 leading-[1.12]">
-      Your password only works when <span class="text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-emerald-600">you</span> type it.
+    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-ck-text mb-6 leading-[1.12]">
+      Your password only works when <span class="text-ck-accent-300">you</span> type it.
     </h1>
 
-    <p class="text-lg sm:text-xl text-slate-600 max-w-3xl mx-auto mb-8 leading-relaxed font-normal">
+    <p class="text-lg sm:text-xl text-ck-muted max-w-3xl mx-auto mb-8 leading-relaxed font-normal">
       A zero-knowledge password manager with a built-in behavioral second factor. No phone to grab, no authenticator app, no dongle. <strong>Just your natural typing rhythm.</strong>
     </p>
 
     <div class="flex flex-wrap items-center justify-center gap-4">
       <a
         href="#demo"
-        class="px-6 py-3.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-base shadow-lg shadow-teal-600/25 transition-all transform hover:-translate-y-0.5"
+        class="px-6 py-3.5 rounded-xl border border-ck-accent-700 hover:border-ck-accent hover:bg-ck-accent-900 text-ck-accent-300 font-medium text-base transition-colors"
       >
         Try the Interactive Browser Demo &darr;
       </a>
@@ -82,7 +72,7 @@
         href="https://github.com/IrietekCorp/cypherkey"
         target="_blank"
         rel="noopener noreferrer"
-        class="px-6 py-3.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold text-base shadow-xs transition"
+        class="px-6 py-3.5 rounded-xl bg-ck-surface hover:bg-ck-inset border border-ck-border text-ck-text font-semibold text-base shadow-xs transition"
       >
         Explore Code &amp; Specs
       </a>
@@ -90,17 +80,17 @@
     </div>
 
     <!-- Trust Markers -->
-    <div class="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-slate-500">
+    <div class="mt-10 flex flex-wrap items-center justify-center gap-6 text-xs font-medium text-ck-muted">
       <span class="flex items-center gap-1.5">
-        <svg class="w-4 h-4 text-teal-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
+        <svg class="w-4 h-4 text-ck-accent-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
         100% In-Browser Execution
       </span>
       <span class="flex items-center gap-1.5">
-        <svg class="w-4 h-4 text-teal-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
+        <svg class="w-4 h-4 text-ck-accent-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
         Zero Telemetry / No Network Requests
       </span>
       <span class="flex items-center gap-1.5">
-        <svg class="w-4 h-4 text-teal-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
+        <svg class="w-4 h-4 text-ck-accent-300" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>
         MIT Client &bull; AGPL Server
       </span>
     </div>
@@ -109,21 +99,21 @@
   <!-- Interactive Demo Card -->
   <main class="flex-grow">
     <section id="demo" class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      <div class="bg-white border border-slate-200/90 rounded-2xl shadow-xl p-6 sm:p-10 relative overflow-hidden">
+      <div class="bg-ck-surface border border-ck-border/90 rounded-2xl shadow-xl p-6 sm:p-10 relative overflow-hidden">
 
         <!-- Card Header -->
-        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5 mb-8">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-ck-border pb-5 mb-8">
           <div>
-            <span class="text-xs uppercase tracking-wider font-bold text-teal-600">Live In-Browser Biometrics</span>
-            <h2 class="text-2xl font-extrabold text-slate-900 mt-0.5">The Party Trick Demonstration</h2>
+            <span class="text-xs uppercase tracking-wider font-bold text-ck-accent-300">Live In-Browser Biometrics</span>
+            <h2 class="text-2xl font-extrabold text-ck-text mt-0.5">The Party Trick Demonstration</h2>
           </div>
           <div class="flex items-center gap-3">
-            <span id="demo-mode-badge" class="px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-medium text-slate-600 font-mono">
-              Status: <strong id="state-label" class="text-teal-700">idle</strong>
+            <span id="demo-mode-badge" class="px-3 py-1 rounded-full bg-ck-inset border border-ck-border text-xs font-medium text-ck-muted font-mono">
+              Status: <strong id="state-label" class="text-ck-accent-300">idle</strong>
             </span>
             <button
               id="btn-reset"
-              class="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+              class="px-3 py-1 rounded-lg bg-ck-inset hover:bg-ck-border text-ck-text text-xs font-semibold border border-ck-border transition"
               title="Reset Demo"
             >
               Reset Demo
@@ -134,10 +124,10 @@
         <!-- STEP 1: Passphrase Selection (idle) -->
         <div id="step-setup" class="space-y-6">
           <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-slate-800">
+            <h3 class="text-sm font-semibold text-ck-text">
               Choose a demo passphrase &mdash; pick one of the two options below
             </h3>
-            <p class="text-xs text-slate-500">
+            <p class="text-xs text-ck-muted">
               Multi-word phrases give distinct flight and dwell intervals, which makes the rhythm far easier to read. Minimum 10 characters.
             </p>
 
@@ -151,14 +141,14 @@
               >
                 <span class="flex items-center gap-2">
                   <span class="choice-marker w-4 h-4 rounded-full border-2 shrink-0"></span>
-                  <span class="text-sm font-bold text-slate-900">1 &middot; Use a random phrase</span>
+                  <span class="text-sm font-bold text-ck-text">1 &middot; Use a random phrase</span>
                 </span>
-                <span class="block text-xs text-slate-600 mt-1.5 ml-6">
+                <span class="block text-xs text-ck-muted mt-1.5 ml-6">
                   We pick a four-word phrase for you. Fastest way to try the demo.
                 </span>
                 <span class="block ml-6 mt-2">
-                  <span id="random-phrase-display" class="font-mono text-sm text-slate-900 bg-white border border-slate-200 rounded-lg px-2 py-1 inline-block"></span>
-                  <span id="btn-sample-phrase" role="button" tabindex="0" class="ml-2 text-xs font-semibold text-teal-700 hover:text-teal-800 underline cursor-pointer">shuffle</span>
+                  <span id="random-phrase-display" class="font-mono text-sm text-ck-text bg-ck-surface border border-ck-border rounded-lg px-2 py-1 inline-block"></span>
+                  <span id="btn-sample-phrase" role="button" tabindex="0" class="ml-2 text-xs font-semibold text-ck-accent-300 hover:text-ck-accent-300 underline cursor-pointer">shuffle</span>
                 </span>
               </button>
 
@@ -171,9 +161,9 @@
               >
                 <span class="flex items-center gap-2">
                   <span class="choice-marker w-4 h-4 rounded-full border-2 shrink-0"></span>
-                  <span class="text-sm font-bold text-slate-900">2 &middot; Enter your own</span>
+                  <span class="text-sm font-bold text-ck-text">2 &middot; Enter your own</span>
                 </span>
-                <span class="block text-xs text-slate-600 mt-1.5 ml-6">
+                <span class="block text-xs text-ck-muted mt-1.5 ml-6">
                   Use a phrase you can type naturally. Don&rsquo;t use a real password.
                 </span>
                 <input
@@ -182,20 +172,20 @@
                   autocomplete="off"
                   spellcheck="false"
                   placeholder="e.g. correct horse battery staple"
-                  class="mt-2 ml-6 w-[calc(100%-1.5rem)] bg-white border border-slate-300 focus:border-teal-600 focus:ring-3 focus:ring-teal-500/15 rounded-lg px-3 py-2 text-slate-900 text-sm font-mono outline-none transition"
+                  class="mt-2 ml-6 w-[calc(100%-1.5rem)] bg-ck-surface border border-ck-border focus:border-ck-accent focus:ring-3 focus:ring-ck-accent/15 rounded-lg px-3 py-2 text-ck-text text-sm font-mono outline-none transition"
                 />
               </button>
             </div>
-            <div id="setup-error" class="text-xs font-medium text-rose-600 hidden"></div>
+            <div id="setup-error" class="text-xs font-medium text-ck-fail hidden"></div>
           </div>
 
-          <div class="p-4 rounded-xl bg-teal-50/70 border border-teal-100 text-xs text-slate-700 flex items-start gap-3">
-            <span class="text-teal-700 text-lg leading-none">💡</span>
+          <div class="p-4 rounded-xl bg-ck-accent-900/70 border border-ck-accent-900 text-xs text-ck-text flex items-start gap-3">
+            <span class="text-ck-accent-300 text-lg leading-none">💡</span>
             <div class="space-y-1">
-              <strong class="text-teal-900 block font-semibold">How this demonstration works:</strong>
+              <strong class="text-ck-accent-900 block font-semibold">How this demonstration works:</strong>
               <span>
                 1. You will type your chosen passphrase <strong>8 times</strong> so CypherKey can calculate your personal rhythm baseline.<br/>
-                2. <strong>Add Phantom Keys if you like.</strong> Type extra keys and delete them &mdash; an extra letter you backspace away, a tap of <kbd class="bg-white/70 px-1 py-0.5 rounded border border-teal-300 font-mono text-[11px]">Esc</kbd> mid-word. They never reach the passphrase, so the phrase above stays what it is, but they become part of your secret. Do it the same way in all 8 samples.<br/>
+                2. <strong>Add Phantom Keys if you like.</strong> Type extra keys and delete them &mdash; an extra letter you backspace away, a tap of <kbd class="bg-ck-surface/70 px-1 py-0.5 rounded border border-ck-accent-300 font-mono text-[11px]">Esc</kbd> mid-word. They never reach the passphrase, so the phrase above stays what it is, but they become part of your secret. Do it the same way in all 8 samples.<br/>
                 3. Next, you will hand the laptop to a friend/colleague to try the exact same passphrase &mdash; the one you showed them, without the phantoms they never saw.<br/>
                 4. Finally, you type it again to see both scores side-by-side: <em>Same passphrase. Different rhythm.</em>
               </span>
@@ -204,7 +194,7 @@
 
           <button
             id="btn-begin-enroll"
-            class="w-full py-3.5 px-6 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-base transition-all shadow-md shadow-teal-600/20 flex items-center justify-center gap-2"
+            class="w-full py-3.5 px-6 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-base transition-all shadow-md shadow-ck-accent/20 flex items-center justify-center gap-2"
           >
             <span>Begin Enrollment (8 Samples)</span>
             &rarr;
@@ -212,30 +202,30 @@
         </div>
 
           <!-- Diagnostics. Rendered only with ?debug=1; see docs/02 A-4.1. -->
-          <div id="debug-panel" class="hidden rounded-xl border-2 border-amber-300 bg-amber-50/70 p-4 space-y-2">
+          <div id="debug-panel" class="hidden rounded-xl border-2 border-ck-amber bg-ck-amber/70 p-4 space-y-2">
             <div class="flex items-start gap-2">
-              <span class="text-amber-700 text-lg leading-none">🔍</span>
+              <span class="text-ck-amber-text text-lg leading-none">🔍</span>
               <div>
-                <strong class="block text-sm font-bold text-amber-900">Diagnostics (?debug=1)</strong>
-                <span class="block text-xs text-amber-800 mt-1 leading-relaxed">
+                <strong class="block text-sm font-bold text-ck-amber-text">Diagnostics (?debug=1)</strong>
+                <span class="block text-xs text-ck-amber-text mt-1 leading-relaxed">
                   Shows why each sample was accepted or rejected. This is the demo only &mdash;
                   it holds nothing but the throwaway phrase you just chose, never leaves this
                   page, and is never written anywhere. The extension has no equivalent.
                 </span>
               </div>
             </div>
-            <div id="debug-rows" class="font-mono text-[11px] text-amber-950 space-y-1 max-h-56 overflow-auto"></div>
+            <div id="debug-rows" class="font-mono text-[11px] text-ck-amber-text space-y-1 max-h-56 overflow-auto"></div>
           </div>
 
         <!-- STEP 2: Enrolling (1..8) -->
         <div id="step-enroll" class="space-y-6 hidden">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-ck-border pb-4">
             <div>
-              <h3 class="text-lg font-bold text-slate-900">
-                Teach Your Rhythm: Sample <span id="enroll-current-step" class="text-teal-600 font-extrabold">1</span> of 8
+              <h3 class="text-lg font-bold text-ck-text">
+                Teach Your Rhythm: Sample <span id="enroll-current-step" class="text-ck-accent-300 font-extrabold">1</span> of 8
               </h3>
-              <p class="text-xs text-slate-500 mt-1">
-                Target passphrase: <strong id="enroll-target-phrase" class="font-mono text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 select-all"></strong>
+              <p class="text-xs text-ck-muted mt-1">
+                Target passphrase: <strong id="enroll-target-phrase" class="font-mono text-ck-text bg-ck-inset px-2 py-0.5 rounded border border-ck-border select-all"></strong>
               </p>
             </div>
             <!-- Progress Pill Indicators -->
@@ -250,14 +240,14 @@
                 <span class="block text-sm font-bold text-violet-900">Phantom Keys are already on</span>
                 <span class="block text-xs text-violet-800 mt-1 leading-relaxed">
                   Try typing an extra letter and deleting it, or tapping
-                  <kbd class="bg-white/70 px-1 py-0.5 rounded border border-violet-300 font-mono text-[11px]">Esc</kbd>
+                  <kbd class="bg-ck-surface/70 px-1 py-0.5 rounded border border-violet-300 font-mono text-[11px]">Esc</kbd>
                   mid-phrase. Those keystrokes never reach the passphrase, but they become part of
                   your secret &mdash; and a password stolen from somewhere else doesn&rsquo;t contain
                   them. Whatever you do, do it the same way each time.
                 </span>
               </span>
             </div>
-            <p id="phantom-script-readout" class="hidden text-xs font-mono text-violet-900 bg-white/70 border border-violet-200 rounded-lg px-3 py-2">
+            <p id="phantom-script-readout" class="hidden text-xs font-mono text-violet-900 bg-ck-surface/70 border border-violet-200 rounded-lg px-3 py-2">
               <span id="phantom-counts" class="font-semibold"></span>
               <span id="phantom-detail" class="text-violet-700"></span>
             </p>
@@ -266,14 +256,14 @@
           <!-- Passphrase Input with Rhythm Light -->
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <label for="input-enroll" class="text-xs font-semibold text-slate-700">
-                Type the passphrase and press <kbd class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-800 border border-slate-300 font-mono text-[11px]">Enter</kbd>
+              <label for="input-enroll" class="text-xs font-semibold text-ck-text">
+                Type the passphrase and press <kbd class="bg-ck-inset px-1.5 py-0.5 rounded text-ck-text border border-ck-border font-mono text-[11px]">Enter</kbd>
               </label>
               <!-- Live Rhythm Status & Keystroke Counter -->
               <div class="flex items-center gap-2">
-                <span id="enroll-key-counter" class="text-xs font-mono font-medium text-slate-500">0 / 0 keys</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-[11px] font-semibold">
-                  <span class="w-1.5 h-1.5 rounded-full bg-teal-600 animate-ping"></span>
+                <span id="enroll-key-counter" class="text-xs font-mono font-medium text-ck-muted">0 / 0 keys</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-[11px] font-semibold">
+                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent-900 animate-ping"></span>
                   Listening
                 </span>
               </div>
@@ -286,7 +276,7 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="Type passphrase naturally..."
-                class="w-full bg-white border-2 border-slate-300 focus:border-teal-600 focus:ring-4 focus:ring-teal-500/15 rounded-xl pl-4 pr-16 py-3.5 text-slate-900 text-lg font-mono outline-none transition"
+                class="w-full bg-ck-surface border-2 border-ck-border focus:border-ck-accent focus:ring-4 focus:ring-ck-accent/15 rounded-xl pl-4 pr-16 py-3.5 text-ck-text text-lg font-mono outline-none transition"
               />
 
               <!-- Rhythm Light Indicator Assembly -->
@@ -308,7 +298,7 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between text-xs text-slate-500 px-1">
+            <div class="flex items-center justify-between text-xs text-ck-muted px-1">
               <span id="enroll-helper-text">Consistency beats speed. Type the way you normally would.</span>
               <span>Press Enter or click Submit</span>
             </div>
@@ -319,7 +309,7 @@
           <div class="flex justify-end gap-3 pt-2">
             <button
               id="btn-submit-enroll-sample"
-              class="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-xs transition"
+              class="px-6 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm shadow-xs transition"
             >
               Submit Sample &crarr;
             </button>
@@ -328,27 +318,27 @@
 
         <!-- STEP 3: Profile Built -->
         <div id="step-built" class="space-y-6 text-center py-6 hidden">
-          <div class="w-16 h-16 rounded-full bg-teal-50 border-2 border-teal-600 text-teal-600 flex items-center justify-center mx-auto text-3xl shadow-sm">
+          <div class="w-16 h-16 rounded-full bg-ck-accent-900 border-2 border-ck-accent text-ck-accent-300 flex items-center justify-center mx-auto text-3xl shadow-sm">
             ✓
           </div>
           <div class="space-y-2">
-            <h3 class="text-2xl font-extrabold text-slate-900">Your Rhythm Profile is Ready</h3>
-            <p class="text-sm text-slate-600 max-w-lg mx-auto">
+            <h3 class="text-2xl font-extrabold text-ck-text">Your Rhythm Profile is Ready</h3>
+            <p class="text-sm text-ck-muted max-w-lg mx-auto">
               CypherKey analyzed your dwell and flight patterns across 8 samples into a mathematical aggregate profile. Raw keystroke events have been destroyed.
             </p>
           </div>
 
-          <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl text-left max-w-md mx-auto space-y-2 text-xs text-slate-600 font-mono">
-            <div class="flex justify-between"><span>Passphrase length:</span> <strong class="text-slate-900" id="profile-stat-len">-</strong></div>
-            <div class="flex justify-between"><span>Extracted vector dimensions:</span> <strong class="text-slate-900" id="profile-stat-dim">-</strong></div>
-            <div class="flex justify-between"><span>Variance floor threshold:</span> <strong class="text-slate-900">8.0 ms</strong></div>
-            <div class="flex justify-between"><span>Raw keystroke data stored:</span> <strong class="text-teal-700 font-bold">0 bytes</strong></div>
+          <div class="p-5 bg-ck-bg border border-ck-border rounded-xl text-left max-w-md mx-auto space-y-2 text-xs text-ck-muted font-mono">
+            <div class="flex justify-between"><span>Passphrase length:</span> <strong class="text-ck-text" id="profile-stat-len">-</strong></div>
+            <div class="flex justify-between"><span>Extracted vector dimensions:</span> <strong class="text-ck-text" id="profile-stat-dim">-</strong></div>
+            <div class="flex justify-between"><span>Variance floor threshold:</span> <strong class="text-ck-text">8.0 ms</strong></div>
+            <div class="flex justify-between"><span>Raw keystroke data stored:</span> <strong class="text-ck-accent-300 font-bold">0 bytes</strong></div>
           </div>
 
           <div class="pt-2">
             <button
               id="btn-goto-challenge"
-              class="py-3.5 px-8 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-base transition-all shadow-md shadow-teal-600/20"
+              class="py-3.5 px-8 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-base transition-all shadow-md shadow-ck-accent/20"
             >
               Hand Keyboard to a Friend &rarr;
             </button>
@@ -357,20 +347,20 @@
 
         <!-- STEP 4: Challenge 1 (Friend / Stranger) -->
         <div id="step-challenge-friend" class="space-y-6 hidden">
-          <div class="border-b border-slate-100 pb-4">
-            <span class="inline-block px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-xs uppercase font-bold tracking-wider mb-2">
+          <div class="border-b border-ck-border pb-4">
+            <span class="inline-block px-2.5 py-0.5 rounded-md bg-ck-amber text-ck-amber-text border border-ck-amber text-xs uppercase font-bold tracking-wider mb-2">
               Challenge 1 of 2
             </span>
-            <h3 class="text-xl font-bold text-slate-900">Hand the Keyboard to Someone Else</h3>
-            <p class="text-xs sm:text-sm text-slate-600 mt-2">
-              Show them your exact passphrase: <strong id="friend-target-phrase" class="font-mono text-slate-900 px-2 py-0.5 rounded bg-slate-100 border border-slate-300 select-all"></strong>.
+            <h3 class="text-xl font-bold text-ck-text">Hand the Keyboard to Someone Else</h3>
+            <p class="text-xs sm:text-sm text-ck-muted mt-2">
+              Show them your exact passphrase: <strong id="friend-target-phrase" class="font-mono text-ck-text px-2 py-0.5 rounded bg-ck-inset border border-ck-border select-all"></strong>.
             </p>
             <div class="mt-3 flex flex-wrap items-center gap-3">
-              <span id="friend-attempt-counter" class="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1">Attempt 1 of 3</span>
-              <span id="friend-attempt-history" class="text-xs font-mono text-slate-500"></span>
+              <span id="friend-attempt-counter" class="text-xs font-semibold text-ck-text bg-ck-inset border border-ck-border rounded-lg px-2.5 py-1">Attempt 1 of 3</span>
+              <span id="friend-attempt-history" class="text-xs font-mono text-ck-muted"></span>
               <button
                 id="btn-friend-give-up"
-                class="ml-auto px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition"
+                class="ml-auto px-3 py-1.5 text-xs font-bold rounded-lg bg-ck-inset hover:bg-ck-border text-ck-text border border-ck-border transition"
               >
                 Give up &mdash; hand the keyboard back
               </button>
@@ -382,13 +372,13 @@
 
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <label for="input-challenge-friend" class="text-xs font-semibold text-slate-700">
+              <label for="input-challenge-friend" class="text-xs font-semibold text-ck-text">
                 Friend enters your passphrase:
               </label>
               <div class="flex items-center gap-2">
-                <span id="friend-key-counter" class="text-xs font-mono font-medium text-slate-500">0 / 0 keys</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[11px] font-semibold">
-                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+                <span id="friend-key-counter" class="text-xs font-mono font-medium text-ck-muted">0 / 0 keys</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ck-amber border border-ck-amber text-ck-amber-text text-[11px] font-semibold">
+                  <span class="w-1.5 h-1.5 rounded-full bg-ck-amber animate-ping"></span>
                   Listening
                 </span>
               </div>
@@ -401,13 +391,13 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="Friend types passphrase here..."
-                class="w-full bg-white border-2 border-slate-300 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 rounded-xl pl-4 pr-16 py-3.5 text-slate-900 text-lg font-mono outline-none transition"
+                class="w-full bg-ck-surface border-2 border-ck-border focus:border-ck-amber focus:ring-4 focus:ring-ck-amber/15 rounded-xl pl-4 pr-16 py-3.5 text-ck-text text-lg font-mono outline-none transition"
               />
               <div class="absolute right-4 flex items-center gap-2 select-none">
                 <div class="flex items-center gap-0.5" id="friend-mini-bars">
-                  <span class="rhythm-wave-bar bg-amber-500"></span>
-                  <span class="rhythm-wave-bar bg-amber-500"></span>
-                  <span class="rhythm-wave-bar bg-amber-500"></span>
+                  <span class="rhythm-wave-bar bg-ck-amber"></span>
+                  <span class="rhythm-wave-bar bg-ck-amber"></span>
+                  <span class="rhythm-wave-bar bg-ck-amber"></span>
                 </div>
                 <span
                   id="rhythm-light-friend"
@@ -425,7 +415,7 @@
           <div class="flex justify-end gap-3 pt-2">
             <button
               id="btn-submit-friend-challenge"
-              class="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm shadow-xs transition"
+              class="px-6 py-2.5 rounded-xl bg-ck-amber hover:bg-ck-amber text-ck-text font-bold text-sm shadow-xs transition"
             >
               Evaluate Friend's Rhythm &crarr;
             </button>
@@ -434,29 +424,29 @@
 
         <!-- STEP 5: Challenge 2 (You) -->
         <div id="step-challenge-you" class="space-y-6 hidden">
-          <div class="border-b border-slate-100 pb-4">
-            <span class="inline-block px-2.5 py-0.5 rounded-md bg-teal-50 text-teal-800 border border-teal-200 text-xs uppercase font-bold tracking-wider mb-2">
+          <div class="border-b border-ck-border pb-4">
+            <span class="inline-block px-2.5 py-0.5 rounded-md bg-ck-accent-900 text-ck-accent-300 border border-ck-accent-700 text-xs uppercase font-bold tracking-wider mb-2">
               Challenge 2 of 2
             </span>
-            <h3 class="text-xl font-bold text-slate-900">Take the Keyboard Back</h3>
-            <p class="text-xs sm:text-sm text-slate-600 mt-2">
+            <h3 class="text-xl font-bold text-ck-text">Take the Keyboard Back</h3>
+            <p class="text-xs sm:text-sm text-ck-muted mt-2">
               Now it's your turn. Type your passphrase again to verify against your enrolled baseline profile.
             </p>
-            <p class="text-xs text-slate-600 mt-2">
-              Your passphrase: <strong id="you-target-phrase" class="font-mono text-slate-900 px-2 py-0.5 rounded bg-slate-100 border border-slate-300 select-all"></strong>
+            <p class="text-xs text-ck-muted mt-2">
+              Your passphrase: <strong id="you-target-phrase" class="font-mono text-ck-text px-2 py-0.5 rounded bg-ck-inset border border-ck-border select-all"></strong>
             </p>
           </div>
 
 
-          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="rounded-xl border border-ck-border bg-ck-bg p-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <span class="block text-sm font-bold text-slate-900">Strictness</span>
-                <span id="strictness-hint-you" class="block text-xs text-slate-600 mt-0.5"></span>
+                <span class="block text-sm font-bold text-ck-text">Strictness</span>
+                <span id="strictness-hint-you" class="block text-xs text-ck-muted mt-0.5"></span>
               </div>
-              <div class="inline-flex rounded-lg border border-slate-300 overflow-hidden" role="group" aria-label="Strictness">
+              <div class="inline-flex rounded-lg border border-ck-border overflow-hidden" role="group" aria-label="Strictness">
                 <button type="button" data-strictness="relaxed" class="strictness-option px-3 py-1.5 text-xs font-bold transition">Relaxed</button>
-                <button type="button" data-strictness="medium" class="strictness-option px-3 py-1.5 text-xs font-bold border-x border-slate-300 transition">Medium</button>
+                <button type="button" data-strictness="medium" class="strictness-option px-3 py-1.5 text-xs font-bold border-x border-ck-border transition">Medium</button>
                 <button type="button" data-strictness="strict" class="strictness-option px-3 py-1.5 text-xs font-bold transition">Strict</button>
               </div>
             </div>
@@ -464,13 +454,13 @@
 
           <div class="space-y-3">
             <div class="flex items-center justify-between">
-              <label for="input-challenge-you" class="text-xs font-semibold text-slate-700">
+              <label for="input-challenge-you" class="text-xs font-semibold text-ck-text">
                 You enter your passphrase:
               </label>
               <div class="flex items-center gap-2">
-                <span id="you-key-counter" class="text-xs font-mono font-medium text-slate-500">0 / 0 keys</span>
-                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-[11px] font-semibold">
-                  <span class="w-1.5 h-1.5 rounded-full bg-teal-600 animate-ping"></span>
+                <span id="you-key-counter" class="text-xs font-mono font-medium text-ck-muted">0 / 0 keys</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-[11px] font-semibold">
+                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent-900 animate-ping"></span>
                   Listening
                 </span>
               </div>
@@ -483,7 +473,7 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="Type your passphrase naturally..."
-                class="w-full bg-white border-2 border-slate-300 focus:border-teal-600 focus:ring-4 focus:ring-teal-500/15 rounded-xl pl-4 pr-16 py-3.5 text-slate-900 text-lg font-mono outline-none transition"
+                class="w-full bg-ck-surface border-2 border-ck-border focus:border-ck-accent focus:ring-4 focus:ring-ck-accent/15 rounded-xl pl-4 pr-16 py-3.5 text-ck-text text-lg font-mono outline-none transition"
               />
               <div class="absolute right-4 flex items-center gap-2 select-none">
                 <div class="flex items-center gap-0.5" id="you-mini-bars">
@@ -507,7 +497,7 @@
           <div class="flex justify-end gap-3 pt-2">
             <button
               id="btn-submit-you-challenge"
-              class="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-xs transition"
+              class="px-6 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm shadow-xs transition"
             >
               Evaluate Your Rhythm &crarr;
             </button>
@@ -516,28 +506,28 @@
 
         <!-- STEP 6: Side-by-Side Results -->
         <div id="step-results" class="space-y-8 hidden">
-          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="rounded-xl border border-ck-border bg-ck-bg p-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <span class="block text-sm font-bold text-slate-900">Strictness</span>
-                <span id="strictness-hint-results" class="block text-xs text-slate-600 mt-0.5"></span>
+                <span class="block text-sm font-bold text-ck-text">Strictness</span>
+                <span id="strictness-hint-results" class="block text-xs text-ck-muted mt-0.5"></span>
               </div>
-              <div class="inline-flex rounded-lg border border-slate-300 overflow-hidden" role="group" aria-label="Strictness">
+              <div class="inline-flex rounded-lg border border-ck-border overflow-hidden" role="group" aria-label="Strictness">
                 <button type="button" data-strictness="relaxed" class="strictness-option px-3 py-1.5 text-xs font-bold transition">Relaxed</button>
-                <button type="button" data-strictness="medium" class="strictness-option px-3 py-1.5 text-xs font-bold border-x border-slate-300 transition">Medium</button>
+                <button type="button" data-strictness="medium" class="strictness-option px-3 py-1.5 text-xs font-bold border-x border-ck-border transition">Medium</button>
                 <button type="button" data-strictness="strict" class="strictness-option px-3 py-1.5 text-xs font-bold transition">Strict</button>
               </div>
             </div>
-            <p class="text-[11px] text-slate-500 mt-2">
+            <p class="text-[11px] text-ck-muted mt-2">
               Move the setting and the verdicts below re-evaluate against the same recorded attempts &mdash; nothing is re-typed.
             </p>
           </div>
-          <div id="friend-attempt-list" class="text-xs font-mono text-slate-600 space-y-1"></div>
+          <div id="friend-attempt-list" class="text-xs font-mono text-ck-muted space-y-1"></div>
           <div class="text-center space-y-2">
-            <h3 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
-              Same passphrase. <span class="text-teal-600">Different rhythm.</span>
+            <h3 class="text-3xl sm:text-4xl font-extrabold text-ck-text tracking-tight">
+              Same passphrase. <span class="text-ck-accent-300">Different rhythm.</span>
             </h3>
-            <p class="text-sm text-slate-600 max-w-xl mx-auto">
+            <p class="text-sm text-ck-muted max-w-xl mx-auto">
               Both typists entered the exact same characters. CypherKey evaluated sub-millisecond dwell times and inter-key flights.
             </p>
           </div>
@@ -545,45 +535,45 @@
           <!-- Comparison Cards -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Friend Card -->
-            <div class="p-6 rounded-2xl bg-rose-50/60 border-2 border-rose-200/80 flex flex-col justify-between">
+            <div class="p-6 rounded-2xl bg-ck-fail/60 border-2 border-ck-fail/80 flex flex-col justify-between">
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs uppercase font-bold text-rose-800 tracking-wider">Friend / Stranger</span>
-                  <span id="friend-band-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-rose-200/80 text-rose-800 border border-rose-300">
+                  <span class="text-xs uppercase font-bold text-ck-fail-text tracking-wider">Friend / Stranger</span>
+                  <span id="friend-band-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-ck-fail/80 text-ck-fail-text border border-ck-fail">
                     FAIL
                   </span>
                 </div>
                 <div class="flex items-baseline gap-2">
-                  <span id="friend-score-display" class="text-5xl font-extrabold text-rose-600 font-mono">0.31</span>
-                  <span class="text-xs text-rose-800 font-medium">/ 1.00 score</span>
+                  <span id="friend-score-display" class="text-5xl font-extrabold text-ck-fail font-mono">0.31</span>
+                  <span class="text-xs text-ck-fail-text font-medium">/ 1.00 score</span>
                 </div>
-                <p id="friend-explanation" class="text-xs text-slate-700 leading-relaxed">
+                <p id="friend-explanation" class="text-xs text-ck-text leading-relaxed">
                   Rhythm pattern significantly diverged from the baseline profile. In a live vault, release of the server secret share is denied.
                 </p>
               </div>
-              <div id="friend-outcome" class="mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800">
+              <div id="friend-outcome" class="mt-5 pt-4 border-t border-ck-fail text-[11px] font-mono font-semibold text-ck-fail-text">
                 Outcome: Stolen password neutralized
               </div>
             </div>
 
             <!-- You Card -->
-            <div class="p-6 rounded-2xl bg-teal-50/60 border-2 border-teal-300 shadow-md shadow-teal-500/10 flex flex-col justify-between">
+            <div class="p-6 rounded-2xl bg-ck-accent-900/60 border-2 border-ck-accent-300 shadow-md shadow-ck-accent/10 flex flex-col justify-between">
               <div class="space-y-3">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs uppercase font-bold text-teal-800 tracking-wider">You (Authorized User)</span>
-                  <span id="you-band-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-teal-200/80 text-teal-800 border border-teal-300">
+                  <span class="text-xs uppercase font-bold text-ck-accent-300 tracking-wider">You (Authorized User)</span>
+                  <span id="you-band-badge" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-ck-accent-700/80 text-ck-accent-300 border border-ck-accent-300">
                     PASS
                   </span>
                 </div>
                 <div class="flex items-baseline gap-2">
-                  <span id="you-score-display" class="text-5xl font-extrabold text-teal-700 font-mono">0.88</span>
-                  <span class="text-xs text-teal-800 font-medium">/ 1.00 score</span>
+                  <span id="you-score-display" class="text-5xl font-extrabold text-ck-accent-300 font-mono">0.88</span>
+                  <span class="text-xs text-ck-accent-300 font-medium">/ 1.00 score</span>
                 </div>
-                <p id="you-explanation" class="text-xs text-slate-700 leading-relaxed">
+                <p id="you-explanation" class="text-xs text-ck-text leading-relaxed">
                   Rhythm pattern matched your enrolled baseline profile. Vault key unwrapped instantly with zero extra steps or external devices.
                 </p>
               </div>
-              <div id="you-outcome" class="mt-5 pt-4 border-t border-teal-200 text-[11px] font-mono font-semibold text-teal-800">
+              <div id="you-outcome" class="mt-5 pt-4 border-t border-ck-accent-700 text-[11px] font-mono font-semibold text-ck-accent-300">
                 Outcome: Vault unlocked seamlessly
               </div>
             </div>
@@ -593,19 +583,19 @@
           <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
             <button
               id="btn-test-another-friend"
-              class="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold border border-slate-300 transition"
+              class="px-5 py-2.5 rounded-xl bg-ck-inset hover:bg-ck-border text-ck-text text-sm font-semibold border border-ck-border transition"
             >
               Test Another Friend
             </button>
             <button
               id="btn-retest-you"
-              class="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-sm font-semibold border border-slate-300 transition"
+              class="px-5 py-2.5 rounded-xl bg-ck-inset hover:bg-ck-border text-ck-text text-sm font-semibold border border-ck-border transition"
             >
               Re-test Yourself
             </button>
             <button
               id="btn-new-passphrase"
-              class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold shadow-xs transition"
+              class="px-5 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text text-sm font-bold shadow-xs transition"
             >
               Start New Passphrase
             </button>
@@ -613,46 +603,46 @@
         </div>
 
         <!-- Reassurance Footer -->
-        <div class="mt-8 pt-6 border-t border-slate-100 text-center text-xs text-slate-500">
+        <div class="mt-8 pt-6 border-t border-ck-border text-center text-xs text-ck-muted">
           🔒 <strong>100% In-Browser Privacy:</strong> Keystroke timings never leave your laptop. Zero network requests, zero telemetry.
         </div>
       </div>
     </section>
 
     <!-- How It Works (3 Steps) -->
-    <section id="how-it-works" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80">
+    <section id="how-it-works" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border">
       <div class="text-center mb-12">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">Architecture</span>
-        <h2 class="text-3xl font-extrabold text-slate-900 mt-1">How CypherKey Works in 3 Steps</h2>
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">Architecture</span>
+        <h2 class="text-3xl font-extrabold text-ck-text mt-1">How CypherKey Works in 3 Steps</h2>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center font-mono font-bold text-base">
+        <div class="p-6 rounded-2xl bg-ck-surface border border-ck-border shadow-sm space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-ck-accent-900 text-ck-accent-300 border border-ck-accent-700 flex items-center justify-center font-mono font-bold text-base">
             1
           </div>
-          <h3 class="text-lg font-bold text-slate-900">Sub-ms Timing & Rhythm Light</h3>
-          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <h3 class="text-lg font-bold text-ck-text">Sub-ms Timing & Rhythm Light</h3>
+          <p class="text-xs sm:text-sm text-ck-muted leading-relaxed">
             Captures key dwell (press-to-release) and flight (release-to-next-press) intervals with microsecond resolution via <code>performance.now()</code>. Client code refuses to capture unless the visible Rhythm Light dot is mounted and rendered.
           </p>
         </div>
 
-        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center font-mono font-bold text-base">
+        <div class="p-6 rounded-2xl bg-ck-surface border border-ck-border shadow-sm space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-ck-accent-900 text-ck-accent-300 border border-ck-accent-700 flex items-center justify-center font-mono font-bold text-base">
             2
           </div>
-          <h3 class="text-lg font-bold text-slate-900">Client-Side Mathematical Modeling</h3>
-          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <h3 class="text-lg font-bold text-ck-text">Client-Side Mathematical Modeling</h3>
+          <p class="text-xs sm:text-sm text-ck-muted leading-relaxed">
             Computes a normalized feature vector of length <code>3n + 5</code>. 8 enrollment samples build a statistical profile of means and floored standard deviations (&ge; 8ms). Raw events are permanently destroyed.
           </p>
         </div>
 
-        <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
-          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 border border-teal-200 flex items-center justify-center font-mono font-bold text-base">
+        <div class="p-6 rounded-2xl bg-ck-surface border border-ck-border shadow-sm space-y-3">
+          <div class="w-10 h-10 rounded-xl bg-ck-accent-900 text-ck-accent-300 border border-ck-accent-700 flex items-center justify-center font-mono font-bold text-base">
             3
           </div>
-          <h3 class="text-lg font-bold text-slate-900">Dual-Key Server Release</h3>
-          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          <h3 class="text-lg font-bold text-ck-text">Dual-Key Server Release</h3>
+          <p class="text-xs sm:text-sm text-ck-muted leading-relaxed">
             The vault key is split between your client-wrapped key and a server-held secret share. The server releases its share only when passphrase verification and rhythm scoring both succeed.
           </p>
         </div>
@@ -660,113 +650,127 @@
     </section>
 
     <!-- Threat Model & How It's Safe -->
-    <section id="safety" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80">
+    <section id="safety" class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border">
       <div class="text-center mb-12">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">Zero-Knowledge Defense</span>
-        <h2 class="text-3xl font-extrabold text-slate-900 mt-1">How It's Safe</h2>
-        <p class="text-slate-600 text-sm max-w-2xl mx-auto mt-2">
-          Six foundational architectural guarantees from our threat model:
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">Zero-Knowledge Defense</span>
+        <h2 class="text-3xl font-extrabold text-ck-text mt-1">How It's Safe</h2>
+        <p class="text-ck-muted text-sm max-w-2xl mx-auto mt-2">
+          Eight foundational guarantees from our threat model:
         </p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">1. Zero-Knowledge Server</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">1. Zero-Knowledge Server</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             The server stores only <code>Argon2id(authHash)</code> and wrapped ciphertext blobs. The server never sees your master key, wrap key, or plaintext vault.
           </p>
         </div>
 
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">2. Frictionless Second Factor</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">2. Frictionless Second Factor</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             Stolen passwords leaked from data breaches cannot unlock the vault without replicating the physical timing cadence of your hands.
           </p>
         </div>
 
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">3. Data Minimization</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">3. Data Minimization</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             Raw keystroke events and feature vectors are never stored or logged anywhere. Only irreversible statistical aggregates (means, floored variances) are retained.
           </p>
         </div>
 
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">4. The Rhythm Light Guarantee</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">4. The Rhythm Light Guarantee</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             No keystroke capture ever occurs without a visible indicator. Code-level enforcement throws an error if the Rhythm Light is missing or obscured.
           </p>
         </div>
 
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">5. No Lockout By Your Body</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">5. No Lockout By Your Body</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             Graceful degradation ladder: Pass, Grey-band retry, Step-up via passkey/TOTP/Recovery Kit, and Pause mode ensure fatigue or injury never locks you out.
           </p>
         </div>
 
-        <div class="p-5 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2">
-          <div class="text-teal-700 font-bold text-sm">6. Replay-Resistant Signing</div>
-          <p class="text-xs text-slate-600 leading-relaxed">
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">6. Replay-Resistant Signing</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
             Each device registers an Ed25519 keypair. Every authenticated request signs nonces, timestamps, and payload hashes, preventing replay attacks.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">7. A Way Back In</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
+            Nobody here can let you back in, so you get a Recovery Kit at signup — one printed sheet, shown once. Using it keeps your vault and asks you to teach it your rhythm again. Ten one-time Backup Codes cover the smaller case: a new keyboard, a broken wrist.
+          </p>
+        </div>
+
+        <div class="p-5 rounded-xl bg-ck-surface border border-ck-border shadow-xs space-y-2">
+          <div class="text-ck-accent-300 font-bold text-sm">8. No Score, Ever</div>
+          <p class="text-xs text-ck-muted leading-relaxed">
+            You are told the band and a sentence, never a number. A live score is the one thing an attacker could tune against — type, read, adjust, repeat — and it tells you nothing you could act on anyway.
           </p>
         </div>
       </div>
     </section>
 
     <!-- Origin Story -->
-    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80">
-      <div class="bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-sm space-y-4">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">Origin Story</span>
-        <h2 class="text-2xl font-extrabold text-slate-900">From 2010 at CBS Sports to 2026</h2>
-        <p class="text-slate-600 text-sm leading-relaxed">
+    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border">
+      <div class="bg-ck-surface border border-ck-border rounded-2xl p-8 sm:p-10 shadow-sm space-y-4">
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">Origin Story</span>
+        <h2 class="text-2xl font-extrabold text-ck-text">From 2010 at CBS Sports to 2026</h2>
+        <p class="text-ck-muted text-sm leading-relaxed">
           In 2010 at CBSSports.com, I built "KeyStroke Captcha" — first to distinguish humans from automated scrapers by how they typed, then pointed it at passwords. I told teammates my password and watched them fail to log in; then I sat down and got in on the first try.
         </p>
-        <p class="text-slate-600 text-sm leading-relaxed">
+        <p class="text-ck-muted text-sm leading-relaxed">
           Sixteen years later, the average person manages ~120 passwords, credential abuse accounts for 39% of breaches, and "your password was found on the dark web" has become a routine notification. The timing signal demonstrated in 2010 is present on every login today. CypherKey turns that signal into an effortless, transparent defense.
         </p>
       </div>
     </section>
 
     <!-- About the Creator -->
-    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80">
+    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border">
       <div class="text-center mb-10">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">About</span>
-        <h2 class="text-3xl font-extrabold text-slate-900 mt-1">Who is building CypherKey</h2>
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">About</span>
+        <h2 class="text-3xl font-extrabold text-ck-text mt-1">Who is building CypherKey</h2>
       </div>
 
-      <div class="bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-sm space-y-5">
+      <div class="bg-ck-surface border border-ck-border rounded-2xl p-8 sm:p-10 shadow-sm space-y-5">
         <div>
-          <h3 class="text-xl font-extrabold text-slate-900">Shawn J. Stewart</h3>
-          <p class="text-sm font-semibold text-teal-700 mt-0.5">Creator of CypherKey &bull; President, Irietek Corporation</p>
+          <h3 class="text-xl font-extrabold text-ck-text">Shawn J. Stewart</h3>
+          <p class="text-sm font-semibold text-ck-accent-300 mt-0.5">Creator of CypherKey &bull; President, Irietek Corporation</p>
         </div>
 
-        <p class="text-slate-600 text-sm leading-relaxed">
+        <p class="text-ck-muted text-sm leading-relaxed">
           Technical executive and venture builder with twenty-five years scaling global engineering organizations — previously at Apartment List, Gusto, LinkedIn, Ultimate Software and Fidelity Investments. CypherKey is built at Irietek. The idea behind it started at CBSSports.com in 2010, which makes this the rare product with a sixteen-year head start.
         </p>
 
-        <p class="text-slate-600 text-sm leading-relaxed">
+        <p class="text-ck-muted text-sm leading-relaxed">
           The work centres on AI infrastructure, distributed systems, agentic workflows and cloud architecture. CypherKey is built solo with modern AI tooling — which is why an independent shop can ship a zero-knowledge cryptographic core, a sync server, a browser extension and a public demo on this timeline.
         </p>
 
-        <div class="pt-2 border-t border-slate-200 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <a class="font-semibold text-teal-700 hover:text-teal-800 underline underline-offset-2" href="https://piscopour.com" rel="noopener noreferrer" target="_blank">piscopour.com</a>
-          <a class="font-semibold text-teal-700 hover:text-teal-800 underline underline-offset-2" href="https://www.linkedin.com/in/irietek" rel="noopener noreferrer" target="_blank">LinkedIn</a>
-          <a class="font-semibold text-teal-700 hover:text-teal-800 underline underline-offset-2" href="https://github.com/irietek" rel="noopener noreferrer" target="_blank">GitHub</a>
+        <div class="pt-2 border-t border-ck-border flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <a class="font-semibold text-ck-accent-300 hover:text-ck-accent-300 underline underline-offset-2" href="https://piscopour.com" rel="noopener noreferrer" target="_blank">piscopour.com</a>
+          <a class="font-semibold text-ck-accent-300 hover:text-ck-accent-300 underline underline-offset-2" href="https://www.linkedin.com/in/irietek" rel="noopener noreferrer" target="_blank">LinkedIn</a>
+          <a class="font-semibold text-ck-accent-300 hover:text-ck-accent-300 underline underline-offset-2" href="https://github.com/irietek" rel="noopener noreferrer" target="_blank">GitHub</a>
         </div>
       </div>
     </section>
 
     <!-- Roadmap Section -->
-    <section class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80">
+    <section class="max-w-6xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border">
       <div class="text-center mb-12">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">Product Milestones</span>
-        <h2 class="text-3xl font-extrabold text-slate-900 mt-1">Milestones & Roadmap</h2>
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">Product Milestones</span>
+        <h2 class="text-3xl font-extrabold text-ck-text mt-1">Milestones & Roadmap</h2>
       </div>
 
-      <div class="overflow-x-auto border border-slate-200 rounded-2xl bg-white shadow-xs">
-        <table class="w-full text-left text-xs sm:text-sm text-slate-700">
-          <thead class="bg-slate-100/70 text-slate-600 uppercase tracking-wider font-semibold border-b border-slate-200 text-[11px]">
+      <div class="overflow-x-auto border border-ck-border rounded-2xl bg-ck-surface shadow-xs">
+        <table class="w-full text-left text-xs sm:text-sm text-ck-text">
+          <thead class="bg-ck-inset text-ck-muted uppercase tracking-wider font-semibold border-b border-ck-border text-[11px]">
             <tr>
               <th class="py-3.5 px-4">Milestone</th>
               <th class="py-3.5 px-4">Target Date</th>
@@ -774,42 +778,42 @@
               <th class="py-3.5 px-4">Status</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100 font-mono text-xs">
-            <tr class="bg-teal-50/50">
-              <td class="py-3.5 px-4 font-bold text-teal-800">M0</td>
-              <td class="py-3.5 px-4 text-slate-600">Sep 14, 2026</td>
-              <td class="py-3.5 px-4 font-sans text-slate-900 font-semibold">Live browser demo at cypherkey.io, clean repo, zero-knowledge docs, one-pager</td>
-              <td class="py-3.5 px-4 text-teal-700 font-bold">Active (Done)</td>
+          <tbody class="divide-y divide-ck-inset font-mono text-xs">
+            <tr class="bg-ck-accent-900/50">
+              <td class="py-3.5 px-4 font-bold text-ck-accent-300">M0</td>
+              <td class="py-3.5 px-4 text-ck-muted">Sep 14, 2026</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text font-semibold">Live browser demo at cypherkey.io, clean repo, zero-knowledge docs, one-pager</td>
+              <td class="py-3.5 px-4 text-ck-pass-text font-bold">Done</td>
             </tr>
             <tr>
-              <td class="py-3.5 px-4 font-bold text-slate-900">M1</td>
-              <td class="py-3.5 px-4 text-slate-600">Oct 20, 2026</td>
-              <td class="py-3.5 px-4 font-sans text-slate-700">Zero-knowledge core (Argon2id, HKDF, AES-GCM), Hono + Drizzle server, docker compose</td>
-              <td class="py-3.5 px-4 text-slate-500">Scheduled</td>
+              <td class="py-3.5 px-4 font-bold text-ck-text">M1</td>
+              <td class="py-3.5 px-4 text-ck-muted">Oct 20, 2026</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text">Zero-knowledge core (Argon2id, HKDF, AES-GCM), Hono + Drizzle server, Phantom Keys, docker compose</td>
+              <td class="py-3.5 px-4 text-ck-pass-text font-bold">Done</td>
+            </tr>
+            <tr class="bg-ck-accent-900/50">
+              <td class="py-3.5 px-4 font-bold text-ck-accent-300">M2</td>
+              <td class="py-3.5 px-4 text-ck-muted">Dec 05, 2026</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text font-semibold">Chrome MV3 extension, Rhythm Light, Recovery Kit, domain autofill, hosted API, 25 private beta users</td>
+              <td class="py-3.5 px-4 text-ck-accent-300 font-bold">In progress</td>
             </tr>
             <tr>
-              <td class="py-3.5 px-4 font-bold text-slate-900">M2</td>
-              <td class="py-3.5 px-4 text-slate-600">Dec 05, 2026</td>
-              <td class="py-3.5 px-4 font-sans text-slate-700">Chrome MV3 extension (WXT), Rhythm Light, domain autofill, 25 private beta users</td>
-              <td class="py-3.5 px-4 text-slate-500">Scheduled</td>
+              <td class="py-3.5 px-4 font-bold text-ck-text">M3</td>
+              <td class="py-3.5 px-4 text-ck-muted">Jan 20, 2027</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text">Public launch (HN / Product Hunt), adaptive thresholds, passkey step-up, security audit</td>
+              <td class="py-3.5 px-4 text-ck-muted">Scheduled</td>
             </tr>
             <tr>
-              <td class="py-3.5 px-4 font-bold text-slate-900">M3</td>
-              <td class="py-3.5 px-4 text-slate-600">Jan 20, 2027</td>
-              <td class="py-3.5 px-4 font-sans text-slate-700">Public launch (HN / Product Hunt), adaptive thresholds, passkey step-up, security audit</td>
-              <td class="py-3.5 px-4 text-slate-500">Scheduled</td>
+              <td class="py-3.5 px-4 font-bold text-ck-text">M4</td>
+              <td class="py-3.5 px-4 text-ck-muted">Mar 31, 2027</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text">Stripe billing, breach monitoring, native CLI with terminal raw-mode capture</td>
+              <td class="py-3.5 px-4 text-ck-muted">Scheduled</td>
             </tr>
             <tr>
-              <td class="py-3.5 px-4 font-bold text-slate-900">M4</td>
-              <td class="py-3.5 px-4 text-slate-600">Mar 31, 2027</td>
-              <td class="py-3.5 px-4 font-sans text-slate-700">Stripe billing, breach monitoring, native CLI with terminal raw-mode capture</td>
-              <td class="py-3.5 px-4 text-slate-500">Scheduled</td>
-            </tr>
-            <tr>
-              <td class="py-3.5 px-4 font-bold text-slate-900">M5</td>
-              <td class="py-3.5 px-4 text-slate-600">Jun 30, 2027</td>
-              <td class="py-3.5 px-4 font-sans text-slate-700">B2B SDK (@cypherkey/sdk) with Progressive Enrollment, Teams tier</td>
-              <td class="py-3.5 px-4 text-slate-500">Scheduled</td>
+              <td class="py-3.5 px-4 font-bold text-ck-text">M5</td>
+              <td class="py-3.5 px-4 text-ck-muted">Jun 30, 2027</td>
+              <td class="py-3.5 px-4 font-sans text-ck-text">B2B SDK (@cypherkey/sdk) with Progressive Enrollment, Teams tier</td>
+              <td class="py-3.5 px-4 text-ck-muted">Scheduled</td>
             </tr>
           </tbody>
         </table>
@@ -817,11 +821,11 @@
     </section>
 
     <!-- Email Capture -->
-    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-slate-200/80 text-center">
-      <div class="bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 shadow-sm space-y-4">
-        <span class="text-xs uppercase tracking-widest font-bold text-teal-600">Private Beta</span>
-        <h2 class="text-3xl font-extrabold text-slate-900">Join the CypherKey Private Beta</h2>
-        <p class="text-sm text-slate-600 max-w-xl mx-auto">
+    <section class="max-w-4xl mx-auto px-4 sm:px-6 py-16 border-t border-ck-border text-center">
+      <div class="bg-ck-surface border border-ck-border rounded-2xl p-8 sm:p-10 shadow-sm space-y-4">
+        <span class="text-xs uppercase tracking-widest font-bold text-ck-accent-300">Private Beta</span>
+        <h2 class="text-3xl font-extrabold text-ck-text">Join the CypherKey Private Beta</h2>
+        <p class="text-sm text-ck-muted max-w-xl mx-auto">
           Be first to test the Chrome extension and zero-knowledge self-hosted sync engine when Milestone M1 & M2 launch.
         </p>
 
@@ -831,16 +835,16 @@
             type="email"
             required
             placeholder="Enter your email"
-            class="flex-1 bg-slate-50 border border-slate-300 focus:border-teal-600 focus:bg-white rounded-xl px-4 py-3 text-slate-900 text-sm outline-none transition"
+            class="flex-1 bg-ck-bg border border-ck-border focus:border-ck-accent focus:bg-ck-surface rounded-xl px-4 py-3 text-ck-text text-sm outline-none transition"
           />
           <button
             type="submit"
-            class="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm transition shadow-xs"
+            class="px-6 py-3 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm transition shadow-xs"
           >
             Notify Me
           </button>
         </form>
-        <div id="email-confirmation" class="text-xs text-teal-700 font-semibold hidden">
+        <div id="email-confirmation" class="text-xs text-ck-accent-300 font-semibold hidden">
           Thanks for subscribing! We will only email you on milestone releases.
         </div>
       </div>
@@ -848,21 +852,21 @@
   </main>
 
   <!-- Footer -->
-  <footer class="border-t border-slate-200 bg-white py-10 text-slate-500 text-xs">
+  <footer class="border-t border-ck-border bg-ck-surface py-10 text-ck-muted text-xs">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
       <div class="flex items-center gap-3">
-        <span class="w-2.5 h-2.5 rounded-full bg-teal-600"></span>
-        <span class="text-slate-900 font-bold">CypherKey</span>
+        <span class="w-2.5 h-2.5 rounded-full bg-ck-accent-900"></span>
+        <span class="text-ck-text font-bold">CypherKey</span>
         <span>&copy; 2026. Built with privacy and consent by design.</span>
       </div>
       <div class="flex flex-wrap items-center gap-6 font-medium">
-        <a href="./one-pager.html" class="text-slate-600 hover:text-teal-600 transition">Executive One-Pager</a>
-        <a href="mailto:security@cypherkey.io" class="text-slate-600 hover:text-teal-600 transition">Security Disclosure</a>
+        <a href="./one-pager.html" class="text-ck-muted hover:text-ck-accent-300 transition">Executive One-Pager</a>
+        <a href="mailto:security@cypherkey.io" class="text-ck-muted hover:text-ck-accent-300 transition">Security Disclosure</a>
         <!-- Licence links point into the repository, which is private until release.
              The licences themselves are unchanged, so the claims stay and only the
              dead links go. Restore the hrefs when the repo goes public. -->
-        <span class="text-slate-600">Client License (MIT)</span>
-        <span class="text-slate-600">Server License (AGPL-3.0)</span>
+        <span class="text-ck-muted">Client License (MIT)</span>
+        <span class="text-ck-muted">Server License (AGPL-3.0)</span>
       </div>
     </div>
   </footer>

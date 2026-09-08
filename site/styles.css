@@ -1,5 +1,56 @@
 @import "tailwindcss";
 
+/*
+ * Nocturne on cypherkey.io.
+ *
+ * The site now carries the same identity as the extension: one product, one look, so a
+ * visitor who installs from here sees what they were shown. The teal #0D9488 is retired
+ * outright -- the guide's "retired to cypherkey.io" described where it was left before
+ * this page was redesigned, not where it belongs.
+ *
+ * Unlike the extension there is no payload budget here, so Inter is used throughout as
+ * the guide's §01 specifies, loaded from Google Fonts rather than subset.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+@theme {
+  /* Ground and surface */
+  --color-ck-bg: #161826;
+  --color-ck-surface: #232532;
+  --color-ck-raised: #2a2d3d;
+  --color-ck-text: #e9e9ed;
+
+  /* Accent ramp. A line, a mark or a glow -- never a flood fill. */
+  --color-ck-accent: #9184d9;
+  --color-ck-accent-300: #d2cefd;
+  --color-ck-accent-400: #b5abfc;
+  --color-ck-accent-700: #5d5294;
+  --color-ck-accent-900: #2b2741;
+
+  /* Neutral ramp. Muted copy stops at 500; never darker for anything read. */
+  --color-ck-muted: #9397ab;
+  --color-ck-border: #3f424d;
+  --color-ck-inset: #292b31;
+
+  /* Bands, kept off the accent. */
+  --color-ck-pass: #34d399;
+  --color-ck-pass-text: #6ee7b7;
+  --color-ck-amber: #fbbf24;
+  --color-ck-amber-text: #fcd34d;
+  --color-ck-fail: #e5484d;
+  --color-ck-fail-text: #fca5a5;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --radius-ck: 10px;
+  --radius-ck-lg: 14px;
+}
+
+/* Hierarchy is size and space. Never bolder than 500. */
+body { font-weight: 400; }
+h1, h2, h3, h4 { font-weight: 500; }
+.font-bold, .font-extrabold, .font-semibold { font-weight: 500 !important; }
+
+
 /* Keyframe animations for Rhythm Light */
 @keyframes rhythm-pulse {
   0% {
@@ -79,4 +130,30 @@
 .rhythm-light-dot.fail {
   background-color: #dc2626;
   box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.3), 0 0 16px rgba(220, 38, 38, 0.5);
+}
+
+/*
+ * The demo's own controls, on the tokens rather than hard-coded slate.
+ * These were inline in index.html and light-only.
+ */
+.setup-choice {
+  border-color: var(--color-ck-border);
+  background: var(--color-ck-inset);
+}
+.setup-choice:hover { border-color: var(--color-ck-accent-700); }
+.setup-choice[aria-pressed="true"] {
+  border-color: var(--color-ck-accent);
+  background: var(--color-ck-accent-900);
+}
+.setup-choice .choice-marker { border-color: var(--color-ck-border); }
+.setup-choice[aria-pressed="true"] .choice-marker {
+  border-color: var(--color-ck-accent);
+  background: var(--color-ck-accent);
+  box-shadow: inset 0 0 0 2px var(--color-ck-bg);
+}
+.strictness-option { background: var(--color-ck-inset); color: var(--color-ck-muted); }
+.strictness-option:hover { background: var(--color-ck-raised); color: var(--color-ck-text); }
+.strictness-option[aria-pressed="true"] {
+  background: var(--color-ck-accent-900);
+  color: var(--color-ck-accent-300);
 }
