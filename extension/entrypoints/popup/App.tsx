@@ -4,6 +4,7 @@ import { createSync } from '../../../core/client/sync';
 import type { BrowserApi } from '../../src/autofill';
 import { API_BASE_URL } from '../../src/config';
 import { bindPopupLifecycle, createLockController } from '../../src/lock';
+import { clearResume, loadResume, saveResume, sessionArea, touchResume } from '../../src/resume';
 import { createExtensionSession } from '../../src/session';
 import { USERNAME_KEY, localArea, memoryArea } from '../../src/storage';
 import { createCache, indexedDbStore } from '../../src/sync/cache';
@@ -115,12 +116,25 @@ export function App() {
    * memory behind a locked door.
    */
   useEffect(() => {
-    const off = lockController.onLock(() => {
+    const off = lockController.onLock((reason) => {
       setItems([]);
       setViewing(null);
       setEditing(null);
       setUnlocked(false);
       setNotice('Locked.');
+      /*
+        Closing the popup is the one lock that does not end the session.
+
+        The page is destroyed either way, so its keys go regardless -- what differs is
+        whether the next open can resume. Idle, manual and suspend are the user or the
+        clock saying "stop", and they clear the snapshot; a dismissed popup is not.
+
+        Without this distinction the snapshot would be wiped every time the popup lost
+        focus, which is the exact behaviour being fixed.
+      */
+      if (reason === 'popup-closed') return;
+      const memory = sessionArea();
+      if (memory !== null) void clearResume(memory);
     });
     const unbind = bindPopupLifecycle(lockController, window);
     return () => {
@@ -129,6 +143,52 @@ export function App() {
       lockController.dispose();
     };
   }, [lockController]);
+
+  /**
+   * Decrypts whatever the cache holds, into memory, for as long as the session is
+   * unlocked (A-5). The cache itself never holds plaintext (A-7).
+   */
+  const refreshItems = useCallback(async () => {
+    const cached = await createCache(indexedDbStore()).items();
+    const decoded: VaultItem[] = [];
+    for (const row of cached) {
+      if (row.deletedAt != null) continue;
+      try {
+        decoded.push(await decodeItem(row.wire, session.vaultKey(), row.id));
+      } catch {
+        // A blob this key cannot open is one the engine will re-pull; showing a
+        // broken row would be worse than showing none.
+      }
+    }
+    setItems(decoded);
+  }, [session]);
+
+  /**
+   * Builds the sync engine and shows what the vault holds.
+   *
+   * Shared by unlocking and by resuming a session that was already unlocked: a resumed
+   * popup that skipped this would render a vault list that cannot save anything, because
+   * the engine is what writes.
+   */
+  const openVault = useCallback(
+    async (keyVersion: number) => {
+      const store = indexedDbStore();
+      const active = createSyncEngine({
+        sync: createSync({
+          request: session.authed(),
+          token: session.tokens()?.accessToken ?? '',
+        }),
+        cache: createCache(store),
+        queue: createQueue(store),
+      });
+      const { reset, pulled } = await active.open(keyVersion);
+      setEngine(active);
+      await refreshItems();
+      if (reset) setNotice('Your vault key changed elsewhere, so this device re-synced.');
+      else if (!pulled) setNotice('Offline. Showing what this device already had.');
+    },
+    [session, refreshItems],
+  );
 
   /**
    * Is there an account on this device already?
@@ -152,6 +212,28 @@ export function App() {
         if (!live) return;
         if (typeof id === 'string' && typeof name === 'string' && name !== '') {
           setUsername(name);
+          /*
+            An unlocked session may still be running. The popup is destroyed on close, so
+            without this every open meant another Argon2id derivation and another rhythm
+            sample -- correct, and unusable enough that nobody keeps it unlocked.
+
+            The snapshot lives in `storage.session`, which the browser wipes on shutdown,
+            and carries its own deadlines. A refusal is not an error: it just means the
+            unlock screen, which is where this would have gone anyway.
+          */
+          const memory = sessionArea();
+          if (memory !== null) {
+            const result = await loadResume(memory, Date.now());
+            if (!live) return;
+            if (result.resumed && session.resumeFrom(result.stored.snapshot)) {
+              await touchResume(memory, Date.now());
+              setEnrolled(true);
+              setUnlocked(true);
+              setResume('returning');
+              await openVault(result.stored.snapshot.keyVersion);
+              return;
+            }
+          }
           setResume('returning');
         } else {
           setResume('new');
@@ -165,26 +247,11 @@ export function App() {
     return () => {
       live = false;
     };
-  }, []);
-
-  /**
-   * Decrypts whatever the cache holds, into memory, for as long as the session is
-   * unlocked (A-5). The cache itself never holds plaintext (A-7).
-   */
-  const refresh = useCallback(async () => {
-    const cached = await createCache(indexedDbStore()).items();
-    const decoded: VaultItem[] = [];
-    for (const row of cached) {
-      if (row.deletedAt != null) continue;
-      try {
-        decoded.push(await decodeItem(row.wire, session.vaultKey(), row.id));
-      } catch {
-        // A blob this key cannot open is one the engine will re-pull; showing a
-        // broken row would be worse than showing none.
-      }
-    }
-    setItems(decoded);
-  }, [session]);
+    // `session` and `openVault` are both stable for the life of the popup: one is built
+    // in a `useMemo` with no deps, the other a `useCallback` over it. Named so the rule
+    // does not have to be silenced, and so a future change that makes either unstable
+    // shows up here rather than as a resume that quietly stops happening.
+  }, [session, openVault]);
 
   // Storage has not answered yet. One frame of nothing beats a frame of the wrong
   // screen, and the wrong screen here says "create an account" to someone who has one.
@@ -286,21 +353,14 @@ export function App() {
             return;
           }
           setEnrolled(true);
-          const store = indexedDbStore();
-          const active = createSyncEngine({
-            sync: createSync({
-              request: session.authed(),
-              token: session.tokens()?.accessToken ?? '',
-            }),
-            cache: createCache(store),
-            queue: createQueue(store),
-          });
-          const { reset, pulled } = await active.open(keyVersion);
-          setEngine(active);
           setUnlocked(true);
-          await refresh();
-          if (reset) setNotice('Your vault key changed elsewhere, so this device re-synced.');
-          else if (!pulled) setNotice('Offline. Showing what this device already had.');
+          await openVault(keyVersion);
+          // The unlock just happened, so both deadlines start now.
+          const memory = sessionArea();
+          const snapshot = session.exportSnapshot();
+          if (memory !== null && snapshot !== null) {
+            await saveResume(memory, snapshot, username, Date.now());
+          }
         }}
         onForgotPassphrase={() => setUnlocked(false)}
       />
@@ -325,7 +385,7 @@ export function App() {
           ? 'This item changed on another device. Open it to see the newer copy.'
           : null,
     );
-    await refresh();
+    await refreshItems();
     setEditing(null);
     setViewing(null);
   };

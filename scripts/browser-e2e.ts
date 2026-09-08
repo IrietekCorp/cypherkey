@@ -297,6 +297,39 @@ async function main(): Promise<void> {
     }
     ok(`the reopened popup offers to unlock the existing account (${before} of 8 already sent)`);
 
+    /*
+      A resumable session, which is the point of M2-18.
+
+      Enrolment is not finished in this run, so there is no unlocked vault to resume --
+      what is asserted here is the mechanism: the snapshot lives in `storage.session`,
+      which the browser wipes on shutdown, and never in `storage.local`, which is disk.
+      A vault key on disk means a stolen laptop opens the vault with no passphrase.
+    */
+    const stored = await reopened.evaluate(async () => {
+      const api = (globalThis as unknown as { chrome: Record<string, never> })
+        .chrome as unknown as {
+        storage: {
+          local: { get(k: null): Promise<Record<string, unknown>> };
+          session?: { get(k: null): Promise<Record<string, unknown>> };
+        };
+      };
+      return {
+        hasSessionArea: api.storage.session !== undefined,
+        local: Object.keys(await api.storage.local.get(null)),
+        session:
+          api.storage.session === undefined ? [] : Object.keys(await api.storage.session.get(null)),
+      };
+    });
+
+    if (!stored.hasSessionArea) throw new Error('chrome.storage.session is unavailable');
+    ok('session storage is available for resumable unlocks');
+
+    const onDisk = stored.local.find((k) => k.includes('resume'));
+    if (onDisk !== undefined) {
+      throw new Error(`a resumable session was written to disk: ${onDisk}`);
+    }
+    ok(`nothing resumable is on disk (local holds: ${stored.local.join(', ') || 'nothing'})`);
+
     if (consoleErrors.length > 0) {
       throw new Error(`the page logged errors:\n  ${consoleErrors.join('\n  ')}`);
     }

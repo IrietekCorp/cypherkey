@@ -960,6 +960,59 @@ Opens a prefilled GitHub issue template. **It must not attach logs, scores, vect
 
 ---
 
+### M2-18 · The session survives the popup closing · M · deps: M2-12 · **DONE**
+
+**Files:** create `extension/src/resume.ts` (+test); modify `core/client/session.ts`,
+`extension/entrypoints/popup/App.tsx`, `extension/src/lock.ts`.
+
+Founder's report after using the flow: "it should remember that I'm logged in for at
+least 24 hours, so that when I go back to it, I don't have to always unlock."
+
+M2-12 locks on popup close, and the popup is destroyed every time it loses focus. So
+every open cost another Argon2id derivation and another rhythm sample. That is correct
+and unusable, and the two are not in tension the way they look: a manager nobody keeps
+unlocked is a manager people stop putting passwords into, and M2's exit criterion is
+that the founder uses it daily.
+
+**Where the keys live is the whole decision.** `chrome.storage.session` — browser
+memory, wiped on shutdown. **Never `storage.local`.** A-7 permits five things on disk and
+none is a live key; a vault key written to disk means a stolen or imaged laptop opens the
+vault with no passphrase and no rhythm, which is the threat this product exists to
+answer. Closing Chrome is therefore a real lock, and that is a feature rather than a
+shortcoming. The browser test asserts nothing resumable reaches `storage.local`.
+
+**Two deadlines, whichever comes first.** A 24-hour cap from the moment the passphrase
+and rhythm were actually checked, and a 1-hour idle timeout. Both are stored beside the
+keys rather than held in the popup, because the popup dies constantly and a deadline it
+forgets is not a deadline. Activity pushes the idle limit out; nothing pushes the cap,
+which is what makes it a cap.
+
+**A-5 deviation, stated.** A-5 specifies fifteen minutes of idle and this is an hour. A
+session that survives the popup closing measures idle against the *browser* being idle,
+not against a popup dismissed the moment it loses focus — fifteen minutes of that is a
+lock every time the user glances at another tab. The 24-hour cap is what keeps the
+widening bounded.
+
+**`popup-closed` is the one lock that does not end the session.** The page is destroyed
+either way, so its keys go regardless; what differs is whether the next open may resume.
+Idle, manual and suspend are the user or the clock saying stop, and they clear the
+snapshot. Without that distinction the snapshot would be wiped every time the popup lost
+focus, which is the behaviour being fixed.
+
+**What `SessionSnapshot` is.** The most dangerous object in the library: the vault, in
+the clear. Keys are base64url because it crosses a structured clone, and that has a cost
+worth naming — a string cannot be zeroed, so `clear()` drops a reference rather than
+erasing bytes. `resumeFrom` deliberately checks no passphrase, because possession of the
+snapshot *is* the credential; that is exactly why the caller owns the expiry and why the
+only legitimate home is memory the browser wipes.
+
+**Refused rather than repaired.** A snapshot whose `lastActiveAt` precedes its
+`unlockedAt` — a clock that moved backwards — would make both elapsed checks read as "no
+time has passed", an unlock that never expires. Treated as malformed and cleared, along
+with wrong-length keys and missing fields.
+
+---
+
 # E-DESIGN — Visual and experience redesign · **epic, not yet ticketed**
 
 Raised 2026-09-07. The site, the one-pager and the extension UI all grew out of M0's

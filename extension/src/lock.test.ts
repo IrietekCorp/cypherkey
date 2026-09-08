@@ -53,8 +53,17 @@ function harness(options: { idleTimeoutMs?: number } = {}) {
 }
 
 describe('idle locking (A-5)', () => {
-  test('fifteen minutes is the default', () => {
-    expect(DEFAULT_IDLE_MS).toBe(15 * 60_000);
+  /**
+   * A-5 says fifteen minutes; this is an hour, and the difference is deliberate.
+   *
+   * A session that survives the popup closing (M2-18) measures idle against the browser
+   * being idle, not against a popup that is dismissed the moment it loses focus --
+   * fifteen minutes of that is a lock every time the user glances at another tab. The
+   * twenty-four hour cap in `resume.ts` is what keeps it bounded: idle can be pushed out
+   * by working, the cap cannot.
+   */
+  test('an hour is the default, widened for resumable sessions', () => {
+    expect(DEFAULT_IDLE_MS).toBe(60 * 60_000);
   });
 
   test('idling past the timeout locks', () => {

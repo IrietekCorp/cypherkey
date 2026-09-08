@@ -120,6 +120,33 @@ export type AuthedRequest = (
   token?: string,
 ) => Promise<{ status: number; body: unknown }>;
 
+/**
+ * Everything needed to re-enter an unlocked session without deriving keys again.
+ *
+ * This is the most dangerous object in the library: it *is* the vault, in the clear.
+ * It exists because the alternative was worse in practice -- a manager that re-derives
+ * Argon2id every time a popup opens is one nobody keeps unlocked, and an unusable
+ * manager is one people stop putting passwords into.
+ *
+ * Two rules for anything holding it. It never touches disk: A-7 permits five things to
+ * persist and none of them is a live key, so the only legitimate home is memory the
+ * browser clears on shutdown (`chrome.storage.session`). And it must carry its own
+ * expiry, because a snapshot with no deadline is a passphrase that stopped mattering.
+ *
+ * Keys are base64url rather than `Uint8Array` because a snapshot crosses a structured
+ * clone. That has a cost worth naming: a string cannot be zeroed, so once a snapshot is
+ * made, those bytes live until the browser reclaims them. `clear()` drops the reference;
+ * it does not erase.
+ */
+export type SessionSnapshot = {
+  vaultKey: string;
+  wrapKey: string;
+  phantomKey?: string;
+  accessToken: string;
+  refreshToken: string;
+  keyVersion: number;
+};
+
 export type LoginResult =
   | {
       band: 'pass';
@@ -213,6 +240,20 @@ export type Session = {
    */
   commitmentsFor(script: string): Promise<string[]>;
   unlockOffline(input: Credential): Promise<boolean>;
+  /**
+   * The live keys, for a caller that will hold them somewhere the browser clears.
+   * Null unless unlocked. See `SessionSnapshot` for what may and may not hold one.
+   */
+  exportSnapshot(): SessionSnapshot | null;
+  /**
+   * Re-enters an unlocked session from a snapshot, deriving nothing.
+   *
+   * Deliberately does NOT check the passphrase, because there is no passphrase here to
+   * check -- possession of the snapshot is the whole credential. That is exactly why the
+   * caller owns the expiry, and why a snapshot may only live in memory the browser
+   * wipes. Returns false rather than throwing on a malformed one.
+   */
+  resumeFrom(snapshot: SessionSnapshot): boolean;
   changeStrictness(input: StrictnessChange): Promise<{ keyVersion: number } | { error: string }>;
   lock(): void;
   touch(): void;
@@ -1081,6 +1122,42 @@ export function createSession(deps: SessionDeps): Session {
         wrap.fill(0);
         phantom.fill(0);
         state = 'locked';
+        return false;
+      }
+    },
+
+    exportSnapshot() {
+      if (state !== 'unlocked' || vaultKeyBytes === null || wrapKeyBytes === null) return null;
+      if (sessionTokens === null) return null;
+      return {
+        vaultKey: toBase64Url(vaultKeyBytes),
+        wrapKey: toBase64Url(wrapKeyBytes),
+        ...(phantomKeyBytes === null ? {} : { phantomKey: toBase64Url(phantomKeyBytes) }),
+        accessToken: sessionTokens.accessToken,
+        refreshToken: sessionTokens.refreshToken,
+        keyVersion: lastKeyVersion,
+      };
+    },
+
+    resumeFrom(snapshot) {
+      try {
+        const vault = fromBase64Url(snapshot.vaultKey);
+        const wrap = fromBase64Url(snapshot.wrapKey);
+        // A key of the wrong size is a corrupt snapshot, not a session. Refuse it rather
+        // than unlocking into a state where every decrypt fails for no stated reason.
+        if (vault.length !== 32 || wrap.length !== 32) return false;
+        const phantom =
+          snapshot.phantomKey === undefined ? undefined : fromBase64Url(snapshot.phantomKey);
+        unlockWith(vault, wrap, phantom);
+        sessionTokens = {
+          accessToken: snapshot.accessToken,
+          refreshToken: snapshot.refreshToken,
+        };
+        lastKeyVersion = snapshot.keyVersion;
+        return true;
+      } catch {
+        // Malformed base64url. Stay locked: the caller shows an unlock screen, which is
+        // the correct outcome for a snapshot we cannot read.
         return false;
       }
     },

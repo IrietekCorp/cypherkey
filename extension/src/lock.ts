@@ -13,7 +13,18 @@ import type { Session } from '../../core/client/session';
  * the KDF worker is terminated, and only then does the session zero its keys.
  */
 
-export const DEFAULT_IDLE_MS = 15 * 60_000;
+/**
+ * A-5 specifies fifteen minutes, and this is an hour.
+ *
+ * The deviation is deliberate and belongs to the resumable session (M2-18): a session
+ * that survives the popup closing needs an idle limit measured against the *browser*
+ * being idle, not against a popup that is dismissed the moment it loses focus. Fifteen
+ * minutes of that is a lock every time the user looks at another tab.
+ *
+ * The hard cap in `resume.ts` is what keeps this bounded: idle can be pushed out by
+ * working, the twenty-four hours cannot.
+ */
+export const DEFAULT_IDLE_MS = 60 * 60_000;
 /** How often the idle check runs. Finer than this buys nothing a user can perceive. */
 const TICK_MS = 15_000;
 
