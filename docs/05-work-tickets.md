@@ -883,7 +883,7 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 
 ---
 
-### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16 · **DONE**
+### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16 · **server DONE, screen NOT REACHABLE**
 
 **Why.** This ticket carries a **server change**, which is why it is not simply a screen.
 
@@ -901,6 +901,19 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 - **`/user/rekey` needed a second hash.** It already carried `authHash`, but that is the value the account will hold *after* the crossing — a value the caller chooses, proving nothing. `currentAuthHash` is now required and verified. The client derives both, which costs two Argon2id passes because crossing Strict changes `kdfInput` and the two hashes are genuinely different values from the same passphrase.
 - **Even Medium ↔ Relaxed carries the passphrase.** It is a settings PATCH rather than a re-key, but it still loosens an account, and the server refuses it without one.
 - The two guard tests that asserted "a token without a fresh step-up is refused" were rewritten rather than patched: under A-17 an ordinary access token **is** enough, given the passphrase, and freshness is irrelevant. Testing the old rule would have hidden the change.
+
+**What is not done, corrected 2026-09-08.** `Settings.tsx` is written, styled and tested,
+and the server change is live — but **the options page does not render it**. It needs an
+access token, and the session lives in the popup's `chrome.storage.session`, which a
+second document has no claim on. `entrypoints/options/main.tsx` renders a styled page that
+says so rather than presenting controls that would fail.
+
+Finishing it is session plumbing, not a screen: the options document has to obtain its own
+authenticated session. The resumable-unlock work in M2-18 is the mechanism — `resume.ts`
+already holds a session snapshot in `chrome.storage.session`, which both documents can
+read — so the remaining work is to let the options page resume from it, and to decide what
+it does when there is nothing resumable (almost certainly: say "unlock in the popup first",
+because a second passphrase prompt on a page nobody expects one is worse).
 
 ---
 
@@ -924,7 +937,7 @@ X-3 calls this a feature, not a notification: *"Someone typed your passphrase bu
 
 ---
 
-### M2-16 · Hosted deploy · M · deps: M2-00f
+### M2-16 · Hosted deploy · M · deps: M2-00f · **DONE 2026-09-08**
 
 **Files:** create `deploy/` (Cloud Run service, Cloud SQL, Secret Manager wiring), `.github/workflows/deploy.yml`; modify `docs/07`.
 
@@ -937,6 +950,31 @@ Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is
 **Blocked on console work, tracked in `gcp.md`** at the repo root — a step-by-step list with a status column the founder updates as they go. Five values unblock the rest of this ticket: project ID, project number, region, Cloud SQL connection name, and the workload identity provider resource name. Once those exist I can write `deploy/`, the Cloud Run service definition and the deploy workflow without further console access.
 
 **Runtime settings the build already constrains**, recorded there so the service is not misconfigured on the first try: the image is distroless with no shell, so Cloud Run must probe `/healthz` rather than relying on a Docker `HEALTHCHECK`; minimum instances 1, because Argon2id at m=64 MiB on a cold start looks broken and a login is the first thing anyone does; at least 1 GiB of memory and concurrency around 20, because each in-flight hash holds 64 MiB and the default 80-per-instance concurrency is how the limit gets hit.
+
+**As built (2026-09-08).** `api.cypherkey.io` is Cloud Run behind a serverless NEG on an
+external HTTPS load balancer with Cloud Armor; `cypherkey.io` is a CDN-enabled backend
+bucket over `gs://<GCP_SITE_BUCKET>`. The acceptance held: the e2e passes against Cloud
+SQL (on the sibling database `cypherkey_e2e`, same driver and socket, so no test accounts
+land in production) and the size budgets are green. The console steps and every trap found
+along the way are in `gcp.md`; the deploy-time notes are in `deploy/README.md`.
+
+Five failures worth remembering, because each one reported success:
+
+- The **ingress annotation is service-level**. In the revision template it is accepted,
+  reported as applied, and silently ignored — leaving the `*.run.app` URL answering
+  publicly and Cloud Armor bypassable. The workflow now asserts both the annotation and
+  that the URL does not answer.
+- The deployed server **served only `/healthz`**, because the entrypoint called
+  `createApp({ db })` with no config. `config` is required on `AppDeps` now.
+- A backend bucket with **no `--web-main-page-suffix`** answers `/` with the bucket's XML
+  object listing and a 200.
+- `postgres.js` **ignores `?host=`** in a connection string; the Unix socket path has to
+  arrive as `PGHOST`/`PGUSER`/`PGPASSWORD`.
+- `db-f1-micro` is rejected under `ENTERPRISE_PLUS`; the instance needs `--edition=ENTERPRISE`.
+
+**Still open, and all founder decisions:** flip the repo public (clears the commented-out
+GitHub links on the site), decide whether to set `RESEND_API_KEY` for M2-15's email, and
+tighten the workload-identity condition to `refs/heads/main` once the repo is public.
 
 ---
 

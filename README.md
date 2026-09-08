@@ -103,3 +103,5 @@ bun run build:site
 ```
 
 See [`docs/02-architecture-and-threat-model.md`](file:///home/shawn/Development/cypherkey/docs/02-architecture-and-threat-model.md) and [`docs/03-experience-design.md`](file:///home/shawn/Development/cypherkey/docs/03-experience-design.md) for detailed technical specifications.
+
+[`STATUS.md`](./STATUS.md) says where the project currently stands and what to pick up next.
