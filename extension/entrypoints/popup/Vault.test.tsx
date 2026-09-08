@@ -74,12 +74,20 @@ describe('VaultList', () => {
   const render = async (items: VaultItem[]) => {
     const opened: VaultItem[] = [];
     const added: string[] = [];
+    let profileOpened = 0;
     await act(async () => {
       root.render(
-        <VaultList items={items} onOpen={(i) => opened.push(i)} onAdd={(k) => added.push(k)} />,
+        <VaultList
+          items={items}
+          onOpen={(i) => opened.push(i)}
+          onAdd={(k) => added.push(k)}
+          onProfile={() => {
+            profileOpened += 1;
+          }}
+        />,
       );
     });
-    return { opened, added };
+    return { opened, added, profile: () => profileOpened };
   };
 
   test('an empty vault says so rather than showing a blank panel', async () => {
@@ -119,7 +127,39 @@ describe('VaultList', () => {
     // happy-dom, so the ranking itself is covered by item.test.ts instead. What is
     // asserted here is that the two empty states are distinguishable at all.
     expect(el('empty')).toBeNull();
-    expect(el('items')).not.toBeNull();
+    // The list is grouped by kind now, so the rows live under a per-section testid.
+    expect(el('items-login')).not.toBeNull();
+  });
+
+  /**
+   * The dashboard groups by kind, because the two are looked for differently: a login is
+   * hunted by site when you need to get into something, a note is browsed.
+   */
+  test('logins and notes are separate sections, each counted', async () => {
+    await render([LOGIN, NOTE]);
+    expect(text()).toContain('Logins');
+    expect(text()).toContain('Secure notes');
+    expect(el('items-login')?.children.length).toBe(1);
+    expect(el('items-note')?.children.length).toBe(1);
+  });
+
+  test('every row carries a mark, and no row carries a password', async () => {
+    await render([LOGIN, NOTE]);
+    expect(el(`mark-${LOGIN.id}`)).not.toBeNull();
+    expect(el(`mark-${NOTE.id}`)).not.toBeNull();
+    // The list has never shown a password and must not start now.
+    expect(text()).not.toContain(LOGIN.password);
+  });
+
+  test('the profile is reachable from the vault', async () => {
+    const { profile } = await render([LOGIN]);
+    await click('profile');
+    expect(profile()).toBe(1);
+  });
+
+  test('an empty vault says what to do, not just that it is empty', async () => {
+    await render([]);
+    expect(el('empty')?.textContent).toContain('Add a login');
   });
 });
 

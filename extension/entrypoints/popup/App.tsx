@@ -17,6 +17,7 @@ import { Import } from './Import';
 import { ItemEdit } from './ItemEdit';
 import { ItemView } from './ItemView';
 import { Onboarding } from './Onboarding';
+import { Profile } from './Profile';
 import { RecoveryKit } from './RecoveryKit';
 import { Unlock } from './Unlock';
 import { VaultList } from './VaultList';
@@ -68,6 +69,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [viewing, setViewing] = useState<VaultItem | null>(null);
   const [importing, setImporting] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );
@@ -79,6 +81,19 @@ export function App() {
   const browserApi = useMemo(() => {
     const api = (globalThis as { chrome?: BrowserApi }).chrome;
     return api?.tabs !== undefined && api.scripting !== undefined ? api : null;
+  }, []);
+
+  /**
+   * Opens the extension's own settings page, when there is one.
+   *
+   * Read from the global rather than through `BrowserApi`, which describes exactly what
+   * autofill needs and is asserted that narrow. Absent in tests and in the options page
+   * itself, where the button is simply not offered.
+   */
+  const optionsOpener = useMemo(() => {
+    const runtime = (globalThis as { chrome?: { runtime?: { openOptionsPage?: () => void } } })
+      .chrome?.runtime;
+    return runtime?.openOptionsPage === undefined ? undefined : () => runtime.openOptionsPage?.();
   }, []);
 
   const { session, lockController } = useMemo(() => {
@@ -315,6 +330,30 @@ export function App() {
     setViewing(null);
   };
 
+  if (showProfile) {
+    return (
+      <Profile
+        username={username}
+        version={EXTENSION_VERSION}
+        openSettings={optionsOpener}
+        onLock={() => {
+          // Straight through the controller that owns zeroing, so this cannot become a
+          // second, subtly different way to lock (A-5).
+          lockController.lock('manual');
+          setShowProfile(false);
+        }}
+        onSignOut={async () => {
+          await session.logout();
+          setShowProfile(false);
+          setUnlocked(false);
+          setItems([]);
+          setNotice('Signed out.');
+        }}
+        onBack={() => setShowProfile(false)}
+      />
+    );
+  }
+
   if (importing) {
     return (
       <Import
@@ -356,7 +395,12 @@ export function App() {
       {notice !== null && (
         <p className="bg-neutral-100 px-4 pt-3 font-sans text-xs text-neutral-600">{notice}</p>
       )}
-      <VaultList items={items} onOpen={setViewing} onAdd={(kind) => setEditing({ kind })} />
+      <VaultList
+        items={items}
+        onOpen={setViewing}
+        onAdd={(kind) => setEditing({ kind })}
+        onProfile={() => setShowProfile(true)}
+      />
       <button
         type="button"
         onClick={() => setImporting(true)}
