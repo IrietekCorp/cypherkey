@@ -59,13 +59,23 @@ function fakeSession() {
 const el = (id: string) => host.querySelector(`[data-testid="${id}"]`);
 const text = () => host.textContent ?? '';
 
+/** Captures the "I already have an account" choice for assertions. */
+const hasAccount: { name: string | null } = { name: null };
+
 const render = async (
   session: Pick<Session, 'signup'>,
   onComplete: (r: SignupResult) => void = () => {},
 ) => {
   await act(async () => {
     root.render(
-      <Onboarding session={session} consentPolicyVersion="2026-09-01" onComplete={onComplete} />,
+      <Onboarding
+        session={session}
+        consentPolicyVersion="2026-09-01"
+        onComplete={onComplete}
+        onHasAccount={(name) => {
+          hasAccount.name = name;
+        }}
+      />,
     );
   });
 };
@@ -260,6 +270,40 @@ describe('the fields are ordered so a refusal costs least', () => {
       // 4 === DOCUMENT_POSITION_FOLLOWING
       expect(following & 4).toBe(4);
     }
+  });
+});
+
+/**
+ * Reaching an existing account without failing a signup first.
+ *
+ * The request was a lookup on the email that routes to login. That is a user-enumeration
+ * oracle, and `/auth/salt` spends a fake deterministic salt specifically to deny one --
+ * for a password manager, confirming that someone has an account is itself a
+ * disclosure. A link the user chooses leaks nothing.
+ */
+describe('an existing account can be reached without a failed signup', () => {
+  test('the choice carries the username that was typed', async () => {
+    hasAccount.name = null;
+    const { session, calls } = fakeSession();
+    await render(session);
+    await fill('username', 'shawn');
+
+    await click('have-account');
+
+    expect(hasAccount.name).toBe('shawn');
+    // Nothing is asked of the server: no signup, and no lookup either.
+    expect(calls).toHaveLength(0);
+  });
+
+  test('without a username it asks for one rather than guessing', async () => {
+    hasAccount.name = null;
+    const { session } = fakeSession();
+    await render(session);
+
+    await click('have-account');
+
+    expect(hasAccount.name).toBeNull();
+    expect(el('problems')?.textContent).toContain('Enter your username');
   });
 });
 

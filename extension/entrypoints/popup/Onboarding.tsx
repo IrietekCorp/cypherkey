@@ -20,12 +20,30 @@ export type OnboardingProps = {
    * disk, and it is dropped as soon as the trick is done.
    */
   onComplete(result: SignupResult, script: string, username: string, resolved: string): void;
+  /**
+   * "I already have an account", carrying the username typed above.
+   *
+   * The alternative asked for was a lookup on the email that routes straight to login.
+   * That is a user-enumeration oracle, and this codebase spends real effort denying one:
+   * `/auth/salt` hands back a deterministic *fake* salt for names that do not exist so
+   * an attacker cannot tell a real account from an invented one. Confirming "this person
+   * has a CypherKey account" is a disclosure in its own right for a password manager.
+   *
+   * A link the user chooses leaks nothing: a name with no account fails at unlock the
+   * same way a wrong passphrase does, which is exactly what the fake salt is for.
+   */
+  onHasAccount(username: string): void;
 };
 
 type Captured = { script: string; resolved: string };
 
 /** X-2. The account's key hierarchy is decided here, and two inputs cannot change later. */
-export function Onboarding({ session, consentPolicyVersion, onComplete }: OnboardingProps) {
+export function Onboarding({
+  session,
+  consentPolicyVersion,
+  onComplete,
+  onHasAccount,
+}: OnboardingProps) {
   const input = useRef<HTMLInputElement>(null);
   const light = useRef<HTMLDivElement>(null);
   const capture = useCapture();
@@ -313,6 +331,31 @@ export function Onboarding({ session, consentPolicyVersion, onComplete }: Onboar
           </button>
         )}
       </div>
+
+      {/*
+        The way to an existing account without failing a signup first. It is a choice the
+        user makes, not a lookup we perform: checking whether an account exists would tell
+        anyone who asks, and that is the disclosure `/auth/salt`'s fake salt exists to
+        prevent.
+      */}
+      <button
+        type="button"
+        data-testid="have-account"
+        disabled={busy}
+        onMouseDown={preventFocusSteal}
+        onClick={() => {
+          const name = username.current?.value.trim() ?? '';
+          if (name === '') {
+            setProblems(['Enter your username above, then choose this again.']);
+            username.current?.focus();
+            return;
+          }
+          onHasAccount(name);
+        }}
+        className="self-start text-xs text-neutral-600 underline underline-offset-2 disabled:opacity-40"
+      >
+        I already have an account
+      </button>
     </main>
   );
 }

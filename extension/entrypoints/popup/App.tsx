@@ -195,6 +195,17 @@ export function App() {
           // are useless to `Unlock` without a name to log in with.
           void localArea()?.set({ [USERNAME_KEY]: name });
         }}
+        onHasAccount={(name) => {
+          /*
+            Straight to unlock. The device may not be registered here -- a login from an
+            unknown device meets the X-3 step-up, which `Unlock` already handles -- and a
+            username with no account fails there the way a wrong passphrase does, telling
+            an onlooker nothing.
+          */
+          setUsername(name);
+          void localArea()?.set({ [USERNAME_KEY]: name });
+          setResume('returning');
+        }}
       />
     );
   }
