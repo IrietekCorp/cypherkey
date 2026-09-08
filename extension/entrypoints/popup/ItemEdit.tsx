@@ -74,8 +74,9 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
   };
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s4)' }}>
+      {/* Frame 12. */}
+      <h1 className="ck-h1">
         {item === undefined ? 'New' : 'Edit'} {effectiveKind === 'login' ? 'login' : 'note'}
       </h1>
 
@@ -85,7 +86,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
           id="field-title"
           data-testid="title"
           defaultValue={item?.title ?? ''}
-          className="rounded border border-neutral-300 px-2 py-1"
+          className="input"
         />
       </Labelled>
 
@@ -98,7 +99,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
               data-testid="host"
               defaultValue={item?.kind === 'login' ? item.host : ''}
               placeholder="example.com"
-              className="rounded border border-neutral-300 px-2 py-1"
+              className="input"
             />
           </Labelled>
           <Labelled label="Username" htmlFor="field-username">
@@ -107,7 +108,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
               id="field-username"
               data-testid="username"
               defaultValue={item?.kind === 'login' ? item.username : ''}
-              className="rounded border border-neutral-300 px-2 py-1"
+              className="input"
             />
           </Labelled>
           <Labelled label="Password" htmlFor="field-password">
@@ -117,7 +118,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
               id="field-password"
               data-testid="password"
               defaultValue={item?.kind === 'login' ? item.password : ''}
-              className="rounded border border-neutral-300 px-2 py-1 font-mono"
+              className="input font-mono"
             />
           </Labelled>
           {/*
@@ -129,7 +130,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
             type="button"
             data-testid="toggle-generator"
             onClick={() => setGenerating((g) => !g)}
-            className="self-start text-xs text-neutral-500 underline"
+            className="btn btn-ghost ck-small self-start"
           >
             {generating ? 'Hide generator' : 'Generate a password'}
           </button>
@@ -148,7 +149,7 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
               id="field-notes"
               data-testid="notes"
               defaultValue={item?.kind === 'login' ? (item.notes ?? '') : ''}
-              className="rounded border border-neutral-300 px-2 py-1"
+              className="input"
             />
           </Labelled>
         </>
@@ -160,34 +161,34 @@ export function ItemEdit({ item, kind, now = Date.now, onSave, onCancel }: ItemE
             data-testid="body"
             defaultValue={item?.kind === 'note' ? item.body : ''}
             rows={6}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className="input"
           />
         </Labelled>
       )}
 
       {problems.length > 0 && (
-        <ul data-testid="problems" className="flex flex-col gap-1 text-xs text-rose-700">
+        <ul
+          data-testid="problems"
+          className="ck-small flex flex-col"
+          style={{ gap: 'var(--ck-s1)', color: 'var(--ck-fail-text)' }}
+        >
           {problems.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex" style={{ gap: 'var(--ck-s2)' }}>
         <button
           type="button"
           data-testid="save"
           onClick={save}
-          className="rounded bg-neutral-900 px-2 py-1 text-white"
+          className="btn btn-primary"
+          style={{ flex: 1 }}
         >
           Save
         </button>
-        <button
-          type="button"
-          data-testid="cancel"
-          onClick={onCancel}
-          className="rounded border border-neutral-300 px-2 py-1"
-        >
+        <button type="button" data-testid="cancel" onClick={onCancel} className="btn btn-secondary">
           Cancel
         </button>
       </div>
@@ -210,10 +211,8 @@ function Labelled({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-xs text-neutral-600">
-        {label}
-      </label>
+    <div className="field">
+      <label htmlFor={htmlFor}>{label}</label>
       {children}
     </div>
   );

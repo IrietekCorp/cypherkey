@@ -64,10 +64,17 @@ export function Import({ onImport, onCancel, now = Date.now }: ImportProps) {
   };
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">Import</h1>
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s4)' }}>
+      {/* Frame 14. */}
+      <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+        <h1 className="ck-h1">Import</h1>
+        <p className="ck-small ck-muted">
+          Your export is read here and never saved. Delete the file once you are done — it holds
+          every password in plain text.
+        </p>
+      </div>
 
-      <div className="flex gap-2">
+      <div className="seg self-start">
         {(
           [
             ['bitwarden', 'Bitwarden JSON'],
@@ -78,53 +85,52 @@ export function Import({ onImport, onCancel, now = Date.now }: ImportProps) {
             key={value}
             type="button"
             data-testid={`format-${value}`}
+            aria-pressed={format === value}
             onClick={() => {
               setFormat(value);
               setPreview(null);
               setError(null);
             }}
-            className={`rounded border px-2 py-1 ${
-              format === value
-                ? 'border-neutral-900 bg-neutral-900 text-white'
-                : 'border-neutral-300'
-            }`}
+            className="seg-opt ck-small"
           >
             {label}
           </button>
         ))}
       </div>
 
-      <p className="text-xs text-neutral-600">
-        Your export is read here and never saved. Delete the file once you are done — it holds every
-        password in plain text.
-      </p>
-
-      <input ref={file} type="file" data-testid="file" className="text-xs" />
+      <label className="field">
+        <span>Export file</span>
+        <input ref={file} type="file" data-testid="file" className="input ck-small" />
+      </label>
 
       <button
         type="button"
         data-testid="read"
         onClick={read}
-        className="self-start rounded border border-neutral-300 px-2 py-1"
+        className="btn btn-secondary self-start"
       >
         Read the file
       </button>
 
       {error !== null && (
-        <p data-testid="error" className="text-xs text-rose-700">
+        <p data-testid="error" className="ck-small" style={{ color: 'var(--ck-fail-text)' }}>
           {error}
         </p>
       )}
 
       {preview !== null && (
-        <section className="flex flex-col gap-2">
-          <p data-testid="summary" className="text-xs text-neutral-700">
+        <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+          <p data-testid="summary" className="ck-h2 ck-num">
             {preview.items.length} of {preview.total} will be imported
             {preview.skipped.length > 0 && `, ${preview.skipped.length} skipped`}.
           </p>
 
           {preview.skipped.length > 0 && (
-            <ul data-testid="skipped" className="flex flex-col gap-1 text-xs text-neutral-600">
+            <ul
+              data-testid="skipped"
+              className="ck-small ck-muted flex flex-col"
+              style={{ gap: 'var(--ck-s1)' }}
+            >
               {preview.skipped.map((entry) => (
                 <li key={`${entry.row}-${entry.reason}`}>
                   Row {entry.row}: {entry.reason}
@@ -133,13 +139,14 @@ export function Import({ onImport, onCancel, now = Date.now }: ImportProps) {
             </ul>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex" style={{ gap: 'var(--ck-s2)' }}>
             <button
               type="button"
               data-testid="confirm"
               disabled={busy || preview.items.length === 0}
               onClick={confirm}
-              className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+              className="btn btn-primary"
+              style={{ flex: 1 }}
             >
               Import {preview.items.length}
             </button>
@@ -147,7 +154,7 @@ export function Import({ onImport, onCancel, now = Date.now }: ImportProps) {
               type="button"
               data-testid="cancel"
               onClick={onCancel}
-              className="rounded border border-neutral-300 px-2 py-1"
+              className="btn btn-secondary"
             >
               Cancel
             </button>

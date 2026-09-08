@@ -134,32 +134,45 @@ export function Settings({
   };
 
   if (settings === null) {
-    return <main className="p-6 font-sans text-sm">Loading…</main>;
+    return (
+      <main className="ck-app" style={{ padding: 'var(--ck-s6, 24px)' }}>
+        Loading…
+      </main>
+    );
   }
 
   const paused = settings.pauseUntil !== null && settings.pauseUntil > now();
 
   return (
-    <main className="flex max-w-xl flex-col gap-6 p-6 font-sans text-sm">
-      <h1 className="text-lg font-semibold">CypherKey settings</h1>
+    <main
+      className="ck-app flex flex-col"
+      style={{ padding: 'var(--ck-s6, 24px)', gap: 'var(--ck-s5)', maxWidth: 620 }}
+    >
+      {/*
+        The options page, on the same components as the popup.
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">Your passphrase</h2>
-        <p className="text-xs text-neutral-600">
-          Changes that reduce protection need it typed here, in the same moment you make them. A
-          session alone is not enough.
-        </p>
-        <input
-          ref={passphrase}
-          type="password"
-          data-testid="passphrase"
-          className="rounded border border-neutral-300 px-2 py-1"
-        />
+        It is the one surface with room, so sections are cards and the devices list is a
+        table -- but nothing here invents a control the popup does not have.
+      */}
+      <header className="flex items-baseline" style={{ gap: 'var(--ck-s2)' }}>
+        <span className="ck-wordmark">CypherKey</span>
+        <h1 className="ck-h1 ck-muted">settings</h1>
+      </header>
+
+      <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+          <h2 className="ck-h2">Your passphrase</h2>
+          <p className="ck-small ck-muted">
+            Changes that reduce protection need it typed here, in the same moment you make them. A
+            session alone is not enough.
+          </p>
+        </div>
+        <input ref={passphrase} type="password" data-testid="passphrase" className="input" />
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">Rhythm</h2>
-        <label className="flex items-center gap-2">
+      <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        <h2 className="ck-h2">Rhythm</h2>
+        <label className="flex items-center" style={{ gap: 'var(--ck-s3)', cursor: 'pointer' }}>
           <input
             type="checkbox"
             data-testid="biometric"
@@ -168,35 +181,38 @@ export function Settings({
             onChange={() =>
               patch({ biometricEnabled: !settings.biometricEnabled }, settings.biometricEnabled)
             }
+            style={{ accentColor: 'var(--ck-accent)' }}
           />
           <span>Require my typing rhythm to unlock</span>
         </label>
         {settings.biometricEnabled && (
-          <p className="text-xs text-neutral-500">
+          <p className="ck-small ck-muted">
             Turning this off leaves your passphrase as the only thing protecting the vault.
           </p>
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">Pause</h2>
-        <p className="text-xs text-neutral-600">
-          {/* X-4: a bounded pause, for a broken wrist or a borrowed keyboard. */}
-          Temporarily stop checking your rhythm — for an injury, or a keyboard that is not yours. It
-          switches back on by itself.
-        </p>
+      <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+          <h2 className="ck-h2">Pause</h2>
+          <p className="ck-small ck-muted">
+            {/* X-4: a bounded pause, for a broken wrist or a borrowed keyboard. */}
+            Temporarily stop checking your rhythm — for an injury, or a keyboard that is not yours.
+            It switches back on by itself.
+          </p>
+        </div>
         {paused ? (
           <button
             type="button"
             data-testid="unpause"
             disabled={busy}
             onClick={() => patch({ pauseUntil: null }, false)}
-            className="self-start rounded bg-neutral-900 px-2 py-1 text-white"
+            className="btn btn-primary self-start"
           >
             Resume rhythm checks now
           </button>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex" style={{ gap: 'var(--ck-s2)' }}>
             {PAUSE_OPTIONS.map((option) => (
               <button
                 key={option.label}
@@ -204,7 +220,7 @@ export function Settings({
                 data-testid={`pause-${option.ms}`}
                 disabled={busy}
                 onClick={() => patch({ pauseUntil: now() + option.ms }, true)}
-                className="rounded border border-neutral-300 px-2 py-1"
+                className="btn btn-secondary"
               >
                 {option.label}
               </button>
@@ -213,14 +229,20 @@ export function Settings({
         )}
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">Strictness</h2>
-        <div className="flex gap-2">
+      <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        <h2 className="ck-h2">Strictness</h2>
+        {/*
+          A segmented control, and the current level is the pressed one rather than the
+          disabled one. Disabling the active choice to mark it reads as "unavailable" —
+          the one state a selected option must not look like.
+        */}
+        <div className="seg self-start">
           {(['relaxed', 'medium', 'strict'] as const).map((level) => (
             <button
               key={level}
               type="button"
               data-testid={`strictness-${level}`}
+              aria-pressed={level === settings.strictness}
               disabled={busy || level === settings.strictness}
               onClick={() =>
                 // A-16: Medium ↔ Relaxed is a settings edit. Crossing into or out of
@@ -230,49 +252,60 @@ export function Settings({
                   ? onRekeyRequested(level)
                   : patch({ thresholds: { strictness: level } }, true)
               }
-              className="rounded border border-neutral-300 px-2 py-1 disabled:bg-neutral-900 disabled:text-white"
+              className="seg-opt"
             >
               {level}
             </button>
           ))}
         </div>
-        <p data-testid="strict-warning" className="text-xs text-neutral-500">
+        <p data-testid="strict-warning" className="ck-small ck-muted">
           Strict folds your exact key sequence into the key itself, so switching to or from it
           re-keys your account. Your Recovery Kit keeps working; every other device has to sign in
           again.
         </p>
       </section>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="font-medium">Devices</h2>
-        <ul data-testid="devices" className="flex flex-col gap-1">
-          {devices.map((device) => (
-            <li key={device.id} className="flex items-center justify-between gap-2">
-              <span>
-                {device.name}
-                <span className="text-xs text-neutral-500"> · {device.platform}</span>
-                {device.revokedAt !== null && (
-                  <span className="text-xs text-neutral-500"> · revoked</span>
-                )}
-              </span>
-              {device.revokedAt === null && device.current !== true && (
-                <button
-                  type="button"
-                  data-testid={`revoke-${device.id}`}
-                  disabled={busy}
-                  onClick={() => revoke(device)}
-                  className="rounded border border-neutral-300 px-2 py-1 text-xs"
-                >
-                  Revoke
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+      <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        <h2 className="ck-h2">Devices</h2>
+        <table className="ck-table">
+          <thead>
+            <tr>
+              <th>Device</th>
+              <th>Platform</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody data-testid="devices">
+            {devices.map((device) => (
+              <tr key={device.id}>
+                <td>
+                  {device.name}
+                  {device.revokedAt !== null && (
+                    <span className="ck-small ck-muted"> · revoked</span>
+                  )}
+                </td>
+                <td className="ck-small ck-muted">{device.platform}</td>
+                <td style={{ textAlign: 'right' }}>
+                  {device.revokedAt === null && device.current !== true && (
+                    <button
+                      type="button"
+                      data-testid={`revoke-${device.id}`}
+                      disabled={busy}
+                      onClick={() => revoke(device)}
+                      className="btn btn-secondary ck-small"
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       {message !== null && (
-        <p data-testid="message" className="text-xs text-neutral-700">
+        <p data-testid="message" className="ck-small">
           {message}
         </p>
       )}

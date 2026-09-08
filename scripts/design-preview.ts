@@ -24,9 +24,21 @@ function chromePath(): string {
   return found;
 }
 
-const css = (await Array.fromAsync(new Bun.Glob('assets/popup-*.css').scan(OUT)))[0];
-if (css === undefined) {
-  throw new Error(`no built stylesheet in ${OUT}. Run: bun run build:extension`);
+/*
+  Every stylesheet `popup.html` links, in the order it links them.
+
+  This used to glob `assets/popup-*.css` and take the first. The moment a second
+  entrypoint imported the same stylesheet, Vite hoisted the design system into a shared
+  chunk and left `popup-*.css` holding 400 bytes of nothing -- and the preview rendered
+  every screen as unstyled HTML while the popup itself was fine. Reading the document's
+  own links cannot drift from what Chrome loads.
+*/
+const popupHtml = await Bun.file(join(OUT, 'popup.html')).text();
+const hrefs = [...popupHtml.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g)].map((m) =>
+  (m[1] as string).replace(/^\//, ''),
+);
+if (hrefs.length === 0) {
+  throw new Error(`no stylesheet linked from ${OUT}/popup.html. Run: bun run build:extension`);
 }
 
 const bundle = await Bun.build({
@@ -36,7 +48,9 @@ const bundle = await Bun.build({
 });
 if (!bundle.success) throw new AggregateError(bundle.logs, 'preview bundle failed');
 const js = await (bundle.outputs[0] as { text(): Promise<string> }).text();
-const styles = await Bun.file(join(OUT, css)).text();
+const styles = (await Promise.all(hrefs.map((href) => Bun.file(join(OUT, href)).text()))).join(
+  '\n',
+);
 
 /*
   Served rather than inlined. A bundle pasted into a `<script>` tag ends that tag at the

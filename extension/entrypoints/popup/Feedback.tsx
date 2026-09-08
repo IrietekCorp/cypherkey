@@ -33,9 +33,10 @@ export function Feedback({ version, userAgent, open }: FeedbackProps) {
   };
 
   return (
-    <section className="flex flex-col gap-2 p-4 font-sans text-sm">
-      <h2 className="font-medium">Report a problem</h2>
-      <p className="text-xs text-neutral-600">
+    <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+      {/* Frame 16. A panel, not a page: it is reached from the profile. */}
+      <h2 className="ck-h2">Report a problem</h2>
+      <p className="ck-small ck-muted">
         {/*
           Said plainly, because the opposite is what people assume: a bug report from a
           password manager sounds like it might carry diagnostics, and this one does not.
@@ -43,14 +44,22 @@ export function Feedback({ version, userAgent, open }: FeedbackProps) {
         Nothing is attached automatically — no logs, no scores, nothing from your vault. The report
         carries only which version you are running and which browser.
       </p>
-      <p data-testid="attached" className="text-xs text-neutral-500">
+      <p
+        data-testid="attached"
+        className="ck-small ck-muted"
+        style={{
+          padding: 'var(--ck-s2) var(--ck-s3)',
+          borderRadius: 'var(--ck-r-md)',
+          background: 'var(--ck-inset)',
+        }}
+      >
         CypherKey {version} · {coarseBrowser(userAgent)}
       </p>
       <button
         type="button"
         data-testid="report"
         onClick={go}
-        className="self-start rounded border border-neutral-300 px-2 py-1"
+        className="btn btn-secondary self-start"
       >
         Open a report
       </button>

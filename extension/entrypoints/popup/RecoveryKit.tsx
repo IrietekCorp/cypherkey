@@ -152,18 +152,44 @@ export function RecoveryKit({
   };
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">
-        {variant === 'replacement' ? 'Your new Recovery Kit' : 'Your Recovery Kit'}
-      </h1>
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s4)' }}>
+      {/* Frames 03 and 04, on one screen: the sheet, then the proof it was saved. */}
+      <header className="flex items-baseline justify-between" style={{ gap: 'var(--ck-s3)' }}>
+        <span className="ck-wordmark ck-small ck-muted">CypherKey</span>
+        <span className="ck-small ck-muted">Shown once</span>
+      </header>
+
+      <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+        <h1 className="ck-h1">
+          {variant === 'replacement' ? 'Your new Recovery Kit' : 'Your Recovery Kit'}
+        </h1>
+        <p className="ck-small ck-muted">
+          This is the only way back in if you lose every device. We show it once and never again.
+        </p>
+      </div>
 
       {/* The printable sheet. Everything the reader will ever have about it. */}
-      <section className="print-kit">
-        <h2 className="text-sm font-semibold">CypherKey Recovery Kit</h2>
-        <p data-testid="kit-code" className="kit-code font-mono text-base break-all">
+      <section className="print-kit card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+        {/*
+          "Your Kit", never "recovery code". The two are different objects and the
+          vocabulary is load-bearing: a Backup Code opens one session, the Kit opens the
+          vault and re-keys the account. `RecoveryKit.test.tsx` asserts the phrase never
+          appears here.
+        */}
+        <h2 className="ck-small ck-muted" style={{ letterSpacing: '0.06em' }}>
+          Your Kit · {symbols.length} characters
+        </h2>
+        <p
+          data-testid="kit-code"
+          className="kit-code font-mono break-all"
+          style={{ fontSize: 15, lineHeight: 1.5, letterSpacing: '0.04em' }}
+        >
           {recoveryCode}
         </p>
-        <div className="kit-consequences flex flex-col gap-2 text-xs text-neutral-700">
+        <div
+          className="kit-consequences ck-small ck-muted flex flex-col"
+          style={{ gap: 'var(--ck-s2)' }}
+        >
           <p>
             This Kit is the only way back into your vault if you forget your passphrase or lose
             every device. Store it somewhere physical. It is not kept on our servers and cannot be
@@ -176,13 +202,26 @@ export function RecoveryKit({
         </div>
 
         {backupCodes !== undefined && backupCodes.length > 0 && (
-          <div className="mt-3">
-            <h3 className="text-xs font-semibold">Backup Codes</h3>
-            <p className="text-xs text-neutral-600">
-              Ten one-time codes. Each one gets you past a rhythm check when your typing does not
-              match — they open a session, not your vault.
+          <div
+            className="flex flex-col"
+            style={{
+              gap: 'var(--ck-s2)',
+              paddingTop: 'var(--ck-s3)',
+              borderTop: '1px solid var(--ck-border)',
+            }}
+          >
+            <h3 className="ck-small ck-muted" style={{ letterSpacing: '0.06em' }}>
+              Backup Codes · {backupCodes.length}
+            </h3>
+            <p className="ck-small ck-muted">
+              One-time codes. Each one gets you past a rhythm check when your typing does not match
+              — they open a session, not your vault.
             </p>
-            <ul data-testid="backup-codes" className="mt-1 font-mono text-xs">
+            <ul
+              data-testid="backup-codes"
+              className="ck-small grid font-mono"
+              style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--ck-s1)' }}
+            >
               {backupCodes.map((code) => (
                 <li key={code}>{code}</li>
               ))}
@@ -191,7 +230,7 @@ export function RecoveryKit({
         )}
       </section>
 
-      <div className="no-print flex flex-col gap-2">
+      <div className="no-print flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
         {/*
           A download, not `window.print()`.
 
@@ -204,86 +243,112 @@ export function RecoveryKit({
           Kit on disk in plain text, which the file itself says, along with what to do
           about it.
         */}
-        <button
-          type="button"
-          data-testid="save-kit"
-          onClick={saveKit}
-          className="rounded border border-neutral-300 px-2 py-1"
-        >
-          Save this Kit as a file
-        </button>
-        <p className="text-xs text-neutral-500">
-          Saves a plain-text file to your downloads. Print it or write it down, then delete the file
-          — anyone who reads it can recover your vault.
-        </p>
-
-        <p className="text-xs text-neutral-700">
-          To confirm you have saved it, type the characters at these positions. Positions are
-          numbered below; the dashes are not counted.
-        </p>
-
-        {/*
-          The Kit again, with every character's position under it.
-
-          Asking someone to find "character 15" of a 33-symbol code was a counting
-          exercise the layout worked against: the sheet groups the code with dashes, the
-          positions ignore dashes, nothing said so, and `break-all` rewraps the whole
-          thing at popup width. A real first user answered two of four with the symbols
-          four places along -- the code was saved correctly and the check said it was
-          not, which is the one failure this screen must never produce.
-
-          Screen-only. The printed sheet keeps the plain grouped code, because a ruler of
-          index numbers is noise on paper and this prompt is not printed at all.
-        */}
-        <div data-testid="position-ruler" className="flex flex-wrap gap-x-1 gap-y-1 font-mono">
-          {symbols.map((symbol, index) => {
-            const asked = positions.includes(index);
-            return (
-              <span
-                key={`${index}-${symbol}`}
-                className={`flex w-5 flex-col items-center rounded text-center ${
-                  asked ? 'bg-amber-100 font-semibold text-neutral-900' : 'text-neutral-700'
-                }`}
-              >
-                <span className="text-sm leading-tight">{symbol}</span>
-                <span className="text-[9px] leading-tight text-neutral-500">{index + 1}</span>
-              </span>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-2">
-          {positions.map((position, i) => (
-            <label key={position} className="flex flex-col items-center gap-1 text-xs">
-              <span data-testid="position-label" className="text-neutral-500">
-                #{position + 1}
-              </span>
-              <input
-                ref={(node) => {
-                  answers.current[i] = node;
-                }}
-                data-testid={`answer-${i}`}
-                maxLength={1}
-                className="w-8 rounded border border-neutral-300 px-1 py-1 text-center font-mono uppercase"
-              />
-            </label>
-          ))}
-        </div>
-
-        {error !== null && (
-          <p data-testid="error" className="text-xs text-rose-700">
-            {error}
+        <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+          <button
+            type="button"
+            data-testid="save-kit"
+            onClick={saveKit}
+            className="btn btn-secondary btn-block"
+          >
+            Save this Kit as a file
+          </button>
+          <p className="ck-small ck-muted">
+            Saves a plain-text file to your downloads. Print it or write it down, then delete the
+            file — anyone who reads it can recover your vault.
           </p>
-        )}
+        </div>
 
-        <button
-          type="button"
-          data-testid="confirm"
-          onClick={confirm}
-          className="rounded bg-neutral-900 px-2 py-1 text-white"
+        <div
+          className="flex flex-col"
+          style={{
+            gap: 'var(--ck-s3)',
+            paddingTop: 'var(--ck-s3)',
+            borderTop: '1px solid var(--ck-border)',
+          }}
         >
-          I have saved my Kit
-        </button>
+          <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+            <h2 className="ck-h2">Prove you saved it</h2>
+            <p className="ck-small ck-muted">
+              Type the characters at these positions. Read them off the sheet, not the screen. The
+              dashes are not counted.
+            </p>
+          </div>
+
+          {/*
+            The Kit again, with every character's position under it.
+
+            Asking someone to find "character 15" of a 33-symbol code was a counting
+            exercise the layout worked against: the sheet groups the code with dashes, the
+            positions ignore dashes, nothing said so, and `break-all` rewraps the whole
+            thing at popup width. A real first user answered two of four with the symbols
+            four places along -- the code was saved correctly and the check said it was
+            not, which is the one failure this screen must never produce.
+
+            Screen-only. The printed sheet keeps the plain grouped code, because a ruler of
+            index numbers is noise on paper and this prompt is not printed at all.
+          */}
+          <div data-testid="position-ruler" className="flex flex-wrap font-mono" style={{ gap: 2 }}>
+            {symbols.map((symbol, index) => {
+              const asked = positions.includes(index);
+              return (
+                <span
+                  key={`${index}-${symbol}`}
+                  className="flex flex-col items-center text-center"
+                  style={{
+                    width: 20,
+                    borderRadius: 'var(--ck-r-sm)',
+                    // Amber marks the four being asked for -- the same colour the amber
+                    // band uses, and the only place on this screen colour means anything.
+                    background: asked
+                      ? 'color-mix(in srgb, var(--ck-amber) 16%, transparent)'
+                      : 'transparent',
+                    color: asked ? 'var(--ck-amber-text)' : 'var(--ck-muted)',
+                    fontWeight: asked ? 500 : 400,
+                  }}
+                >
+                  <span style={{ fontSize: 13, lineHeight: 1.2 }}>{symbol}</span>
+                  <span className="ck-num" style={{ fontSize: 9, lineHeight: 1.2, opacity: 0.75 }}>
+                    {index + 1}
+                  </span>
+                </span>
+              );
+            })}
+          </div>
+
+          <div className="flex" style={{ gap: 'var(--ck-s2)' }}>
+            {positions.map((position, i) => (
+              <label key={position} className="flex flex-col items-center" style={{ gap: 2 }}>
+                <span data-testid="position-label" className="ck-small ck-muted ck-num">
+                  #{position + 1}
+                </span>
+                <input
+                  ref={(node) => {
+                    answers.current[i] = node;
+                  }}
+                  data-testid={`answer-${i}`}
+                  maxLength={1}
+                  className="input text-center font-mono uppercase"
+                  style={{ width: 34, paddingInline: 0 }}
+                />
+              </label>
+            ))}
+          </div>
+
+          {error !== null && (
+            <p data-testid="error" className="ck-small" style={{ color: 'var(--ck-fail-text)' }}>
+              {error}
+            </p>
+          )}
+
+          <button
+            type="button"
+            data-testid="confirm"
+            onClick={confirm}
+            className="btn btn-primary btn-block"
+          >
+            I have saved my Kit
+          </button>
+        </div>
       </div>
     </main>
   );

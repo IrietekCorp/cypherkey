@@ -343,4 +343,39 @@
     border: 0;
     margin: var(--ck-s4) 0;
   }
+
+  /* ---- the Recovery Kit on paper ---------------------------------------- */
+  /*
+   * `window.print()` from an MV3 popup does nothing — the dialog takes focus, the popup
+   * closes because it lost focus, and the print is silently cancelled — so the Kit is
+   * saved as a file instead and there is no Print button. These rules are still worth
+   * carrying: the sheet is printable from wherever that file is opened, and a browser
+   * that does print this document must not put a dark ground and an accent ramp on it.
+   *
+   * A Recovery Kit printed in the palette is a Recovery Kit that is hard to read on the
+   * one occasion it is ever used.
+   */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+    .print-kit {
+      background: #ffffff;
+      color: #000000;
+      border: 0;
+      padding: 0;
+    }
+    .print-kit .ck-muted {
+      color: #333333;
+    }
+    .kit-code {
+      /* Read aloud, typed by hand, under whatever light the drawer it lived in has. */
+      font-size: 16pt;
+      letter-spacing: 0.08em;
+      word-spacing: 0.2em;
+    }
+    .kit-consequences {
+      font-size: 10pt;
+    }
+  }
 }

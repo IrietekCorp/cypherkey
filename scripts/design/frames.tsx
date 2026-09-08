@@ -10,8 +10,15 @@
  * Example data, never real: a preview that needed a vault would need a passphrase.
  */
 import { createRoot } from 'react-dom/client';
+import { Enroll } from '../../extension/entrypoints/popup/Enroll';
+import { Feedback } from '../../extension/entrypoints/popup/Feedback';
+import { Generator } from '../../extension/entrypoints/popup/Generator';
+import { Import } from '../../extension/entrypoints/popup/Import';
+import { ItemEdit } from '../../extension/entrypoints/popup/ItemEdit';
 import { ItemView } from '../../extension/entrypoints/popup/ItemView';
+import { Onboarding } from '../../extension/entrypoints/popup/Onboarding';
 import { Profile } from '../../extension/entrypoints/popup/Profile';
+import { RecoveryKit } from '../../extension/entrypoints/popup/RecoveryKit';
 import { VaultList } from '../../extension/entrypoints/popup/VaultList';
 import type { VaultItem } from '../../extension/src/vault/item';
 
@@ -67,7 +74,46 @@ const items: VaultItem[] = [
 
 const noop = () => {};
 
+/*
+  Stubs, not fakes with behaviour.
+
+  These screens are being looked at, not driven: a preview that could actually sign up
+  would need a server, and one that could enrol would need a passphrase typed into it.
+  Each stub answers the one call its screen makes on mount and nothing else.
+*/
+const never = () => new Promise<never>(() => {});
+const enrollSession = {
+  authed: () => async () => ({
+    status: 200,
+    body: { required: 8, submitted: 5, remaining: 3, built: false },
+  }),
+  commitmentsFor: never,
+} as never;
+
 const FRAMES: Array<[string, React.ReactNode]> = [
+  [
+    '01/02 · Onboarding',
+    <Onboarding
+      key="onboarding"
+      session={{ signup: never } as never}
+      consentPolicyVersion="2026-09-01"
+      onComplete={noop}
+      onHasAccount={noop}
+    />,
+  ],
+  [
+    '03/04 · Recovery Kit',
+    <RecoveryKit
+      key="kit"
+      recoveryCode="K7QM2-8FTVX-4WNPD-9JRHS-3LBCG-6YZEA-5UK"
+      backupCodes={['4F2K-9QXM', '7TND-1BVR', '3JLP-6ZWC', '8HGS-2YEA', '5RUK-4MDF', '9CQT-7NPX']}
+      onConfirmed={noop}
+    />,
+  ],
+  [
+    '05 · Enrolment',
+    <Enroll key="enrol" session={enrollSession} enrollmentToken="t" onBuilt={noop} />,
+  ],
   [
     '09 · Vault',
     <VaultList
@@ -115,6 +161,26 @@ const FRAMES: Array<[string, React.ReactNode]> = [
       onSignOut={noop}
       onBack={noop}
     />,
+  ],
+  [
+    '12 · Item edit',
+    <ItemEdit key="edit" item={items[2] as never} kind="login" onSave={noop} onCancel={noop} />,
+  ],
+  [
+    '13 · Generator',
+    <div key="gen" className="ck-app" style={{ padding: 'var(--ck-s5)' }}>
+      <Generator onUse={noop} />
+    </div>,
+  ],
+  ['14 · Import', <Import key="import" onImport={noop} onCancel={noop} />],
+  [
+    '16 · Feedback',
+    <div key="feedback" className="ck-app" style={{ padding: 'var(--ck-s5)' }}>
+      <Feedback
+        version="0.1.0"
+        userAgent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36"
+      />
+    </div>,
   ],
 ];
 

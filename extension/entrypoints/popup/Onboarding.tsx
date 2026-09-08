@@ -211,8 +211,29 @@ export function Onboarding({
   };
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">Create your CypherKey</h1>
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s3)' }}>
+      {/*
+        Frames 01 and 02, on one screen.
+
+        The board splits onboarding across six steps. This does not: consent, identity and
+        the passphrase stay together because the passphrase is captured twice here and a
+        step boundary between the two attempts is a blur, and a blur voids the sample
+        (A-14.1). What the frames actually contribute is the reading order, the counter,
+        and the sentence that makes Phantom Keys land -- all of which are here.
+      */}
+      <header className="flex items-baseline justify-between" style={{ gap: 'var(--ck-s3)' }}>
+        <span className="ck-wordmark ck-small ck-muted">CypherKey</span>
+        <span data-testid="step" className="ck-small ck-muted ck-num">
+          {stage === 'first' ? '1 of 2' : '2 of 2'}
+        </span>
+      </header>
+
+      <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+        <h1 className="ck-h1">Your second factor is how you type</h1>
+        <p className="ck-small ck-muted">
+          We measure the timing of your keys — not what you type, just how.
+        </p>
+      </div>
 
       {/*
         First, and deliberately so. This used to sit below the passphrase field, which
@@ -223,40 +244,35 @@ export function Onboarding({
 
         Consent also belongs before the thing it consents to, not after it.
       */}
-      <label className="flex items-start gap-2 rounded border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-700">
+      <label
+        className="card ck-small flex items-start"
+        style={{ gap: 'var(--ck-s3)', cursor: 'pointer' }}
+      >
         <input
           type="checkbox"
           data-testid="consent"
           checked={consented}
           onChange={(e) => setConsented(e.target.checked)}
+          style={{ marginTop: 2, accentColor: 'var(--ck-accent)', flex: 'none' }}
         />
         <span>
           I agree that CypherKey may measure my typing rhythm on this passphrase, and only while the
-          Rhythm Light is visible. (Policy {consentPolicyVersion})
+          Rhythm Light is visible. <span className="ck-muted">(Policy {consentPolicyVersion})</span>
         </span>
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-600">Email</span>
-        <input
-          ref={email}
-          type="email"
-          data-testid="email"
-          className="rounded border border-neutral-300 px-2 py-1"
-        />
+      <label className="field">
+        <span>Email</span>
+        <input ref={email} type="email" data-testid="email" className="input" />
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-600">Username</span>
-        <input
-          ref={username}
-          data-testid="username"
-          className="rounded border border-neutral-300 px-2 py-1"
-        />
+      <label className="field">
+        <span>Username</span>
+        <input ref={username} data-testid="username" className="input" />
       </label>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-600">
+      <label className="field">
+        <span>
           {stage === 'first' ? 'Choose a passphrase' : 'Type it again, exactly the same way'}
         </span>
         <input
@@ -276,46 +292,61 @@ export function Onboarding({
             e.preventDefault();
             void submit();
           }}
-          className="rounded border border-neutral-300 px-2 py-1"
+          className="input"
         />
       </label>
 
-      <RhythmLight ref={light} state={capture.state} />
+      {/* X-1: the light is never hidden to tidy a layout. Capture stops if it is. */}
+      <div className="flex items-center" style={{ gap: 'var(--ck-s3)' }}>
+        <RhythmLight ref={light} state={capture.state} />
+        <p className="ck-small ck-muted">
+          The mark is lit whenever we are reading. If it is not lit, we are not reading.
+        </p>
+      </div>
 
       {first !== null && (
-        <p data-testid="counts" className="text-xs text-neutral-700">
+        <div className="card flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
           {/*
             The moment Phantom Keys become comprehensible. The web demo showed that
             people do not grasp them from prose, but they do from these two numbers
-            disagreeing.
+            disagreeing — so the numbers lead, and the sentence only explains the gap
+            when there is one.
           */}
-          {scriptLength(first.script)} keystrokes · {[...first.resolved].length} characters
-        </p>
+          <p data-testid="counts" className="ck-h2 ck-num">
+            {scriptLength(first.script)} keystrokes · {[...first.resolved].length} characters
+          </p>
+          {scriptLength(first.script) > [...first.resolved].length && (
+            <p className="ck-small ck-muted">
+              More keystrokes than characters — you corrected something, and that correction is part
+              of your key now. Type it the same way again.
+            </p>
+          )}
+        </div>
       )}
 
       {problems.length > 0 && (
-        <ul data-testid="problems" className="flex flex-col gap-1 text-xs text-rose-700">
+        <ul
+          data-testid="problems"
+          className="ck-small flex flex-col"
+          style={{ gap: 'var(--ck-s1)', color: 'var(--ck-fail-text)' }}
+        >
           {problems.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
       )}
 
-      <p className="text-xs text-neutral-500">
-        Strictness is set to Medium. It decides how much your typing may vary from day to day; you
-        can change it later in Settings.
-      </p>
-
-      <div className="flex items-center gap-2">
+      <div className="flex" style={{ gap: 'var(--ck-s2)' }}>
         <button
           type="button"
           data-testid="submit"
           disabled={busy}
           onMouseDown={preventFocusSteal}
           onClick={submit}
-          className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+          className="btn btn-primary"
+          style={{ flex: 1 }}
         >
-          {stage === 'first' ? 'Next' : 'Create account'}
+          {stage === 'first' ? 'Continue' : 'Create account'}
         </button>
 
         {/*
@@ -329,7 +360,7 @@ export function Onboarding({
             disabled={busy}
             onMouseDown={preventFocusSteal}
             onClick={startOver}
-            className="rounded border border-neutral-300 px-2 py-1 text-neutral-700 disabled:opacity-40"
+            className="btn btn-secondary"
           >
             Start over
           </button>
@@ -342,6 +373,11 @@ export function Onboarding({
         anyone who asks, and that is the disclosure `/auth/salt`'s fake salt exists to
         prevent.
       */}
+      <p className="ck-small ck-muted">
+        Strictness is set to Medium. It decides how much your typing may vary from day to day; you
+        can change it later in Settings.
+      </p>
+
       <button
         type="button"
         data-testid="have-account"
@@ -356,7 +392,7 @@ export function Onboarding({
           }
           onHasAccount(name);
         }}
-        className="self-start text-xs text-neutral-600 underline underline-offset-2 disabled:opacity-40"
+        className="btn btn-ghost ck-small self-start"
       >
         I already have an account
       </button>

@@ -151,71 +151,97 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
   };
 
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">Teach it your rhythm</h1>
-      <p className="text-xs text-neutral-600">
-        {/*
-          Deliberately NOT "type it fast once and slow once". Measured during M2-00g:
-          six natural samples plus one slow and one fast raised the median feature
-          spread from 8 ms to 21 ms and lifted a stranger from a clear fail to a
-          comfortable pass. A wider band cannot tell anyone apart; it just admits more
-          people. Real variation is learned from real logins.
-        */}
-        Type your passphrase the way you normally would. Don't try to be consistent — just be
-        yourself.
-      </p>
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s4)' }}>
+      {/* Frame 05. */}
+      <header className="flex items-baseline justify-between" style={{ gap: 'var(--ck-s3)' }}>
+        <span className="ck-wordmark ck-small ck-muted">CypherKey</span>
+        <span data-testid="step" className="ck-small ck-muted ck-num">
+          Sample {Math.min(submitted + 1, Math.max(required, 1))} of {required}
+        </span>
+      </header>
 
+      <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+        <h1 className="ck-h1">Teach it your rhythm</h1>
+        <p className="ck-small ck-muted">
+          {/*
+            Deliberately NOT "type it fast once and slow once". Measured during M2-00g:
+            six natural samples plus one slow and one fast raised the median feature
+            spread from 8 ms to 21 ms and lifted a stranger from a clear fail to a
+            comfortable pass. A wider band cannot tell anyone apart; it just admits more
+            people. Real variation is learned from real logins.
+          */}
+          Type your passphrase the way you normally would. Don't try to be consistent — just be
+          yourself.
+        </p>
+      </div>
+
+      {/*
+        Progress, not a score. How many samples are in is a fact the user can act on;
+        how well any of them scored is the one signal an attacker could iterate against.
+      */}
       <div
         data-testid="ring"
         data-submitted={submitted}
         data-required={required}
-        className="flex items-center gap-2"
+        className="flex items-center"
+        style={{ gap: 'var(--ck-s3)' }}
       >
-        <div className="h-2 flex-1 overflow-hidden rounded bg-neutral-200">
+        <div
+          className="flex-1 overflow-hidden"
+          style={{ height: 4, borderRadius: 2, background: 'var(--ck-inset)' }}
+        >
           <div
-            className="h-full bg-neutral-900 transition-all"
-            style={{ width: required === 0 ? '0%' : `${(submitted / required) * 100}%` }}
+            className="h-full transition-all"
+            style={{
+              width: required === 0 ? '0%' : `${(submitted / required) * 100}%`,
+              background: 'var(--ck-accent)',
+              borderRadius: 2,
+            }}
           />
         </div>
-        <span className="text-xs text-neutral-600">
+        <span className="ck-small ck-muted ck-num">
           {submitted} of {required}
         </span>
       </div>
 
-      <input
-        ref={setInput}
-        type="password"
-        data-testid="passphrase"
-        onFocus={begin}
-        /*
-          Eight samples in a row is the one screen where reaching for the mouse between
-          each is worst: it breaks the rhythm being measured. Enter ends a sample without
-          the pointer leaving the field, and A-14.1 treats it as a terminator that
-          produces no token, so it tokenizes identically to a click.
-        */
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' || busy || complete) return;
-          e.preventDefault();
-          void submit();
-        }}
-        disabled={complete || busy}
-        className="rounded border border-neutral-300 px-2 py-1"
-      />
+      <label className="field">
+        <span>{submitted === 0 ? 'Passphrase' : 'Type your passphrase again'}</span>
+        <input
+          ref={setInput}
+          type="password"
+          data-testid="passphrase"
+          onFocus={begin}
+          /*
+            Eight samples in a row is the one screen where reaching for the mouse between
+            each is worst: it breaks the rhythm being measured. Enter ends a sample without
+            the pointer leaving the field, and A-14.1 treats it as a terminator that
+            produces no token, so it tokenizes identically to a click.
+          */
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || busy || complete) return;
+            e.preventDefault();
+            void submit();
+          }}
+          disabled={complete || busy}
+          className="input"
+        />
+      </label>
 
+      {/* X-1: on screen at every stage. Capture refuses to run without it. */}
       <RhythmLight ref={setLight} state={capture.state} />
 
       {message !== null && (
-        <p data-testid="message" className="text-xs text-rose-700">
+        <p data-testid="message" className="ck-small" style={{ color: 'var(--ck-fail-text)' }}>
           {message}
         </p>
       )}
 
       {complete ? (
-        <>
-          <p className="text-xs text-neutral-600">
+        <div className="flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+          <p className="ck-small ck-muted">
             {/* A-4.6: the samples are deleted once the profile is built. Worth saying. */}
-            Your samples are turned into a profile and then deleted — the individual recordings are
-            not kept.
+            When the profile is built your samples are deleted. What is left is a set of timing
+            ranges — your passphrase is not in it.
           </p>
           <button
             ref={setBuildButton}
@@ -223,11 +249,11 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
             data-testid="build"
             disabled={busy}
             onClick={build}
-            className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+            className="btn btn-primary btn-block"
           >
             Build my profile
           </button>
-        </>
+        </div>
       ) : (
         <button
           type="button"
@@ -235,7 +261,7 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
           disabled={busy}
           onMouseDown={preventFocusSteal}
           onClick={submit}
-          className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+          className="btn btn-primary btn-block"
         >
           Record this one
         </button>
