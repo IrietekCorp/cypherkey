@@ -350,8 +350,9 @@ async function main(): Promise<void> {
       its own entrypoint, and reads `chrome.storage.session` from a document that did not
       write it. A test with a storage double proves none of that.
 
-      Enrolment is unfinished in this run, so there is no session to resume -- which
-      makes this the refusal path, and the refusal path is the one a user meets first.
+      Opened before the unlock, and left open across it. The refusal is the state a user
+      meets first, and leaving the tab open is what proves the page notices an unlock
+      that happens somewhere else.
     */
     const options = watch(await browser.newPage());
     await options.goto(`chrome-extension://${extensionId}/options.html`, { waitUntil: 'load' });
@@ -367,6 +368,185 @@ async function main(): Promise<void> {
       throw new Error('the options page is asking for a passphrase');
     }
     ok('it offers no passphrase box of its own');
+
+    // ---- finishing enrolment, and the first real unlock ----------------------
+
+    /**
+     * Focuses the passphrase field and waits for capture to arm before typing.
+     *
+     * `bringToFront` first, because this run now juggles three documents and a real
+     * popup is never the background tab. It also matters for the light: capture refuses
+     * to run beside one it cannot see (X-1), and the failure looks identical to a field
+     * that simply did not arm -- so the timeout reports what the light was actually
+     * showing rather than leaving that to be guessed.
+     */
+    const armAndType = async (target: Page, value: string) => {
+      await target.bringToFront();
+      await target.focus('[data-testid="passphrase"]');
+      try {
+        await waitFor(
+          'the light to arm',
+          async () =>
+            (await target.$eval(light, (el) => el.parentElement?.textContent ?? '')).includes(
+              'Ready',
+            ),
+          15_000,
+        );
+      } catch {
+        const state = await target.$eval(light, (el) => ({
+          state: el.getAttribute('data-state'),
+          label: el.parentElement?.textContent ?? '',
+        }));
+        throw new Error(
+          `the light never armed: data-state=${state.state}, it reads "${state.label.trim()}"`,
+        );
+      }
+      await target.keyboard.type(value, { delay: 45 });
+    };
+
+    /*
+      An unenrolled account logs in and goes back to enrolment rather than to a vault.
+      There is no profile, so nothing has ever been guarded here -- and until M2-00i's
+      second source of the enrolment token, this path stranded the account entirely.
+    */
+    await armAndType(reopened, PASSPHRASE);
+    await reopened.keyboard.press('Enter');
+    await reopened.waitForSelector('[data-testid="step"]', { timeout: 120_000 });
+    ok('unlocking resumed enrolment where the closed popup left it');
+
+    const stepText = async () =>
+      reopened.$eval('[data-testid="step"]', (el) => el.textContent ?? '');
+    await reopened.focus('[data-testid="passphrase"]');
+    for (let i = 0; i < 6; i += 1) {
+      await waitFor('the next sample to be armed', async () =>
+        (await reopened.$eval(light, (el) => el.parentElement?.textContent ?? '')).includes(
+          'Ready',
+        ),
+      );
+      const before = await stepText();
+      await reopened.keyboard.type(PASSPHRASE, { delay: 45 });
+      await reopened.keyboard.press('Enter');
+      // Either the counter moved on or the eighth sample turned Submit into Build.
+      await waitFor(
+        `sample ${i + 3} to be accepted`,
+        async () =>
+          (await reopened.$('[data-testid="build"]')) !== null || (await stepText()) !== before,
+        60_000,
+      );
+    }
+    ok('the remaining six samples were accepted, one focus between them');
+
+    await reopened.click('[data-testid="build"]');
+    // A-4.6: the samples are deleted at this point; what survives is a set of ranges.
+    await reopened.waitForSelector('[data-testid="forgot"]', { timeout: 120_000 });
+    ok('the profile was built, and the popup asked for a first real unlock');
+
+    /*
+      The first login scored against a profile, which is the whole product working.
+
+      A grey band is not a failure (X-3): it asks for a second sample and scores the
+      average. Retried twice at most, because a third would be indistinguishable from a
+      test that types until it gets in.
+    */
+    let greyRetries = 0;
+    await armAndType(reopened, PASSPHRASE);
+    await reopened.keyboard.press('Enter');
+    await waitFor(
+      'the vault to open',
+      async () => {
+        if ((await reopened.$('[data-testid="empty"]')) !== null) return true;
+        const message = await reopened
+          .$eval('[data-testid="message"]', (el) => el.textContent ?? '')
+          .catch(() => '');
+        if (message.includes('once more') && greyRetries < 2) {
+          greyRetries += 1;
+          await armAndType(reopened, PASSPHRASE);
+          await reopened.keyboard.press('Enter');
+        }
+        return false;
+      },
+      180_000,
+    );
+    ok(
+      greyRetries === 0
+        ? 'the first real unlock passed the rhythm check and the vault opened'
+        : `the vault opened after ${greyRetries} grey-band retype(s)`,
+    );
+
+    const unlockedStorage = await reopened.evaluate(async () => {
+      const api = (globalThis as unknown as { chrome: Record<string, never> })
+        .chrome as unknown as {
+        storage: {
+          local: { get(k: null): Promise<Record<string, unknown>> };
+          session: { get(k: null): Promise<Record<string, unknown>> };
+        };
+      };
+      return {
+        local: Object.keys(await api.storage.local.get(null)),
+        session: Object.keys(await api.storage.session.get(null)),
+      };
+    });
+    if (unlockedStorage.session.find((k) => k.includes('resume')) === undefined) {
+      throw new Error('an unlocked session left nothing resumable behind');
+    }
+    // The rule the whole product rests on: a live key never touches disk.
+    const leaked = unlockedStorage.local.find((k) => k.includes('resume'));
+    if (leaked !== undefined) throw new Error(`a resumable session was written to disk: ${leaked}`);
+    ok('the unlocked session is resumable, in session storage and not on disk');
+
+    // ---- the options page, on a session it did not create --------------------
+
+    /*
+      No reload. The page has been open since before the unlock, and `watchResume` is
+      subscribed to the storage key the popup just wrote -- which is a cross-document
+      event no unit test can produce.
+    */
+    await waitFor(
+      'the options page to notice the unlock on its own',
+      async () => (await options.$('[data-testid="strict-warning"]')) !== null,
+      60_000,
+    );
+    ok('the open options page picked up the unlock with no reload');
+
+    const devices = await options.$eval('[data-testid="devices"]', (el) => el.textContent ?? '');
+    if (!devices.includes('This browser')) {
+      throw new Error(`the device list did not come from the server: ${devices.slice(0, 120)}`);
+    }
+    ok('the device list came from the server over a device-signed request');
+
+    /*
+      A-17, both halves, against the real server.
+
+      This is the part that had never run. `authHash` on the wire is a derived value and
+      the server stores a password hash of it, so a screen sending the typed passphrase
+      is refused every time -- which is exactly what this screen used to do, with tests
+      passing.
+    */
+    // Foreground first. A click in a background tab hangs rather than fails: Puppeteer
+    // scrolls the element into view through an IntersectionObserver, and a tab Chrome is
+    // not rendering never fires one.
+    await options.bringToFront();
+    await options.click('[data-testid="biometric"]');
+    await waitFor('the refusal to be stated', async () =>
+      (await options.$eval('[data-testid="message"]', (el) => el.textContent ?? '').catch(() => ''))
+        .toLowerCase()
+        .includes('type your passphrase'),
+    );
+    ok('a weakening change with nothing typed is refused before it is sent');
+
+    await armAndType(options, PASSPHRASE);
+    // A real mouse press, which is the point: the click must not blur the field and
+    // void the sample it was meant to send.
+    await options.click('[data-testid="pause-3600000"]');
+    await options.waitForSelector('[data-testid="unpause"]', { timeout: 120_000 });
+    ok('the same change, with the passphrase typed, was accepted by the real server');
+
+    // ---- and the popup resumes ----------------------------------------------
+    await reopened.close();
+    const third = watch(await browser.newPage());
+    await third.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
+    await third.waitForSelector('[data-testid="empty"]', { timeout: 60_000 });
+    ok('reopening the popup landed in the vault, with no passphrase asked for again');
 
     if (consoleErrors.length > 0) {
       throw new Error(`the page logged errors:\n  ${consoleErrors.join('\n  ')}`);

@@ -972,9 +972,25 @@ the one requested, and refuses a pasted passphrase; the gate opens on a resumabl
 snapshot, refuses each way a snapshot can be unusable, follows the popup in both
 directions, and does not start a write loop against the area it is watching; an expired
 token is refreshed once and the rotated pair lands in the snapshot without moving the hard
-cap. Two more steps in `browser-e2e`: the options page mounts in real Chrome — its Worker,
-its React root, its read of another document's session storage — and offers no passphrase
-box. The console-error watch now covers every document the run opens, not just the first.
+cap.
+
+`browser-e2e` was extended from 21 steps to 33 to prove the rest of it in a real browser,
+because every part of this change is browser-only. It finishes the eight enrolment
+samples, builds the profile, unlocks against it and opens the vault. The options page is
+opened *before* the unlock and left open across it, so what is asserted is that it comes
+alive on its own — `chrome.storage.session.onChanged` reaching a second document is not
+something a storage double can produce. Then the device list, which arrives over a
+device-signed request on a session this document did not create; a weakening change with
+nothing typed, refused before it is sent; and the same change accepted with the passphrase
+typed, which is the A-17 round trip and had never run outside a test double. Finally the
+popup is reopened and lands in the vault with nothing asked for again.
+
+Two things the extension cost, both worth keeping. Puppeteer clicks and focuses **hang**
+rather than fail in a background tab — `scrollIntoViewIfNeeded` waits on an
+IntersectionObserver, and Chrome does not render a tab it is not showing — so anything
+that touches a document now brings it to the front first, which is also what a real popup
+always is. And the console-error watch was attached to the first page only, so everything
+the reopened popup and the options page logged had been going unread.
 
 ### M2-15 · "Not your rhythm" email · S · deps: none · **DONE**
 

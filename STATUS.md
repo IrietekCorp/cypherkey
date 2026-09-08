@@ -14,7 +14,7 @@ the beta itself.
 |---|---|---|
 | API | `https://api.cypherkey.io` | Cloud Run + Cloud SQL behind an HTTPS LB with Cloud Armor. `/healthz` → `{"ok":true,"db":"postgres"}` |
 | Site | `https://cypherkey.io` | Cloud Storage + Cloud CDN. Light by default, Light/Dark/Auto in the nav |
-| Extension | not published | Loads unpacked from `extension/.output/chrome-mv3`; onboarding through unlock works end to end in real Chrome |
+| Extension | not published | Loads unpacked from `extension/.output/chrome-mv3`; onboarding, enrolment, unlock, the vault and the settings page all work end to end in real Chrome |
 
 GCP project is **`<GCP_PROJECT_ID>`** (project number `<GCP_PROJECT_NUMBER>`, `us-central1`).
 `gcloud` is **not installed system-wide** on this machine — the SDK tarball lives in the
@@ -42,6 +42,13 @@ under it.**
   `extension/src/authed.ts` refreshes once on a 401, writes the rotated pair back into the
   shared snapshot (A-9 rotates, and two documents read one snapshot), and retries.
 
+**`browser-e2e` now goes the whole way**, 21 steps to 33. It finishes the eight enrolment
+samples, builds the profile, unlocks against it, and opens the vault — then leaves the
+options page open across the unlock and watches it come alive on its own, lists the
+devices the server actually holds, refuses a weakening change with nothing typed, and has
+the same change accepted with the passphrase typed. That last step is the A-17 round trip,
+which had never run outside a test double.
+
 Before that, and already on `main`: `8a296ab` light by default with a Light/Dark/System
 control, `76f728d` the site CSP hash for the pre-paint theme stamp, and `1d25a28` the ten
 screens the restyle had not reached.
@@ -65,9 +72,9 @@ screens the restyle had not reached.
 - **Crossing into or out of Strict is not reachable from any screen.** It is a re-key
   rather than a settings change; `session.changeStrictness()` exists, is tested, and has
   no caller. The settings screen hands off and says so rather than pretending.
-- The settings screen has **never been driven against the real server** — it was
-  unreachable until now, so the A-17 round trip is exercised by unit tests and by
-  `server/`'s own tests, not end to end. Worth doing on the first real unlock.
+- The **grey band** is a real outcome of `browser-e2e`, not a failure: the run types the
+  same passphrase at a fixed 45 ms and still retypes when X-3 asks. It is capped at two
+  retries, because a third would be a test typing until it gets in.
 - Editing the inline `<script>` in `site/index.html` requires updating the CSP on the
   `cypherkey-site-backend` backend bucket **first**. `site/csp.test.ts` will fail if you
   forget; `deploy/README.md` has the command.
@@ -84,7 +91,7 @@ bun run design-preview       # writes design-preview.png — both palettes, thir
 
 # the browser e2e needs a build pointed at its own server, not production
 VITE_CYPHERKEY_API=http://127.0.0.1:8791 bun run build:extension
-bun run browser-e2e          # 23 steps in real Chrome
+bun run browser-e2e          # 33 steps in real Chrome
 bun run build:extension      # put the production build back
 ```
 
