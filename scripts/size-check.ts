@@ -152,6 +152,34 @@ async function eagerPopupBytes(): Promise<number> {
     if (src !== undefined) await walk(src);
   }
 
+  /*
+    Stylesheets, and the fonts they pull in.
+    
+    This counted only JS reachable from `src=`, so the entire design layer -- tokens,
+    components, the Rhythm Light, and any bundled typeface -- was invisible to the
+    budget. A stylesheet is downloaded and parsed before the popup paints, and a font is
+    the single heaviest thing a redesign is likely to add, so a budget that cannot see
+    either would have reported 72% while the real payload grew past the limit.
+  */
+  for (const match of html.matchAll(/href="([^"]+\.css)"/g)) {
+    const href = match[1];
+    if (href === undefined) continue;
+    const path = `${OUT}/${href.replace(/^\//, '')}`;
+    if (!(await Bun.file(path).exists())) continue;
+    seen.add(path);
+    // `url(...)` inside the sheet: fonts and any other asset it fetches on the way in.
+    const css = await Bun.file(path).text();
+    const dir = path.slice(0, path.lastIndexOf('/'));
+    for (const asset of css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) {
+      const target = asset[1];
+      if (target === undefined || target.startsWith('data:')) continue;
+      const resolved = target.startsWith('/')
+        ? `${OUT}${target}`
+        : new URL(target, `file:///${dir}/`).pathname;
+      if (await Bun.file(resolved).exists()) seen.add(resolved);
+    }
+  }
+
   let total = 0;
   for (const path of seen) total += await gzippedSize(path);
   return total;

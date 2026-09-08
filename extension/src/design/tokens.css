@@ -1,0 +1,148 @@
+/*
+ * Nocturne, as the CypherKey style guide fixes it.
+ *
+ * Rebuilt from `docs/CypherKey Style Guide (handoff).dc.html` rather than bound to the
+ * system's own stylesheet, which is not in this repository -- the boards link to
+ * `_ds/nocturne-cf337738-.../styles.css` and that file was never handed over. The guide
+ * is therefore the source of truth here: if a value below disagrees with it, the guide
+ * wins and this file is wrong.
+ *
+ * Dark is the default and light is the same tokens remapped, so no markup changes
+ * between themes. Nothing outside this file may hard-code a colour, radius or step.
+ */
+
+:root {
+  /* -- ground and surface ------------------------------------------------ */
+  --ck-bg: #161826;
+  --ck-surface: #232532;
+  --ck-text: #e9e9ed;
+
+  /* -- accent ramp -------------------------------------------------------
+     The accent is a line, a mark or a glow. It is never a flood fill, and the
+     teal #0D9488 is retired from the extension entirely -- cypherkey.io only. */
+  --ck-accent: #9184d9;
+  --ck-accent-300: #d2cefd; /* body text and links on the accent */
+  --ck-accent-400: #b5abfc; /* active marks */
+  --ck-accent-700: #5d5294; /* borders */
+  --ck-accent-900: #2b2741; /* tinted fills */
+
+  /* -- neutral ramp ------------------------------------------------------ */
+  --ck-neutral-200: #d7d9e2; /* text on tints */
+  --ck-neutral-300: #c3c6d3;
+  --ck-neutral-500: #9397ab; /* ALL muted text. Never 600/700 for copy. */
+  --ck-neutral-800: #3f424d; /* borders */
+  --ck-neutral-900: #292b31; /* insets and row hovers */
+
+  --ck-border: var(--ck-neutral-800);
+  --ck-inset: var(--ck-neutral-900);
+  --ck-muted: var(--ck-neutral-500);
+
+  /* -- bands, kept off the accent ---------------------------------------- */
+  --ck-pass: #34d399;
+  --ck-pass-text: #6ee7b7;
+  --ck-amber: #fbbf24;
+  --ck-amber-text: #fcd34d;
+  --ck-fail: #e5484d;
+  --ck-fail-text: #fca5a5;
+
+  /* -- the Rhythm Light, per state (guide §06) ---------------------------- */
+  --ck-light-idle-bar: #595d6c;
+  --ck-light-idle-ring: #3f424d;
+  --ck-light-idle-mid: #292b31;
+  --ck-light-ready-bar: #b5abfc;
+  --ck-light-ready-ring: #5d5294;
+  --ck-light-ready-mid: #2b2741;
+  --ck-light-recording-bar: #d2cefd;
+  --ck-light-captured-bar: #b5abfc;
+  --ck-light-matched-check: #07281d;
+  --ck-light-matched-ring: #1e6b52;
+  --ck-light-amber-ring: #8a6516;
+  --ck-light-fail-bar: #f87171;
+  --ck-light-fail-ring: #7a2b2e;
+  --ck-light-fail-mid: #5c2124;
+
+  /* -- radii. Cards are 10 in the popup, 14 on the board. ----------------- */
+  --ck-r-sm: 4px;
+  --ck-r-md: 8px;
+  --ck-r-card: 10px;
+  --ck-r-lg: 14px;
+
+  /* -- spacing: a 0.70x scale, dense on purpose --------------------------- */
+  --ck-s1: 2.8px;
+  --ck-s2: 5.6px;
+  --ck-s3: 8.4px;
+  --ck-s4: 11.2px;
+  --ck-s5: 16.8px;
+  --ck-s6: 22.4px;
+
+  /* -- elevation. Use these, never a hand-rolled shadow. ------------------ */
+  --ck-shadow-1: 0 1px 2px rgb(0 0 0 / 0.28);
+  --ck-shadow-2: 0 4px 12px rgb(0 0 0 / 0.34);
+
+  /* Inter, bundled. The MV3 policy admits no remote font. */
+  --ck-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/*
+ * Light: the same tokens on the theme root, remapped.
+ *
+ * Muted text takes the DARKER steps here. Carrying a dark-ground grey onto a light
+ * surface was the most common defect in the design review, so the muted token is
+ * remapped explicitly rather than left to inherit.
+ */
+:root[data-theme="light"] {
+  --ck-bg: #eceef8;
+  --ck-surface: #f7f8fd;
+  --ck-text: #232532;
+
+  --ck-accent: #5d5294;
+  --ck-accent-300: #5d5294;
+  --ck-accent-400: #6d61a8;
+  --ck-accent-700: #d2cefd; /* tint borders */
+  --ck-accent-900: #e7e5fe; /* tint fills */
+
+  --ck-border: #cfd3e5;
+  --ck-inset: #e4e7f4;
+  --ck-muted: #595d6c;
+
+  --ck-pass: #047857;
+  --ck-pass-text: #065f46;
+  --ck-amber: #b45309;
+  --ck-amber-text: #92400e;
+  --ck-fail: #be123c;
+  --ck-fail-text: #9f1239;
+
+  --ck-light-idle-bar: #8b90a3;
+  --ck-light-idle-ring: #cfd3e5;
+  --ck-light-idle-mid: #e4e7f4;
+  --ck-light-ready-bar: #6d61a8;
+  --ck-light-ready-ring: #d2cefd;
+  --ck-light-ready-mid: #e7e5fe;
+  --ck-light-recording-bar: #5d5294;
+  --ck-light-captured-bar: #6d61a8;
+  --ck-light-matched-check: #ffffff;
+  --ck-light-matched-ring: #a7f3d0;
+  --ck-light-amber-ring: #fcd9a5;
+  --ck-light-fail-bar: #be123c;
+  --ck-light-fail-ring: #fbc9d3;
+  --ck-light-fail-mid: #fde7ec;
+
+  --ck-shadow-1: 0 1px 2px rgb(35 37 50 / 0.08);
+  --ck-shadow-2: 0 4px 12px rgb(35 37 50 / 0.12);
+}
+
+/*
+ * The theme is stamped on the root by `design/theme.ts`, not resolved in CSS.
+ *
+ * A media query here would mean keeping a second copy of every light token inside it,
+ * and two copies of a palette drift. The extension owns its own document, so it can set
+ * the attribute once and let one block do the work -- which also leaves room for a user
+ * preference to override the OS later without restructuring anything.
+ */
+:root {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}

@@ -333,7 +333,7 @@ describe('the light says which state it is actually in', () => {
     const { session } = fakeSession();
     await render(session);
     await typePassphrase([...'abc']);
-    expect(host.textContent).toContain('Recording your rhythm');
+    expect(host.textContent).toContain('Listening to your rhythm');
   });
 });
 
@@ -414,7 +414,7 @@ describe('Enter advances to the second attempt with capture still armed', () => 
     await click('submit');
 
     // Whatever happened, capture must not have re-armed a field nobody is typing in.
-    expect(text()).not.toContain('Recording your rhythm');
+    expect(text()).not.toContain('Listening to your rhythm');
   });
 });
 

@@ -1,1 +1,12 @@
 @import "tailwindcss";
+
+/*
+ * The design system, ahead of anything screen-specific.
+ *
+ * Tokens first, then the components that read them, then the Rhythm Light. Screens
+ * compose from these classes and take every colour, radius and step from the variables --
+ * the guide is explicit that nothing may hard-code a value the tokens already carry.
+ */
+@import "../../src/design/tokens.css";
+@import "../../src/design/components.css";
+@import "../../src/design/rhythm-light.css";

@@ -69,7 +69,9 @@ describe('accessibility (X-1)', () => {
 
   test('capture being active is stated outright, not implied by colour', async () => {
     await render({ status: 'capturing', pulses: 1 });
-    expect(host.textContent).toContain('Recording your rhythm');
+    // "Listening to your rhythm" is the style guide's copy for this state; the
+    // explicit sentence is X-1's requirement and is kept alongside it.
+    expect(host.textContent).toContain('Listening to your rhythm');
     expect(host.textContent).toContain('being measured while this light is on');
   });
 });
@@ -83,11 +85,17 @@ describe('pulses', () => {
     expect(dot()?.getAttribute('data-pulses')).toBe('5');
   });
 
-  test('a pulse changes the light, so it is visibly alive', async () => {
-    await render({ status: 'capturing', pulses: 2 });
-    const even = dot()?.getAttribute('style');
+  /**
+   * Form A leaves a ring on every key. The mechanism changed with the design pass -- it
+   * was an opacity flip on the dot, it is now a pulse element mounted per keystroke --
+   * so this asserts the ring exists while keys are arriving and not before.
+   */
+  test('a keystroke emits a ring, so the light is visibly alive', async () => {
+    await render({ status: 'capturing', pulses: 0 });
+    expect(host.querySelector('.ck-light-pulse')).toBeNull();
+
     await render({ status: 'capturing', pulses: 3 });
-    expect(dot()?.getAttribute('style')).not.toBe(even);
+    expect(host.querySelector('.ck-light-pulse')).not.toBeNull();
   });
 });
 
@@ -121,8 +129,8 @@ describe('every cancel reason renders its own message', () => {
 describe('bands', () => {
   test.each([
     ['pass', 'Rhythm matched'],
-    ['grey', 'Rhythm looks different'],
-    ['fail', 'Rhythm did not match'],
+    ['grey', 'You look a little different today'],
+    ['fail', "That didn't match your rhythm"],
   ] as const)('%s says %s', async (band, expected) => {
     await render({ status: 'done', events: [] }, band);
     expect(host.textContent).toContain(expected);
@@ -135,7 +143,7 @@ describe('bands', () => {
    */
   test('the label is a pure function of the band', async () => {
     await render({ status: 'capturing', pulses: 9 }, 'fail');
-    expect(host.textContent).toContain('Rhythm did not match');
+    expect(host.textContent).toContain("That didn't match your rhythm");
     expect(host.textContent).not.toContain('Rhythm matched');
   });
 });

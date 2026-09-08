@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-cf337738-f2aa-40bf-9c02-c43f59e6730d/styles.css">
+<script src="_ds/nocturne-cf337738-f2aa-40bf-9c02-c43f59e6730d/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+  @keyframes ck-bar { 0%, 100% { transform: scaleY(0.45); } 50% { transform: scaleY(1); } }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page size="letter">
+<section class="page" style="--color-bg:#eceef8;--color-surface:#f7f8fd;--color-text:#232532;--color-divider:#cfd3e5;--color-accent:#5d5294;--color-neutral-500:#595d6c;--color-neutral-800:#dcdfef;background:var(--color-surface);color:var(--color-text);font-family:var(--font-body);padding:30px 36px 22px;box-sizing:border-box;font-size:8.8px;line-height:1.42;display:flex;flex-direction:column">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:18px;border-bottom:2px solid var(--color-text);padding-bottom:8px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true"><g fill="var(--color-accent)"><rect x="1" y="5" width="2" height="6" rx="1"></rect><rect x="5" y="2" width="2" height="12" rx="1"></rect><rect x="9" y="6" width="2" height="4" rx="1"></rect><rect x="13" y="4" width="2" height="8" rx="1"></rect></g></svg>
+      <div>
+        <div style="font-family:var(--font-heading);font-size:16px;font-weight:600;letter-spacing:-0.015em;line-height:1.1">CypherKey — design &amp; style guide</div>
+        <div style="font-size:8.8px;color:var(--color-neutral-500);margin-top:2px">Implementation spec for the MV3 extension. Everything here is decided; anything not here is open.</div>
+      </div>
+    </div>
+    <div style="font-size:7.6px;color:var(--color-neutral-500);text-align:right;line-height:1.42;flex:none">Design system: Nocturne (bound)<br>Reference board: CypherKey Design Pass v2<br>380px popup + options page · build 0.9.4</div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px 16px;align-items:start;padding-top:10px">
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">01 · Foundation</div>
+        <p style="margin:0 0 4px">Every surface loads the bound system and takes all colour, type, spacing, radius and shadow from its variables. Never hard-code a value the tokens already carry.</p>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:7.2px;line-height:1.6;background:var(--color-bg);border:1px solid var(--color-neutral-800);padding:5px 6px;word-break:break-all">&lt;link rel="stylesheet" href="_ds/nocturne-…/styles.css"&gt;<br>&lt;script src="_ds/nocturne-…/_ds_bundle.js"&gt;&lt;/script&gt;</div>
+        <p style="margin:4px 0 0"><strong style="font-weight:600">Type:</strong> Inter throughout — heading token at weight 500, body at 400. Never bolder than 500; hierarchy is size and space.</p>
+        <p style="margin:3px 0 0"><strong style="font-weight:600">Icons:</strong> Phosphor, regular, 13–20px, on currentColor. The only bespoke glyph is the four-bar mark.</p>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">02 · Palette — dark (default)</div>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;flex:none;background:#161826;border:1px solid var(--color-divider)"></span><span style="flex:1">Ground</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px;color:var(--color-neutral-500)">#161826</span></div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;flex:none;background:#232532;border:1px solid var(--color-divider)"></span><span style="flex:1">Surface / cards</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px;color:var(--color-neutral-500)">#232532</span></div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;flex:none;background:#e9e9ed;border:1px solid var(--color-divider)"></span><span style="flex:1">Text</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px;color:var(--color-neutral-500)">#e9e9ed</span></div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;flex:none;background:#9184d9;border:1px solid var(--color-divider)"></span><span style="flex:1">Accent — lines, marks, glows</span><span style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px;color:var(--color-neutral-500)">#9184d9</span></div>
+        </div>
+        <p style="margin:5px 0 0"><strong style="font-weight:600">Accent ramp:</strong> 300 #d2cefd body text and links · 400 #b5abfc active marks · 700 #5d5294 borders · 900 #2b2741 tinted fills.</p>
+        <p style="margin:3px 0 0"><strong style="font-weight:600">Neutral ramp:</strong> 800 #3f424d borders · 900 #292b31 insets and row hovers · 500 #9397ab all muted text · 200/300 text on tints.</p>
+        <p style="margin:3px 0 0">The teal #0D9488 is retired from the extension — cypherkey.io only. Do not reintroduce it in product UI.</p>
+        <p style="margin:3px 0 0"><strong style="font-weight:600">Never</strong> flood an area with the accent or any saturated fill; it is a 1px line, a mark or a glow. No pure black or white. Radii 4 / 8 / 14. Spacing 2.8 / 5.6 / 8.4 / 11.2 / 16.8 / 22.4 — a 0.70× scale, dense on purpose. Elevation is the shadow tokens, never hand-rolled.</p>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">03 · Palette — light</div>
+        <p style="margin:0 0 4px">Same tokens, remapped on the theme root. Nothing in the markup changes.</p>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:7.2px;line-height:1.65;background:var(--color-bg);border:1px solid var(--color-neutral-800);padding:5px 6px">bg #eceef8 · surface #f7f8fd<br>text #232532 · divider #cfd3e5<br>accent #5d5294 · muted #595d6c<br>tint fills #e7e5fe · tint borders #d2cefd</div>
+        <p style="margin:4px 0 0">Muted text uses the <em>darker</em> steps here. Never carry dark-ground greys onto a light surface — inverted ramps were the most common defect in review.</p>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">04 · Contrast floor</div>
+        <p style="margin:0">Body text 4.5:1 against what is actually behind it; 3:1 only at headline scale. On the dark ground muted text stops at neutral-500 — never 600 or 700 for copy a user reads. Vault-row usernames, meta lines, counts and captions are all copy.</p>
+      </div>
+
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">05 · Components</div>
+        <p style="margin:0 0 4px">Compose from the system's classes. Do not build parallel components or restyle these; inline styles only for size, padding rhythm and layout.</p>
+        <div style="display:flex;flex-direction:column;gap:2.5px;font-family:ui-monospace,Menlo,monospace;font-size:7.6px;line-height:1.5">
+          <div><strong style="font-weight:600">.btn</strong> + -primary (accent outline, never filled), -secondary, -ghost, -icon, -block</div>
+          <div><strong style="font-weight:600">.field .input</strong> label above control · .radio + .dot · .seg + .seg-opt</div>
+          <div><strong style="font-weight:600">.card</strong> every panel and field row — radius 10 in the popup, 14 on the board</div>
+          <div><strong style="font-weight:600">.table .tag .nav</strong> options page only · .hr exists, avoid it — prefer whitespace</div>
+        </div>
+        <p style="margin:4px 0 0"><strong style="font-weight:600">States are already built in.</strong> Hover and pressed come from the accent ramp, focus is a 2px accent outline at 2px offset, disabled drops to 45%. Never leave a default browser focus ring; never restyle these per screen.</p>
+        <p style="margin:3px 0 0">Every button and tag label carries <span style="font-family:ui-monospace,Menlo,monospace;font-size:7.6px">white-space:nowrap</span> — two-word labels wrap and spill otherwise.</p>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">06 · The mark &amp; the Rhythm Light</div>
+        <p style="margin:0 0 5px">The wordmark and the light are the same object. Four bars, 2px wide, 2.5px gap, heights <strong style="font-weight:600">8 / 16 / 6 / 12</strong>, radius 1px — one keyframe, staggered.</p>
+        <div style="display:flex;align-items:center;gap:11px;background:var(--color-bg);border:1px solid var(--color-neutral-800);padding:7px 9px;margin-bottom:5px">
+          <div style="position:relative;width:44px;height:44px;flex:none">
+            <div style="position:absolute;inset:0;border-radius:50%;border:1px solid #5d5294"></div>
+            <div style="position:absolute;inset:9px;border-radius:50%;border:1px solid #b5abfc"></div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:2.5px">
+              <div style="width:2px;height:8px;border-radius:1px;background:#5d5294;transform-origin:center;animation:ck-bar 1.05s ease-in-out infinite"></div>
+              <div style="width:2px;height:16px;border-radius:1px;background:#5d5294;transform-origin:center;animation:ck-bar 1.05s ease-in-out infinite;animation-delay:0.14s"></div>
+              <div style="width:2px;height:6px;border-radius:1px;background:#5d5294;transform-origin:center;animation:ck-bar 1.05s ease-in-out infinite;animation-delay:0.28s"></div>
+              <div style="width:2px;height:12px;border-radius:1px;background:#5d5294;transform-origin:center;animation:ck-bar 1.05s ease-in-out infinite;animation-delay:0.42s"></div>
+            </div>
+          </div>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:7.2px;line-height:1.65">@keyframes ck-bar { 0%,100% scaleY(.45) · 50% scaleY(1) }<br>1.05s ease-in-out infinite · delays 0 / .14 / .28 / .42s<br>ring 44px · mid ring inset 9px · pulse ring 2px<br>ck-pulse: scale(.6)→scale(1.2), 420ms, per keydown</div>
+        </div>
+        <p style="margin:0 0 4px">A static state emits <strong style="font-weight:600">no</strong> animation declaration at all — pausing mid-keyframe squashes the first bar. Start and stop by swapping the shorthand and reapplying the delays.</p>
+        <div style="display:flex;flex-direction:column;gap:1.5px;font-size:8px">
+          <div style="display:flex;gap:5px;font-weight:600;border-bottom:1px solid var(--color-divider);padding-bottom:2px"><span style="width:48px;flex:none">State</span><span style="flex:1">Bars</span><span style="width:88px;flex:none">Rings</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Idle</span><span style="flex:1">#595d6c, static</span><span style="width:88px;flex:none">#3f424d / #292b31</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Ready</span><span style="flex:1">#b5abfc, running</span><span style="width:88px;flex:none">#5d5294 / #2b2741</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Recording</span><span style="flex:1">#d2cefd, running + 4px glow</span><span style="width:88px;flex:none">+ pulse per keydown</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Captured</span><span style="flex:1">#b5abfc, static</span><span style="width:88px;flex:none">#5d5294 on #2b2741</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Matched</span><span style="flex:1">check #07281D on #34D399</span><span style="width:88px;flex:none">#1e6b52 + green tint</span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Amber</span><span style="flex:1">#FBBF24, static, line across</span><span style="width:88px;flex:none">#8a6516 <em>dashed</em></span></div>
+          <div style="display:flex;gap:5px"><span style="width:48px;flex:none">Fail</span><span style="flex:1">#F87171, static</span><span style="width:88px;flex:none">#7A2B2E + inner #5c2124</span></div>
+        </div>
+        <p style="margin:4px 0 0"><strong style="font-weight:600">Accessibility is spec.</strong> The light owns an ARIA live region announcing listening / matched / different. Under prefers-reduced-motion the bars hold still and step colour. Beside the light, always two counts — &#8220;14 keystrokes · 13 characters&#8221; — tabular numerals, never wrapped mid-phrase.</p>
+      </div>
+
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">07 · Bands — semantic, off the accent</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="border-left:3px solid #34D399;padding-left:6px"><div style="font-weight:600">Pass &#8805; 0.62 · #34D399 / text #6EE7B7</div><div style="color:var(--color-neutral-500)">Unremarkable. On screen about a second, never announced.</div></div>
+          <div style="border-left:3px solid #FBBF24;padding-left:6px"><div style="font-weight:600">Amber 0.45–0.62 · #FBBF24 / text #FCD34D</div><div style="color:var(--color-neutral-500)">&#8220;Grey&#8221; in code and docs, &#8220;amber&#8221; in the UI. Nothing amplifies it: no filled panel, no icon, no exclamation — a line and a dot, and the copy de-escalates. Light theme #B45309 / text #92400E.</div></div>
+          <div style="border-left:3px solid #E5484D;padding-left:6px"><div style="font-weight:600">Fail &lt; 0.45 · #E5484D / text #FCA5A5</div><div style="color:var(--color-neutral-500)">Refused, email sent. Band, score and error code only.</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">08 · Voice</div>
+        <p style="margin:0 0 4px">Plain, warm, a little playful, never smug. A limit is one sentence, never a wall. A failure says what to do next. Verbatim:</p>
+        <div style="font-size:8px;border-left:1px solid var(--color-divider);padding-left:6px;display:flex;flex-direction:column;gap:2.5px">
+          <div>&#8220;That didn&#8217;t match your rhythm. Try again, or confirm it&#8217;s you another way.&#8221;</div>
+          <div>&#8220;That&#8217;s your rhythm. We&#8217;ll remember it — not what you typed, just how.&#8221;</div>
+          <div>&#8220;You look a little different today.&#8221; / &#8220;Type it again&#8221; · &#8220;Use a Backup Code&#8221;</div>
+          <div>&#8220;Copying doesn&#8217;t reveal it.&#8221;</div>
+        </div>
+        <p style="margin:4px 0 0">Costly actions state their price in the same breath: &#8220;Sign out — clears this device. You&#8217;ll re-enrol your rhythm here.&#8221;</p>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">09 · Hard limits — breaking one means it cannot ship</div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div><strong style="font-weight:600">X-1</strong> The Rhythm Light is visible whenever capture runs. Restyle it, move it, make it beautiful. Do not make it subtle, collapse it into a hover state, or hide it to tidy a layout — capture then stops entirely.</div>
+          <div><strong style="font-weight:600">Privacy</strong> No favicons, ever. Vault rows use letter marks generated locally from the entry, tinted by category.</div>
+          <div><strong style="font-weight:600">A-4.1</strong> Diagnostics stop at band, score and error code. No feature vector, key script, commitment or debug panel.</div>
+          <div><strong style="font-weight:600">Recovery</strong> The Recovery Kit is a printed artefact. No dark grounds, no accent fills, nothing dependent on colour; the cost of using it appears twice and every value clears 4.5:1 in ink.</div>
+          <div><strong style="font-weight:600">Platform</strong> 380px popup. No remote scripts, styles or fonts — bundle the typeface. 150 KB gzipped eager budget, 72% used.</div>
+          <div><strong style="font-weight:600">Scope</strong> Logins and secure notes only. No cards, no identities, no team or shared-vault surface, no mobile.</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">10 · Surfaces to restyle</div>
+        <p style="margin:0 0 3px">Fourteen popup frames plus the options page, all on the reference board:</p>
+        <p style="margin:0">Onboarding consent · Onboarding passphrase · Recovery Kit · Kit confirm (position ruler) · Enrolment · <strong style="font-weight:600">Unlock</strong> · Unlock amber · Unlock refused + step-up · Vault · Vault empty &amp; no-results · Item detail · Item edit · Generator · Import · Profile · Feedback · Options page · printed Recovery Kit sheet.</p>
+        <p style="margin:3px 0 0">Unlock is seen more than all the others combined — restyle it first. Item rows follow one pattern: a bordered card, a leading Phosphor icon in the accent, label above value, action on the right. Reveal is a round icon button, Copy stays worded, and the two are never merged.</p>
+      </div>
+
+    </div>
+
+  </div>
+
+  <div style="margin-top:auto;border-top:1px solid var(--color-divider);padding-top:6px;display:flex;justify-content:space-between;gap:18px;font-size:7.6px;color:var(--color-neutral-500)">
+    <span><strong style="font-weight:600;color:var(--color-text)">Still open:</strong> which Rhythm Light form ships (Concentric recommended; Trace and Arc are on the board), and light-theme coverage beyond Unlock, Vault and Item detail.</span>
+    <span style="flex:none">Page 1 of 1</span>
+  </div>
+
+</section>
+</doc-page>
+</x-dc>
+</body>
+</html>
