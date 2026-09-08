@@ -3,6 +3,7 @@ import type { SignupResult } from '../../../core/client/session';
 import { createSync } from '../../../core/client/sync';
 import type { BrowserApi } from '../../src/autofill';
 import { API_BASE_URL } from '../../src/config';
+import { THEME_KEY, type ThemeChoice, applyTheme, parseChoice } from '../../src/design/theme';
 import { bindPopupLifecycle, createLockController } from '../../src/lock';
 import { clearResume, loadResume, saveResume, sessionArea, touchResume } from '../../src/resume';
 import { createExtensionSession } from '../../src/session';
@@ -71,6 +72,14 @@ export function App() {
   const [viewing, setViewing] = useState<VaultItem | null>(null);
   const [importing, setImporting] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  /**
+   * Appearance, remembered.
+   *
+   * Light until the user says otherwise. `system` is one of the three things they can
+   * ask for, not the absence of an answer -- defaulting to it would hand anyone on a dark
+   * OS a dark product, which is the look this moved away from.
+   */
+  const [theme, setTheme] = useState<ThemeChoice>('light');
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );
@@ -189,6 +198,21 @@ export function App() {
     },
     [session, refreshItems],
   );
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      const stored = await localArea()?.get(THEME_KEY);
+      if (live && stored !== undefined) setTheme(parseChoice(stored[THEME_KEY]));
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // One place writes `data-theme`; this keeps it following the choice, and the OS while
+  // the choice is `system`.
+  useEffect(() => applyTheme(document, window, theme), [theme]);
 
   /**
    * Is there an account on this device already?
@@ -394,6 +418,11 @@ export function App() {
     return (
       <Profile
         username={username}
+        theme={theme}
+        onTheme={(choice) => {
+          setTheme(choice);
+          void localArea()?.set({ [THEME_KEY]: choice });
+        }}
         version={EXTENSION_VERSION}
         openSettings={optionsOpener}
         onLock={() => {

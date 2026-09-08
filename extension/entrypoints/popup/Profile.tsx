@@ -1,5 +1,10 @@
+import type { ThemeChoice } from '../../src/design/theme';
+
 export type ProfileProps = {
   username: string;
+  /** The current appearance choice, and the way to change it. */
+  theme: ThemeChoice;
+  onTheme(choice: ThemeChoice): void;
   /** What this build is, so a bug report names it. */
   version: string;
   /** Absent outside the extension, where there is no options page to open. */
@@ -23,6 +28,8 @@ export type ProfileProps = {
  */
 export function Profile({
   username,
+  theme,
+  onTheme,
   version,
   openSettings,
   onLock,
@@ -66,6 +73,39 @@ export function Profile({
             {username.trim() === '' ? 'This device' : username}
           </span>
           <span className="ck-small ck-muted">Signed in on this device</span>
+        </div>
+      </div>
+
+      {/*
+        Appearance sits here rather than in Settings because it costs nothing and is
+        undone by tapping again -- unlike Strictness, which re-keys the account and needs
+        the room the options page has to say so.
+
+        Three options, not a switch: "System" is a real answer, and a two-state toggle
+        forces someone with no opinion to invent one.
+      */}
+      <div
+        className="flex items-center justify-between"
+        style={{
+          gap: 'var(--ck-s3)',
+          paddingTop: 'var(--ck-s3)',
+          borderTop: '1px solid var(--ck-border)',
+        }}
+      >
+        <span className="ck-small ck-muted">Appearance</span>
+        <div className="seg" data-testid="theme">
+          {(['light', 'dark', 'system'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              data-testid={`theme-${option}`}
+              aria-pressed={theme === option}
+              onClick={() => onTheme(option)}
+              className="seg-opt ck-small"
+            >
+              {option === 'light' ? 'Light' : option === 'dark' ? 'Dark' : 'System'}
+            </button>
+          ))}
         </div>
       </div>
 

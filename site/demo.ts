@@ -1,3 +1,4 @@
+import { initTheme } from './theme';
 import './styles.css';
 
 import { startCapture } from '../core/biometrics/capture';
@@ -952,3 +953,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initEventListeners();
   setState('idle');
 });
+
+// The appearance control lives beside the demo's own wiring.
+initTheme();

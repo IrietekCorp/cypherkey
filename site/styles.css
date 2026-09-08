@@ -14,31 +14,36 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
 
 @theme {
-  /* Ground and surface */
-  --color-ck-bg: #161826;
-  --color-ck-surface: #232532;
-  --color-ck-raised: #2a2d3d;
-  --color-ck-text: #e9e9ed;
+  /*
+    Light is the default here as it is in the extension, on the founder's call: the dark
+    ground read as heavier than a password manager wants to be, and a marketing page is
+    read once by a stranger in daylight. Dark is a tap away and the palettes are the
+    guide's, unchanged -- only which one arrives first has moved.
+  */
+  --color-ck-bg: #eceef8;
+  --color-ck-surface: #f7f8fd;
+  --color-ck-raised: #ffffff;
+  --color-ck-text: #232532;
 
   /* Accent ramp. A line, a mark or a glow -- never a flood fill. */
-  --color-ck-accent: #9184d9;
-  --color-ck-accent-300: #d2cefd;
-  --color-ck-accent-400: #b5abfc;
-  --color-ck-accent-700: #5d5294;
-  --color-ck-accent-900: #2b2741;
+  --color-ck-accent: #5d5294;
+  --color-ck-accent-300: #4b4179;
+  --color-ck-accent-400: #6d61a8;
+  --color-ck-accent-700: #d2cefd;
+  --color-ck-accent-900: #e7e5fe;
 
-  /* Neutral ramp. Muted copy stops at 500; never darker for anything read. */
-  --color-ck-muted: #9397ab;
-  --color-ck-border: #3f424d;
-  --color-ck-inset: #292b31;
+  /* On a light surface muted copy takes the darker step, never a dark-ground grey. */
+  --color-ck-muted: #595d6c;
+  --color-ck-border: #cfd3e5;
+  --color-ck-inset: #e4e7f4;
 
   /* Bands, kept off the accent. */
-  --color-ck-pass: #34d399;
-  --color-ck-pass-text: #6ee7b7;
-  --color-ck-amber: #fbbf24;
-  --color-ck-amber-text: #fcd34d;
-  --color-ck-fail: #e5484d;
-  --color-ck-fail-text: #fca5a5;
+  --color-ck-pass: #047857;
+  --color-ck-pass-text: #065f46;
+  --color-ck-amber: #b45309;
+  --color-ck-amber-text: #92400e;
+  --color-ck-fail: #be123c;
+  --color-ck-fail-text: #9f1239;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --radius-ck: 10px;
@@ -65,15 +70,15 @@ h4 {
 @keyframes rhythm-pulse {
   0% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.6);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ck-accent) 60%, transparent);
   }
   50% {
     transform: scale(1.6);
-    box-shadow: 0 0 0 10px rgba(13, 148, 136, 0);
+    box-shadow: 0 0 0 10px transparent;
   }
   100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
@@ -100,7 +105,7 @@ h4 {
   display: inline-block;
   width: 3px;
   height: 14px;
-  background-color: #0d9488;
+  background-color: var(--color-ck-accent);
   border-radius: 2px;
   margin: 0 1px;
   transition: transform 0.15s ease, background-color 0.2s ease;
@@ -116,30 +121,61 @@ h4 {
   position: relative;
 }
 
+/*
+ * The light's states, on the tokens.
+ *
+ * These were the last of the retired teal and a pair of hard-coded slates, which meant
+ * the one element the product is named for kept a palette the rest of the site had left
+ * -- and the idle ring vanished on the dark ground. Band colours come from the same
+ * pass/amber/fail tokens the score copy uses, so the two never disagree.
+ */
 .rhythm-light-dot.idle {
-  background-color: #94a3b8;
-  box-shadow: 0 0 0 2px #e2e8f0;
+  background-color: var(--color-ck-muted);
+  box-shadow: 0 0 0 2px var(--color-ck-border);
 }
 
 .rhythm-light-dot.listening {
-  background-color: #0d9488;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.25), 0 0 12px rgba(13, 148, 136, 0.4);
+  background-color: var(--color-ck-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ck-accent) 25%, transparent), 0 0 12px
+    color-mix(in srgb, var(--color-ck-accent) 40%, transparent);
 }
 
 .rhythm-light-dot.pass {
-  background-color: #059669;
-  box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.3), 0 0 16px rgba(5, 150, 105, 0.5);
+  background-color: var(--color-ck-pass);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-pass) 30%, transparent), 0 0 16px
+    color-mix(in srgb, var(--color-ck-pass) 50%, transparent);
   transform: scale(1.2);
 }
 
 .rhythm-light-dot.grey {
-  background-color: #d97706;
-  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.3), 0 0 16px rgba(217, 119, 6, 0.5);
+  background-color: var(--color-ck-amber);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-amber) 30%, transparent), 0 0 16px
+    color-mix(in srgb, var(--color-ck-amber) 50%, transparent);
 }
 
 .rhythm-light-dot.fail {
-  background-color: #dc2626;
-  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.3), 0 0 16px rgba(220, 38, 38, 0.5);
+  background-color: var(--color-ck-fail);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-fail) 30%, transparent), 0 0 16px
+    color-mix(in srgb, var(--color-ck-fail) 50%, transparent);
+}
+
+/*
+ * The primary action, and it is an outline.
+ *
+ * This matches the extension's `.btn-primary` exactly: an accent outline that fills on
+ * hover. The guide keeps the accent ramp for a line, a mark or a glow -- never a flood
+ * fill -- and the six buttons that ignored that were filled with `--ck-accent-900`,
+ * which on the light ground is a pale lavender behind dark text. They read as disabled.
+ */
+.site-btn-primary {
+  background: transparent;
+  border: 1px solid var(--color-ck-accent-700);
+  color: var(--color-ck-accent-300);
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+.site-btn-primary:hover {
+  background: var(--color-ck-accent-900);
+  border-color: var(--color-ck-accent);
 }
 
 /*
@@ -176,4 +212,41 @@ h4 {
 .strictness-option[aria-pressed="true"] {
   background: var(--color-ck-accent-900);
   color: var(--color-ck-accent-300);
+}
+
+/*
+ * Dark, as the same variables remapped.
+ *
+ * Tailwind's `@theme` emits custom properties, so overriding them here re-points every
+ * generated class at once -- no second set of `dark:` variants in the markup, which is a
+ * second copy of the design and drifts from the first.
+ */
+[data-theme="dark"] {
+  --color-ck-bg: #161826;
+  --color-ck-surface: #232532;
+  --color-ck-raised: #2a2d3d;
+  --color-ck-text: #e9e9ed;
+
+  --color-ck-accent: #9184d9;
+  --color-ck-accent-300: #d2cefd;
+  --color-ck-accent-400: #b5abfc;
+  --color-ck-accent-700: #5d5294;
+  --color-ck-accent-900: #2b2741;
+
+  --color-ck-muted: #9397ab;
+  --color-ck-border: #3f424d;
+  --color-ck-inset: #292b31;
+
+  --color-ck-pass: #34d399;
+  --color-ck-pass-text: #6ee7b7;
+  --color-ck-amber: #fbbf24;
+  --color-ck-amber-text: #fcd34d;
+  --color-ck-fail: #e5484d;
+  --color-ck-fail-text: #fca5a5;
+
+  color-scheme: dark;
+}
+
+:root {
+  color-scheme: light;
 }

@@ -107,6 +107,8 @@ const FRAMES: Array<[string, React.ReactNode]> = [
     <Profile
       key="profile"
       username="mreyes"
+      theme="light"
+      onTheme={noop}
       version="0.1.0"
       openSettings={noop}
       onLock={noop}
@@ -116,23 +118,49 @@ const FRAMES: Array<[string, React.ReactNode]> = [
   ],
 ];
 
+/*
+  Both palettes, side by side.
+
+  A theme is not checkable one at a time: the defects are contrast failures and colours
+  that only resolve on one ground, and those are invisible until the two sit next to each
+  other. Each row stamps `data-theme` on its own wrapper, which is the same attribute the
+  document carries at runtime, so the tokens resolve exactly as they will in the popup.
+*/
 const host = document.getElementById('frames');
 if (host !== null) {
-  for (const [label, node] of FRAMES) {
-    const figure = document.createElement('figure');
-    figure.style.cssText = 'margin:0;display:flex;flex-direction:column;gap:8px';
+  for (const theme of ['light', 'dark'] as const) {
+    const row = document.createElement('section');
+    row.dataset.theme = theme;
+    row.style.cssText = 'display:flex;gap:24px;flex-wrap:wrap;padding:24px;border-radius:12px';
+    row.style.background = theme === 'light' ? '#dfe3f2' : '#0b0d16';
 
-    const caption = document.createElement('figcaption');
-    caption.textContent = label;
-    caption.style.cssText = 'font:500 12px ui-sans-serif,system-ui;color:#9397ab';
+    const heading = document.createElement('h2');
+    heading.textContent = theme === 'light' ? 'Light — the default' : 'Dark';
+    heading.style.cssText = `width:100%;margin:0;font:500 13px ui-sans-serif,system-ui;color:${
+      theme === 'light' ? '#595d6c' : '#9397ab'
+    }`;
+    row.append(heading);
 
-    // The popup's real width, and a height that shows where a screen would scroll.
-    const box = document.createElement('div');
-    box.style.cssText =
-      'width:380px;height:560px;overflow:hidden;border:1px solid #3f424d;border-radius:8px;background:#161826';
+    for (const [label, node] of FRAMES) {
+      const figure = document.createElement('figure');
+      figure.style.cssText = 'margin:0;display:flex;flex-direction:column;gap:8px';
 
-    figure.append(caption, box);
-    host.append(figure);
-    createRoot(box).render(node);
+      const caption = document.createElement('figcaption');
+      caption.textContent = label;
+      caption.style.cssText = `font:500 12px ui-sans-serif,system-ui;color:${
+        theme === 'light' ? '#595d6c' : '#9397ab'
+      }`;
+
+      // The popup's real width, and a height that shows where a screen would scroll.
+      const box = document.createElement('div');
+      box.style.cssText =
+        'width:380px;height:560px;overflow:hidden;border-radius:8px;background:var(--ck-bg)';
+      box.style.border = `1px solid ${theme === 'light' ? '#cfd3e5' : '#3f424d'}`;
+
+      figure.append(caption, box);
+      row.append(figure);
+      createRoot(box).render(node);
+    }
+    host.append(row);
   }
 }

@@ -7,6 +7,27 @@
   <title>CypherKey — Keystroke-Rhythm Zero-Knowledge Password Manager</title>
   <meta name="description" content="Open-source zero-knowledge password manager where your password only works when you type it. Built-in typing rhythm second factor." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%239184d9'/></svg>" />
+  <!--
+    The palette, stamped before first paint.
+
+    `site/theme.ts` owns the control, but it is a module and so runs after the document
+    has been parsed and painted. A visitor who chose dark would watch the page load light
+    and then swap. This is the same three-state resolution, inline, and `initTheme()`
+    re-stamps the identical value a moment later.
+  -->
+  <script>
+    (function () {
+      try {
+        var choice = localStorage.getItem("cypherkey.theme") || "light";
+        var dark =
+          choice === "dark" ||
+          (choice === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
 </head>
 <body class="bg-ck-bg text-ck-text min-h-screen antialiased selection:bg-ck-accent-900 selection:text-ck-text flex flex-col justify-between">
 
@@ -17,7 +38,7 @@
   </div>
 
   <!-- Navigation Bar -->
-  <nav class="sticky top-0 z-40 bg-ck-bg/90 backdrop-blur-md border-b border-ck-border shadow-xs">
+  <nav class="sticky top-0 z-40 bg-ck-bg backdrop-blur-md border-b border-ck-border shadow-xs">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
       <a href="#" class="flex items-center gap-2.5 group">
         <span class="w-3.5 h-3.5 rounded-full bg-ck-accent shadow-[0_0_10px_rgba(145,132,217,0.55)] group-hover:scale-125 transition-transform duration-200"></span>
@@ -28,6 +49,12 @@
         <a href="#how-it-works" class="text-ck-muted hover:text-ck-accent-300 transition hidden sm:inline">How It Works</a>
         <a href="#safety" class="text-ck-muted hover:text-ck-accent-300 transition hidden md:inline">Threat Model</a>
         <a href="./one-pager.html" class="text-ck-muted hover:text-ck-accent-300 transition">One-Pager</a>
+        <!-- Appearance. Three states, matching the extension: "System" is a real answer. -->
+        <div class="flex items-center gap-0.5 rounded-lg border border-ck-border bg-ck-inset p-0.5" role="group" aria-label="Appearance">
+          <button type="button" data-theme-choice="light" aria-pressed="false" class="rounded px-2 py-1 text-xs text-ck-muted aria-pressed:bg-ck-accent-900 aria-pressed:text-ck-accent-300">Light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false" class="rounded px-2 py-1 text-xs text-ck-muted aria-pressed:bg-ck-accent-900 aria-pressed:text-ck-accent-300">Dark</button>
+          <button type="button" data-theme-choice="system" aria-pressed="false" class="rounded px-2 py-1 text-xs text-ck-muted aria-pressed:bg-ck-accent-900 aria-pressed:text-ck-accent-300">Auto</button>
+        </div>
         <!-- HIDDEN UNTIL PUBLIC RELEASE — the repository is private; this 404s. Restore by removing this comment and its closing marker.
         <a
           href="https://github.com/IrietekCorp/cypherkey"
@@ -48,7 +75,7 @@
   <!-- Hero Section -->
   <header class="max-w-5xl mx-auto px-4 sm:px-6 pt-16 pb-12 text-center">
     <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-xs font-semibold tracking-wide mb-6 shadow-xs">
-      <span class="w-2 h-2 rounded-full bg-ck-accent-900 animate-pulse"></span>
+      <span class="w-2 h-2 rounded-full bg-ck-accent animate-pulse"></span>
       Zero-Knowledge Vault &bull; Behavioral 2FA &bull; Open Source
     </div>
 
@@ -179,10 +206,10 @@
             <div id="setup-error" class="text-xs font-medium text-ck-fail hidden"></div>
           </div>
 
-          <div class="p-4 rounded-xl bg-ck-accent-900/70 border border-ck-accent-900 text-xs text-ck-text flex items-start gap-3">
+          <div class="p-4 rounded-xl bg-ck-accent-900/70 border border-ck-accent-700 text-xs text-ck-text flex items-start gap-3">
             <span class="text-ck-accent-300 text-lg leading-none">💡</span>
             <div class="space-y-1">
-              <strong class="text-ck-accent-900 block font-semibold">How this demonstration works:</strong>
+              <strong class="text-ck-accent-300 block font-semibold">How this demonstration works:</strong>
               <span>
                 1. You will type your chosen passphrase <strong>8 times</strong> so CypherKey can calculate your personal rhythm baseline.<br/>
                 2. <strong>Add Phantom Keys if you like.</strong> Type extra keys and delete them &mdash; an extra letter you backspace away, a tap of <kbd class="bg-ck-surface/70 px-1 py-0.5 rounded border border-ck-accent-300 font-mono text-[11px]">Esc</kbd> mid-word. They never reach the passphrase, so the phrase above stays what it is, but they become part of your secret. Do it the same way in all 8 samples.<br/>
@@ -194,7 +221,7 @@
 
           <button
             id="btn-begin-enroll"
-            class="w-full py-3.5 px-6 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-base transition-all shadow-md shadow-ck-accent/20 flex items-center justify-center gap-2"
+            class="w-full py-3.5 px-6 rounded-xl site-btn-primary font-bold text-base transition-all flex items-center justify-center gap-2"
           >
             <span>Begin Enrollment (8 Samples)</span>
             &rarr;
@@ -263,7 +290,7 @@
               <div class="flex items-center gap-2">
                 <span id="enroll-key-counter" class="text-xs font-mono font-medium text-ck-muted">0 / 0 keys</span>
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-[11px] font-semibold">
-                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent-900 animate-ping"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent animate-ping"></span>
                   Listening
                 </span>
               </div>
@@ -309,7 +336,7 @@
           <div class="flex justify-end gap-3 pt-2">
             <button
               id="btn-submit-enroll-sample"
-              class="px-6 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm shadow-xs transition"
+              class="px-6 py-2.5 rounded-xl site-btn-primary font-bold text-sm shadow-xs transition"
             >
               Submit Sample &crarr;
             </button>
@@ -338,7 +365,7 @@
           <div class="pt-2">
             <button
               id="btn-goto-challenge"
-              class="py-3.5 px-8 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-base transition-all shadow-md shadow-ck-accent/20"
+              class="py-3.5 px-8 rounded-xl site-btn-primary font-bold text-base transition-all"
             >
               Hand Keyboard to a Friend &rarr;
             </button>
@@ -460,7 +487,7 @@
               <div class="flex items-center gap-2">
                 <span id="you-key-counter" class="text-xs font-mono font-medium text-ck-muted">0 / 0 keys</span>
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ck-accent-900 border border-ck-accent-700 text-ck-accent-300 text-[11px] font-semibold">
-                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent-900 animate-ping"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-ck-accent animate-ping"></span>
                   Listening
                 </span>
               </div>
@@ -497,7 +524,7 @@
           <div class="flex justify-end gap-3 pt-2">
             <button
               id="btn-submit-you-challenge"
-              class="px-6 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm shadow-xs transition"
+              class="px-6 py-2.5 rounded-xl site-btn-primary font-bold text-sm shadow-xs transition"
             >
               Evaluate Your Rhythm &crarr;
             </button>
@@ -595,7 +622,7 @@
             </button>
             <button
               id="btn-new-passphrase"
-              class="px-5 py-2.5 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text text-sm font-bold shadow-xs transition"
+              class="px-5 py-2.5 rounded-xl site-btn-primary text-sm font-bold shadow-xs transition"
             >
               Start New Passphrase
             </button>
@@ -839,7 +866,7 @@
           />
           <button
             type="submit"
-            class="px-6 py-3 rounded-xl bg-ck-accent-900 hover:bg-ck-accent-900 text-ck-text font-bold text-sm transition shadow-xs"
+            class="px-6 py-3 rounded-xl site-btn-primary font-bold text-sm transition shadow-xs"
           >
             Notify Me
           </button>
@@ -855,7 +882,7 @@
   <footer class="border-t border-ck-border bg-ck-surface py-10 text-ck-muted text-xs">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
       <div class="flex items-center gap-3">
-        <span class="w-2.5 h-2.5 rounded-full bg-ck-accent-900"></span>
+        <span class="w-2.5 h-2.5 rounded-full bg-ck-accent"></span>
         <span class="text-ck-text font-bold">CypherKey</span>
         <span>&copy; 2026. Built with privacy and consent by design.</span>
       </div>

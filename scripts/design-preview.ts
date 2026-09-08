@@ -43,10 +43,10 @@ const styles = await Bun.file(join(OUT, css)).text();
   first `</script>` inside a string literal, and the rest of the file renders as visible
   text -- which is exactly what the first attempt produced.
 */
-const html = `<!doctype html><html data-theme="dark"><head><meta charset="utf-8">
+const html = `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/popup.css">
-<style>body{margin:0;padding:24px;background:#0b0d16}</style></head>
-<body><div id="frames" style="display:flex;gap:24px;flex-wrap:wrap"></div>
+<style>body{margin:0;padding:24px;background:#f2f4fb}</style></head>
+<body><div id="frames" style="display:flex;flex-direction:column;gap:24px"></div>
 <script type="module" src="/frames.js"></script></body></html>`;
 
 const server = Bun.serve({
@@ -69,7 +69,7 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox'],
 });
 const page = await browser.newPage();
-await page.setViewport({ width: 1720, height: 700, deviceScaleFactor: 2 });
+await page.setViewport({ width: 1760, height: 700, deviceScaleFactor: 2 });
 await page.goto(`http://127.0.0.1:${server.port}/`, { waitUntil: 'networkidle0' });
 await page.screenshot({ path: SHOT, fullPage: true });
 await browser.close();

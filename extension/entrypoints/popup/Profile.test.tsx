@@ -42,13 +42,25 @@ const click = async (id: string) => {
 };
 
 type Counts = { lock: number; signOut: number; back: number; settings: number };
+type Chosen = { theme: string | null };
 
-const render = async (over: { username?: string; withSettings?: boolean } = {}) => {
+const chosen: Chosen = { theme: null };
+const forgetChoice = () => {
+  chosen.theme = null;
+};
+
+const render = async (
+  over: { username?: string; withSettings?: boolean; theme?: 'light' | 'dark' | 'system' } = {},
+) => {
   const counts: Counts = { lock: 0, signOut: 0, back: 0, settings: 0 };
   await act(async () => {
     root.render(
       <Profile
         username={over.username ?? 'shawn'}
+        theme={over.theme ?? 'system'}
+        onTheme={(choice) => {
+          chosen.theme = choice;
+        }}
         version="0.1.0"
         openSettings={
           over.withSettings === false
@@ -102,6 +114,29 @@ describe('Profile', () => {
     expect(el('lock')?.textContent).toContain('stays registered');
     // Board copy (frame 15): the price is stated in the same breath.
     expect(el('sign-out')?.textContent).toContain('re-enrol your rhythm');
+  });
+
+  /**
+   * Appearance is a popup control precisely because it is cheap: tapping again undoes it.
+   * Three options rather than a switch -- "System" is a real answer, and a two-state
+   * toggle makes someone with no opinion invent one.
+   */
+  describe('the appearance control', () => {
+    test('offers light, dark and system, and marks the current one', async () => {
+      forgetChoice();
+      await render({ theme: 'dark' });
+      expect(el('theme-light')).not.toBeNull();
+      expect(el('theme-dark')?.getAttribute('aria-pressed')).toBe('true');
+      expect(el('theme-light')?.getAttribute('aria-pressed')).toBe('false');
+      expect(el('theme-system')?.getAttribute('aria-pressed')).toBe('false');
+    });
+
+    test('a choice reaches the caller', async () => {
+      forgetChoice();
+      await render({ theme: 'system' });
+      await click('theme-dark');
+      expect(chosen.theme).toBe('dark');
+    });
   });
 
   /** A-16: crossing into Strict re-keys the account, so it is not a popup control. */
