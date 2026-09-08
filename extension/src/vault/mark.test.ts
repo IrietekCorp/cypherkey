@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { VaultItem } from './item';
-import { hueFor, initialsFor, itemMark } from './mark';
+import { initialsFor, itemMark } from './mark';
 
 const login = (over: Partial<Extract<VaultItem, { kind: 'login' }>> = {}): VaultItem => ({
   kind: 'login',
@@ -34,6 +34,12 @@ describe('initialsFor', () => {
     expect(initialsFor('my-bank.co.uk')).toBe('MB');
   });
 
+  test('punctuation is not a word', () => {
+    // "Wifi — flat" split to ["Wifi", "—", "flat"] and took the dash as an initial.
+    expect(initialsFor('Wifi — flat')).toBe('WF');
+    expect(initialsFor('Mail · Work')).toBe('MW');
+  });
+
   test('never returns nothing', () => {
     expect(initialsFor('')).toBe('?');
     expect(initialsFor('   ')).toBe('?');
@@ -43,43 +49,44 @@ describe('initialsFor', () => {
   test('non-latin names keep their own characters', () => {
     // Slicing by code point, not by UTF-16 unit, so a surrogate pair is not halved.
     expect(initialsFor('日本銀行')).toBe('日本');
-    expect(initialsFor('🦊 Firefox')).toBe('🦊F');
+    expect(initialsFor('Санкт Петербург')).toBe('СП');
+  });
+
+  /**
+   * An emoji in a title is decoration, and "🦊F" is not initials anyone recognises. It
+   * used to be kept; skipping it falls through to the words that carry the name.
+   */
+  test('an emoji is not an initial', () => {
+    expect(initialsFor('🦊 Firefox')).toBe('FI');
+    // Unless it is all there is, in which case there is nothing else to show.
+    expect(initialsFor('🦊')).toBe('?');
   });
 });
 
-describe('hueFor', () => {
-  test('is stable for the same key', () => {
-    expect(hueFor('github.com')).toBe(hueFor('github.com'));
+describe('the tint is the category, not the entry', () => {
+  test('a login and a note are tinted differently', () => {
+    const loginMark = itemMark(login());
+    const noteMark = itemMark({ kind: 'note', id: 'n1', title: 'Wifi', body: '', updatedAt: 1 });
+    expect(loginMark.kind).toBe('login');
+    expect(noteMark.kind).toBe('note');
   });
 
-  test('ignores case and surrounding space, so one site is one colour', () => {
-    expect(hueFor(' GitHub.com ')).toBe(hueFor('github.com'));
-  });
-
-  test('is in range', () => {
-    for (const key of ['a', 'github.com', '', 'a very long name indeed', '日本']) {
-      const hue = hueFor(key);
-      expect(hue).toBeGreaterThanOrEqual(0);
-      expect(hue).toBeLessThan(360);
-    }
-  });
-
-  test('different sites generally differ', () => {
-    const hues = new Set(
-      ['github.com', 'stripe.com', 'google.com', 'linear.app', 'figma.com'].map(hueFor),
+  /**
+   * A per-entry hue was tried first and reads better as decoration, but it makes colour
+   * mean nothing: with every row a different shade, telling logins from notes at a glance
+   * requires reading them. §09 fixes the tint to the category.
+   */
+  test('two different logins share a tint', () => {
+    expect(itemMark(login({ host: 'github.com' })).kind).toBe(
+      itemMark(login({ host: 'stripe.com' })).kind,
     );
-    // Not a guarantee -- 360 buckets collide -- but a hash that returned one value for
-    // everything would pass every test above and make the whole list one colour.
-    expect(hues.size).toBeGreaterThan(3);
   });
 });
 
 describe('itemMark', () => {
-  test('a login is coloured by its host, so a rename keeps its colour', () => {
-    const before = itemMark(login({ title: 'GitHub' }));
-    const after = itemMark(login({ title: 'Work GitHub' }));
-    expect(after.hue).toBe(before.hue);
-    expect(after.initials).toBe('WG');
+  test('a renamed login keeps its category and takes new initials', () => {
+    expect(itemMark(login({ title: 'Work GitHub' })).initials).toBe('WG');
+    expect(itemMark(login({ title: 'Work GitHub' })).kind).toBe('login');
   });
 
   test('a login with no title falls back to the host', () => {
@@ -89,7 +96,7 @@ describe('itemMark', () => {
   test('a note is known by its title', () => {
     const mark = itemMark({ kind: 'note', id: 'n1', title: 'Wifi Codes', body: '', updatedAt: 1 });
     expect(mark.initials).toBe('WC');
-    expect(mark.hue).toBe(hueFor('Wifi Codes'));
+    expect(mark.kind).toBe('note');
   });
 
   /** The reason this module exists rather than an <img src=…> pointing at a favicon. */

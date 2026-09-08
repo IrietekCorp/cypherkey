@@ -457,17 +457,12 @@ export function App() {
       )}
       <VaultList
         items={items}
+        username={username}
         onOpen={setViewing}
         onAdd={(kind) => setEditing({ kind })}
         onProfile={() => setShowProfile(true)}
+        onImport={() => setImporting(true)}
       />
-      <button
-        type="button"
-        onClick={() => setImporting(true)}
-        className="self-start px-4 pb-3 font-sans text-xs text-neutral-500 underline"
-      >
-        Import from another manager
-      </button>
       <Feedback version={EXTENSION_VERSION} userAgent={navigator.userAgent} />
     </>
   );

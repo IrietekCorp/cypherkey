@@ -30,65 +30,90 @@ export function Profile({
   onBack,
 }: ProfileProps) {
   return (
-    <main className="flex h-full flex-col gap-4 p-4 font-sans text-sm">
-      <header className="flex items-center gap-2">
+    <main
+      className="ck-app flex h-full flex-col"
+      style={{ padding: 'var(--ck-s4)', gap: 'var(--ck-s4)' }}
+    >
+      <header className="flex items-center">
         <button
           type="button"
           data-testid="back"
           onClick={onBack}
-          className="rounded px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100"
+          className="btn btn-ghost ck-small"
         >
           ← Vault
         </button>
       </header>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center" style={{ gap: 'var(--ck-s3)' }}>
         <span
           aria-hidden="true"
-          className="grid h-11 w-11 place-items-center rounded-full bg-neutral-900 text-base font-semibold text-white"
+          className="grid shrink-0 place-items-center"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            background: 'var(--ck-accent-900)',
+            color: 'var(--ck-accent-300)',
+            border: '1px solid var(--ck-accent-700)',
+            fontWeight: 500,
+          }}
         >
           {(username.trim()[0] ?? '?').toUpperCase()}
         </span>
         <div className="flex min-w-0 flex-col">
-          <span data-testid="profile-username" className="truncate text-base font-semibold">
+          <span data-testid="profile-username" className="ck-h1 truncate">
             {username.trim() === '' ? 'This device' : username}
           </span>
-          <span className="text-xs text-neutral-500">Signed in on this device</span>
+          <span className="ck-small ck-muted">Signed in on this device</span>
         </div>
       </div>
 
-      <dl className="flex flex-col gap-2 border-t border-neutral-200 pt-3 text-xs">
-        <div className="flex justify-between gap-3">
-          <dt className="text-neutral-500">Rhythm</dt>
+      <dl
+        className="flex flex-col"
+        style={{
+          gap: 'var(--ck-s2)',
+          paddingTop: 'var(--ck-s3)',
+          borderTop: '1px solid var(--ck-border)',
+        }}
+      >
+        <div className="flex justify-between" style={{ gap: 'var(--ck-s3)' }}>
+          <dt className="ck-small ck-muted">Rhythm</dt>
           {/*
             Stated, not editable. Strictness changes the KDF input, so crossing into
             Strict re-keys the account (A-16) -- a decision that needs the room the
             settings screen has, not a control in a popup.
           */}
-          <dd data-testid="profile-rhythm" className="text-neutral-800">
+          <dd data-testid="profile-rhythm" className="ck-small">
             Measured on unlock
           </dd>
         </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-neutral-500">Version</dt>
-          <dd data-testid="profile-version" className="font-mono text-neutral-800">
+        <div className="flex justify-between" style={{ gap: 'var(--ck-s3)' }}>
+          <dt className="ck-small ck-muted">Version</dt>
+          <dd data-testid="profile-version" className="ck-small ck-num font-mono">
             {version}
           </dd>
         </div>
       </dl>
 
-      <div className="flex flex-col gap-2 border-t border-neutral-200 pt-3">
+      <div
+        className="flex flex-col"
+        style={{
+          gap: 'var(--ck-s2)',
+          paddingTop: 'var(--ck-s3)',
+          borderTop: '1px solid var(--ck-border)',
+        }}
+      >
         {openSettings !== undefined && (
           <button
             type="button"
             data-testid="open-settings"
             onClick={openSettings}
-            className="rounded border border-neutral-300 px-2 py-1 text-left hover:bg-neutral-100"
+            className="card-row flex-col items-start"
+            style={{ border: '1px solid var(--ck-border)', gap: 2 }}
           >
-            Settings
-            <span className="block text-xs text-neutral-500">
-              Strictness, devices and your Recovery Kit
-            </span>
+            <span>Settings</span>
+            <span className="ck-small ck-muted">Strictness, devices and your Recovery Kit</span>
           </button>
         )}
 
@@ -96,10 +121,11 @@ export function Profile({
           type="button"
           data-testid="lock"
           onClick={onLock}
-          className="rounded border border-neutral-300 px-2 py-1 text-left hover:bg-neutral-100"
+          className="card-row flex-col items-start"
+          style={{ border: '1px solid var(--ck-border)', gap: 2 }}
         >
-          Lock now
-          <span className="block text-xs text-neutral-500">
+          <span>Lock now</span>
+          <span className="ck-small ck-muted">
             Keys are wiped from memory; this device stays registered.
           </span>
         </button>
@@ -108,11 +134,13 @@ export function Profile({
           type="button"
           data-testid="sign-out"
           onClick={onSignOut}
-          className="rounded border border-rose-300 px-2 py-1 text-left text-rose-800 hover:bg-rose-50"
+          className="card-row flex-col items-start"
+          style={{ border: '1px solid var(--ck-fail)', gap: 2, color: 'var(--ck-fail-text)' }}
         >
-          Sign out
-          <span className="block text-xs text-rose-700/80">
-            Ends the session on the server. You will need your passphrase and rhythm to get back in.
+          <span>Sign out</span>
+          {/* Costly actions state their price in the same breath (guide §08). */}
+          <span className="ck-small" style={{ color: 'var(--ck-fail-text)', opacity: 0.85 }}>
+            Clears this device. You’ll re-enrol your rhythm here.
           </span>
         </button>
       </div>

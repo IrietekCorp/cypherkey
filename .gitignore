@@ -15,3 +15,6 @@ site/dist/
 # WXT build output and generated types
 extension/.output
 extension/.wxt
+
+# Design preview output, regenerated on demand.
+design-preview.png

@@ -100,7 +100,8 @@ describe('Profile', () => {
   test('the difference between locking and signing out is stated', async () => {
     await render();
     expect(el('lock')?.textContent).toContain('stays registered');
-    expect(el('sign-out')?.textContent).toContain('passphrase and rhythm');
+    // Board copy (frame 15): the price is stated in the same breath.
+    expect(el('sign-out')?.textContent).toContain('re-enrol your rhythm');
   });
 
   /** A-16: crossing into Strict re-keys the account, so it is not a popup control. */

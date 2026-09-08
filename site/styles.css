@@ -46,10 +46,20 @@
 }
 
 /* Hierarchy is size and space. Never bolder than 500. */
-body { font-weight: 400; }
-h1, h2, h3, h4 { font-weight: 500; }
-.font-bold, .font-extrabold, .font-semibold { font-weight: 500 !important; }
-
+body {
+  font-weight: 400;
+}
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 500;
+}
+.font-bold,
+.font-extrabold,
+.font-semibold {
+  font-weight: 500 !important;
+}
 
 /* Keyframe animations for Rhythm Light */
 @keyframes rhythm-pulse {
@@ -140,19 +150,29 @@ h1, h2, h3, h4 { font-weight: 500; }
   border-color: var(--color-ck-border);
   background: var(--color-ck-inset);
 }
-.setup-choice:hover { border-color: var(--color-ck-accent-700); }
+.setup-choice:hover {
+  border-color: var(--color-ck-accent-700);
+}
 .setup-choice[aria-pressed="true"] {
   border-color: var(--color-ck-accent);
   background: var(--color-ck-accent-900);
 }
-.setup-choice .choice-marker { border-color: var(--color-ck-border); }
+.setup-choice .choice-marker {
+  border-color: var(--color-ck-border);
+}
 .setup-choice[aria-pressed="true"] .choice-marker {
   border-color: var(--color-ck-accent);
   background: var(--color-ck-accent);
   box-shadow: inset 0 0 0 2px var(--color-ck-bg);
 }
-.strictness-option { background: var(--color-ck-inset); color: var(--color-ck-muted); }
-.strictness-option:hover { background: var(--color-ck-raised); color: var(--color-ck-text); }
+.strictness-option {
+  background: var(--color-ck-inset);
+  color: var(--color-ck-muted);
+}
+.strictness-option:hover {
+  background: var(--color-ck-raised);
+  color: var(--color-ck-text);
+}
 .strictness-option[aria-pressed="true"] {
   background: var(--color-ck-accent-900);
   color: var(--color-ck-accent-300);

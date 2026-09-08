@@ -75,24 +75,31 @@ describe('VaultList', () => {
     const opened: VaultItem[] = [];
     const added: string[] = [];
     let profileOpened = 0;
+    let imports = 0;
     await act(async () => {
       root.render(
         <VaultList
           items={items}
+          username="mreyes"
           onOpen={(i) => opened.push(i)}
           onAdd={(k) => added.push(k)}
           onProfile={() => {
             profileOpened += 1;
           }}
+          onImport={() => {
+            imports += 1;
+          }}
         />,
       );
     });
-    return { opened, added, profile: () => profileOpened };
+    return { opened, added, profile: () => profileOpened, imports: () => imports };
   };
 
   test('an empty vault says so rather than showing a blank panel', async () => {
     await render([]);
-    expect(el('empty')?.textContent).toContain('Nothing saved yet');
+    // Board copy (frame 10). An empty vault says what to do, not that it is empty.
+    expect(el('empty')?.textContent).toContain('Nothing in here yet');
+    expect(el('empty')?.textContent).toContain('Add your first login');
   });
 
   test('items are listed with a summary', async () => {

@@ -7,333 +7,340 @@
  * here on purpose, so a screen cannot invent its own.
  */
 
-.ck-app {
-  background: var(--ck-bg);
-  color: var(--ck-text);
-  font-family: var(--ck-font);
-  font-weight: 400;
-  font-size: 13px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Hierarchy is size and space. Never bolder than 500. */
-.ck-h1 {
-  font-size: 17px;
-  font-weight: 500;
-  line-height: 1.25;
-  margin: 0;
-}
-.ck-h2 {
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.3;
-  margin: 0;
-}
-.ck-muted {
-  color: var(--ck-muted);
-}
-.ck-small {
-  font-size: 11.5px;
-}
-
 /*
+ * In Tailwind's `components` layer on purpose: a utility class on an element must be
+ * able to override these. Unlayered, this file loads after the utilities and silently
+ * wins -- which is how `items-start` lost to `.card-row`'s `align-items: center`.
+ */
+@layer components {
+  .ck-app {
+    background: var(--ck-bg);
+    color: var(--ck-text);
+    font-family: var(--ck-font);
+    font-weight: 400;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Hierarchy is size and space. Never bolder than 500. */
+  .ck-h1 {
+    font-size: 17px;
+    font-weight: 500;
+    line-height: 1.25;
+    margin: 0;
+  }
+  .ck-h2 {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0;
+  }
+  .ck-muted {
+    color: var(--ck-muted);
+  }
+  .ck-small {
+    font-size: 11.5px;
+  }
+
+  /*
  * The wordmark: the only place Inter is used, and the only place it can be -- the
  * bundled face carries no other glyphs.
  */
-.ck-wordmark {
-  font-family: var(--ck-font-wordmark);
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
+  .ck-wordmark {
+    font-family: var(--ck-font-wordmark);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
 
-/* Counts, scores and anything that lines up. */
-.ck-num {
-  font-variant-numeric: tabular-nums;
-}
+  /* Counts, scores and anything that lines up. */
+  .ck-num {
+    font-variant-numeric: tabular-nums;
+  }
 
-/* ---- buttons ---------------------------------------------------------- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ck-s2);
-  /* Two-word labels wrap and spill otherwise -- the guide calls this out by name. */
-  white-space: nowrap;
-  padding: var(--ck-s2) var(--ck-s4);
-  border-radius: var(--ck-r-md);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--ck-text);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-.btn:focus-visible {
-  outline: 2px solid var(--ck-accent);
-  outline-offset: 2px;
-}
-.btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
+  /* ---- buttons ---------------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ck-s2);
+    /* Two-word labels wrap and spill otherwise -- the guide calls this out by name. */
+    white-space: nowrap;
+    padding: var(--ck-s2) var(--ck-s4);
+    border-radius: var(--ck-r-md);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ck-text);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--ck-accent);
+    outline-offset: 2px;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
 
-/* Accent OUTLINE, never filled: the accent is a line, a mark or a glow. */
-.btn-primary {
-  border-color: var(--ck-accent-700);
-  color: var(--ck-accent-300);
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--ck-accent-900);
-  border-color: var(--ck-accent);
-}
-.btn-primary:active:not(:disabled) {
-  background: var(--ck-accent-900);
-  border-color: var(--ck-accent-400);
-}
+  /* Accent OUTLINE, never filled: the accent is a line, a mark or a glow. */
+  .btn-primary {
+    border-color: var(--ck-accent-700);
+    color: var(--ck-accent-300);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--ck-accent-900);
+    border-color: var(--ck-accent);
+  }
+  .btn-primary:active:not(:disabled) {
+    background: var(--ck-accent-900);
+    border-color: var(--ck-accent-400);
+  }
 
-.btn-secondary {
-  border-color: var(--ck-border);
-  color: var(--ck-text);
-}
-.btn-secondary:hover:not(:disabled) {
-  background: var(--ck-inset);
-}
+  .btn-secondary {
+    border-color: var(--ck-border);
+    color: var(--ck-text);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--ck-inset);
+  }
 
-.btn-ghost {
-  color: var(--ck-muted);
-  padding-inline: var(--ck-s2);
-}
-.btn-ghost:hover:not(:disabled) {
-  color: var(--ck-text);
-  background: var(--ck-inset);
-}
+  .btn-ghost {
+    color: var(--ck-muted);
+    padding-inline: var(--ck-s2);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    color: var(--ck-text);
+    background: var(--ck-inset);
+  }
 
-.btn-icon {
-  padding: var(--ck-s2);
-  border-radius: 50%;
-  border-color: var(--ck-border);
-  color: var(--ck-muted);
-  line-height: 0;
-}
-.btn-icon:hover:not(:disabled) {
-  color: var(--ck-accent-300);
-  border-color: var(--ck-accent-700);
-}
+  .btn-icon {
+    padding: var(--ck-s2);
+    border-radius: 50%;
+    border-color: var(--ck-border);
+    color: var(--ck-muted);
+    line-height: 0;
+  }
+  .btn-icon:hover:not(:disabled) {
+    color: var(--ck-accent-300);
+    border-color: var(--ck-accent-700);
+  }
 
-.btn-danger {
-  border-color: var(--ck-fail);
-  color: var(--ck-fail-text);
-}
-.btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ck-fail) 12%, transparent);
-}
+  .btn-danger {
+    border-color: var(--ck-fail);
+    color: var(--ck-fail-text);
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ck-fail) 12%, transparent);
+  }
 
-.btn-block {
-  width: 100%;
-}
+  .btn-block {
+    width: 100%;
+  }
 
-/* ---- fields ----------------------------------------------------------- */
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ck-s1);
-}
-.field > label {
-  font-size: 11.5px;
-  color: var(--ck-muted);
-}
+  /* ---- fields ----------------------------------------------------------- */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ck-s1);
+  }
+  .field > label {
+    font-size: 11.5px;
+    color: var(--ck-muted);
+  }
 
-.input {
-  width: 100%;
-  padding: var(--ck-s3) var(--ck-s4);
-  border-radius: var(--ck-r-md);
-  border: 1px solid var(--ck-border);
-  background: var(--ck-inset);
-  color: var(--ck-text);
-  font: inherit;
-  transition: border-color 120ms ease;
-}
-.input::placeholder {
-  color: var(--ck-muted);
-}
-.input:hover:not(:disabled) {
-  border-color: var(--ck-neutral-500);
-}
-.input:focus {
-  outline: 2px solid var(--ck-accent);
-  outline-offset: 2px;
-  border-color: var(--ck-accent-700);
-}
-.input:disabled {
-  opacity: 0.45;
-}
+  .input {
+    width: 100%;
+    padding: var(--ck-s3) var(--ck-s4);
+    border-radius: var(--ck-r-md);
+    border: 1px solid var(--ck-border);
+    background: var(--ck-inset);
+    color: var(--ck-text);
+    font: inherit;
+    transition: border-color 120ms ease;
+  }
+  .input::placeholder {
+    color: var(--ck-muted);
+  }
+  .input:hover:not(:disabled) {
+    border-color: var(--ck-neutral-500);
+  }
+  .input:focus {
+    outline: 2px solid var(--ck-accent);
+    outline-offset: 2px;
+    border-color: var(--ck-accent-700);
+  }
+  .input:disabled {
+    opacity: 0.45;
+  }
 
-/* ---- radio ------------------------------------------------------------ */
-.radio {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--ck-s3);
-  cursor: pointer;
-}
-.radio .dot {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-  flex: none;
-  border-radius: 50%;
-  border: 1px solid var(--ck-border);
-  display: grid;
-  place-items: center;
-}
-.radio input:checked + .dot {
-  border-color: var(--ck-accent);
-}
-.radio input:checked + .dot::after {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ck-accent);
-}
-.radio input:focus-visible + .dot {
-  outline: 2px solid var(--ck-accent);
-  outline-offset: 2px;
-}
+  /* ---- radio ------------------------------------------------------------ */
+  .radio {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ck-s3);
+    cursor: pointer;
+  }
+  .radio .dot {
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid var(--ck-border);
+    display: grid;
+    place-items: center;
+  }
+  .radio input:checked + .dot {
+    border-color: var(--ck-accent);
+  }
+  .radio input:checked + .dot::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ck-accent);
+  }
+  .radio input:focus-visible + .dot {
+    outline: 2px solid var(--ck-accent);
+    outline-offset: 2px;
+  }
 
-/* ---- segmented control ------------------------------------------------ */
-.seg {
-  display: inline-flex;
-  padding: 2px;
-  gap: 2px;
-  border-radius: var(--ck-r-md);
-  border: 1px solid var(--ck-border);
-  background: var(--ck-inset);
-}
-.seg-opt {
-  padding: var(--ck-s2) var(--ck-s4);
-  border-radius: var(--ck-r-sm);
-  border: 0;
-  background: transparent;
-  color: var(--ck-muted);
-  font: inherit;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.seg-opt:hover {
-  color: var(--ck-text);
-}
-.seg-opt[aria-pressed="true"] {
-  background: var(--ck-accent-900);
-  color: var(--ck-accent-300);
-}
-.seg-opt:focus-visible {
-  outline: 2px solid var(--ck-accent);
-  outline-offset: 2px;
-}
+  /* ---- segmented control ------------------------------------------------ */
+  .seg {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: var(--ck-r-md);
+    border: 1px solid var(--ck-border);
+    background: var(--ck-inset);
+  }
+  .seg-opt {
+    padding: var(--ck-s2) var(--ck-s4);
+    border-radius: var(--ck-r-sm);
+    border: 0;
+    background: transparent;
+    color: var(--ck-muted);
+    font: inherit;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .seg-opt:hover {
+    color: var(--ck-text);
+  }
+  .seg-opt[aria-pressed="true"] {
+    background: var(--ck-accent-900);
+    color: var(--ck-accent-300);
+  }
+  .seg-opt:focus-visible {
+    outline: 2px solid var(--ck-accent);
+    outline-offset: 2px;
+  }
 
-/* ---- card: every panel and field row ---------------------------------- */
-.card {
-  background: var(--ck-surface);
-  border: 1px solid var(--ck-border);
-  border-radius: var(--ck-r-card);
-  padding: var(--ck-s4);
-}
-.card-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ck-s3);
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  padding: var(--ck-s3);
-  border-radius: var(--ck-r-md);
-  cursor: pointer;
-}
-.card-row:hover {
-  background: var(--ck-inset);
-}
-.card-row:focus-visible {
-  outline: 2px solid var(--ck-accent);
-  outline-offset: 2px;
-}
+  /* ---- card: every panel and field row ---------------------------------- */
+  .card {
+    background: var(--ck-surface);
+    border: 1px solid var(--ck-border);
+    border-radius: var(--ck-r-card);
+    padding: var(--ck-s4);
+  }
+  .card-row {
+    display: flex;
+    align-items: center;
+    gap: var(--ck-s3);
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font: inherit;
+    padding: var(--ck-s3);
+    border-radius: var(--ck-r-md);
+    cursor: pointer;
+  }
+  .card-row:hover {
+    background: var(--ck-inset);
+  }
+  .card-row:focus-visible {
+    outline: 2px solid var(--ck-accent);
+    outline-offset: 2px;
+  }
 
-/* ---- tag -------------------------------------------------------------- */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ck-s1);
-  white-space: nowrap;
-  padding: 1px var(--ck-s2);
-  border-radius: var(--ck-r-sm);
-  border: 1px solid var(--ck-accent-700);
-  background: var(--ck-accent-900);
-  color: var(--ck-accent-300);
-  font-size: 11px;
-  font-weight: 500;
-}
-.tag-pass {
-  border-color: color-mix(in srgb, var(--ck-pass) 45%, transparent);
-  background: color-mix(in srgb, var(--ck-pass) 12%, transparent);
-  color: var(--ck-pass-text);
-}
-.tag-amber {
-  border-color: color-mix(in srgb, var(--ck-amber) 45%, transparent);
-  background: color-mix(in srgb, var(--ck-amber) 12%, transparent);
-  color: var(--ck-amber-text);
-}
-.tag-fail {
-  border-color: color-mix(in srgb, var(--ck-fail) 45%, transparent);
-  background: color-mix(in srgb, var(--ck-fail) 12%, transparent);
-  color: var(--ck-fail-text);
-}
+  /* ---- tag -------------------------------------------------------------- */
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ck-s1);
+    white-space: nowrap;
+    padding: 1px var(--ck-s2);
+    border-radius: var(--ck-r-sm);
+    border: 1px solid var(--ck-accent-700);
+    background: var(--ck-accent-900);
+    color: var(--ck-accent-300);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .tag-pass {
+    border-color: color-mix(in srgb, var(--ck-pass) 45%, transparent);
+    background: color-mix(in srgb, var(--ck-pass) 12%, transparent);
+    color: var(--ck-pass-text);
+  }
+  .tag-amber {
+    border-color: color-mix(in srgb, var(--ck-amber) 45%, transparent);
+    background: color-mix(in srgb, var(--ck-amber) 12%, transparent);
+    color: var(--ck-amber-text);
+  }
+  .tag-fail {
+    border-color: color-mix(in srgb, var(--ck-fail) 45%, transparent);
+    background: color-mix(in srgb, var(--ck-fail) 12%, transparent);
+    color: var(--ck-fail-text);
+  }
 
-/* ---- options page only ------------------------------------------------ */
-.ck-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.ck-table th {
-  text-align: left;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ck-muted);
-  padding: var(--ck-s2) var(--ck-s3);
-  border-bottom: 1px solid var(--ck-border);
-}
-.ck-table td {
-  padding: var(--ck-s3);
-  border-bottom: 1px solid var(--ck-border);
-}
-.ck-table tr:last-child td {
-  border-bottom: 0;
-}
+  /* ---- options page only ------------------------------------------------ */
+  .ck-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .ck-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ck-muted);
+    padding: var(--ck-s2) var(--ck-s3);
+    border-bottom: 1px solid var(--ck-border);
+  }
+  .ck-table td {
+    padding: var(--ck-s3);
+    border-bottom: 1px solid var(--ck-border);
+  }
+  .ck-table tr:last-child td {
+    border-bottom: 0;
+  }
 
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ck-s1);
-}
-.nav a {
-  padding: var(--ck-s2) var(--ck-s3);
-  border-radius: var(--ck-r-md);
-  color: var(--ck-muted);
-  text-decoration: none;
-}
-.nav a[aria-current="page"] {
-  background: var(--ck-accent-900);
-  color: var(--ck-accent-300);
-}
+  .nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ck-s1);
+  }
+  .nav a {
+    padding: var(--ck-s2) var(--ck-s3);
+    border-radius: var(--ck-r-md);
+    color: var(--ck-muted);
+    text-decoration: none;
+  }
+  .nav a[aria-current="page"] {
+    background: var(--ck-accent-900);
+    color: var(--ck-accent-300);
+  }
 
-/* `.hr` exists; prefer whitespace. Kept so the guide's inventory is complete. */
-.hr {
-  height: 1px;
-  background: var(--ck-border);
-  border: 0;
-  margin: var(--ck-s4) 0;
+  /* `.hr` exists; prefer whitespace. Kept so the guide's inventory is complete. */
+  .hr {
+    height: 1px;
+    background: var(--ck-border);
+    border: 0;
+    margin: var(--ck-s4) 0;
+  }
 }
