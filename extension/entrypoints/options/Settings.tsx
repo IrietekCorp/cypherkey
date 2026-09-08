@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AuthedRequest } from '../../../core/client/session';
+import { useCallback, useEffect, useState } from 'react';
+import type { AuthedRequest, Credential } from '../../../core/client/session';
+import { RhythmLight } from '../../src/components/RhythmLight';
+import { preventFocusSteal, useCapture } from '../../src/components/useCapture';
 
 /**
  * Settings (X-4, A-16).
@@ -33,10 +35,23 @@ export type SettingsState = {
 export type SettingsProps = {
   request: AuthedRequest;
   accessToken: string;
+  /**
+   * Turns a typed passphrase into the `authHash` the server verifies.
+   *
+   * This screen does not derive it itself, and must not: the derivation is one Argon2id
+   * pass at m=64 MiB and belongs in the Worker the session already owns. What matters
+   * here is that **the typed text is not the proof** — sending it is what this screen
+   * used to do, and the server refused every change with a message that read as a wrong
+   * passphrase.
+   */
+  prove(input: Credential): Promise<string>;
   /** Crossing into or out of Strict is a re-key, which only the popup can perform. */
   onRekeyRequested(target: 'strict' | 'medium' | 'relaxed'): void;
   now?: () => number;
 };
+
+/** Said when the box was never typed in, rather than typed in badly. */
+export const NEEDS_PASSPHRASE = 'Type your passphrase in the box above to make this change.';
 
 const PAUSE_OPTIONS = [
   { label: '1 hour', ms: 60 * 60_000 },
@@ -47,10 +62,25 @@ const PAUSE_OPTIONS = [
 export function Settings({
   request,
   accessToken,
+  prove,
   onRekeyRequested,
   now = Date.now,
 }: SettingsProps) {
-  const passphrase = useRef<HTMLInputElement>(null);
+  /**
+   * The passphrase field is a capture field, exactly as Unlock's is.
+   *
+   * Not for scoring — nothing here is scored. It is because `kdfInput` folds the key
+   * sequence into the master key under Strict (A-14.2), so on a Strict account the
+   * typed characters alone cannot reproduce `authHash`. A plain input would work for
+   * Medium and Relaxed and silently refuse every change a Strict user made, which is
+   * the worst of the three outcomes.
+   *
+   * X-1 comes with it: capture only runs beside a visible light, so the light is not
+   * decoration here, it is the condition.
+   */
+  const capture = useCapture();
+  const [field, setField] = useState<HTMLInputElement | null>(null);
+  const [light, setLight] = useState<HTMLDivElement | null>(null);
   const [settings, setSettings] = useState<SettingsState | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -83,20 +113,45 @@ export function Settings({
     void load();
   }, [load]);
 
+  /** Ends the sample and empties the box. One request's worth, never the screen's. */
+  const clearField = () => {
+    if (field !== null) field.value = '';
+    capture.reset();
+  };
+
   /**
-   * Sends a patch, attaching the passphrase when the change weakens protection.
+   * Sends a patch, attaching the A-17 proof when the change weakens protection.
    *
-   * The field is read at send time and cleared straight after: it exists for the length
-   * of one request, not for the length of the screen.
+   * The sample is closed *before* the first await. `capture.stop()` is what tokenizes
+   * the keystrokes, and anything that lets the field blur first voids them — which is
+   * also why every gated control below prevents the focus steal.
    */
   const patch = async (body: Record<string, unknown>, needsPassphrase: boolean) => {
     if (needsPassphrase) {
-      const typed = passphrase.current?.value ?? '';
-      if (typed.length === 0) {
-        setMessage('Enter your passphrase to make this change.');
+      if (settings === null) return;
+      const sample = capture.stop();
+      if (sample === null) {
+        // A cancelled sample already has a sentence of its own from the hook; an
+        // untouched field has none, and "that could not be measured" would be a
+        // strange thing to say about typing that never happened.
+        if (capture.state.status === 'idle') setMessage(NEEDS_PASSPHRASE);
         return;
       }
-      body.authHash = typed;
+      setBusy(true);
+      try {
+        body.authHash = await prove({
+          resolved: sample.resolved,
+          script: sample.script,
+          // The level the account is **on**, not the one being asked for: that is the
+          // level its stored `authHash` was derived at.
+          strictness: settings.strictness,
+        });
+      } catch {
+        setMessage('This device could not check that passphrase. Unlock in the extension first.');
+        clearField();
+        setBusy(false);
+        return;
+      }
     }
 
     setBusy(true);
@@ -113,7 +168,7 @@ export function Settings({
       setMessage(null);
       await load();
     } finally {
-      if (passphrase.current !== null) passphrase.current.value = '';
+      clearField();
       setBusy(false);
     }
   };
@@ -167,12 +222,45 @@ export function Settings({
             session alone is not enough.
           </p>
         </div>
-        <input ref={passphrase} type="password" data-testid="passphrase" className="input" />
+        <input
+          ref={setField}
+          type="password"
+          data-testid="passphrase"
+          className="input"
+          onFocus={() => {
+            if (field !== null && light !== null) {
+              setMessage(null);
+              capture.start(field, light);
+            }
+          }}
+        />
+        <div className="flex items-center" style={{ gap: 'var(--ck-s3)' }}>
+          <RhythmLight ref={setLight} state={capture.state} />
+          <p className="ck-small ck-muted">
+            {/* Not a score, and not a check: under Strict the sequence is part of the key. */}
+            Type it out rather than pasting. On a Strict account the exact key sequence is part of
+            the key, so it has to be typed to be reproduced.
+          </p>
+        </div>
+        {capture.state.status === 'cancelled' && (
+          <p data-testid="capture-message" className="ck-small">
+            {capture.state.message}
+          </p>
+        )}
+        {capture.state.status === 'unavailable' && (
+          <p data-testid="capture-message" className="ck-small">
+            {capture.state.message}
+          </p>
+        )}
       </section>
 
       <section className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
         <h2 className="ck-h2">Rhythm</h2>
-        <label className="flex items-center" style={{ gap: 'var(--ck-s3)', cursor: 'pointer' }}>
+        <label
+          className="flex items-center"
+          style={{ gap: 'var(--ck-s3)', cursor: 'pointer' }}
+          onMouseDown={preventFocusSteal}
+        >
           <input
             type="checkbox"
             data-testid="biometric"
@@ -219,6 +307,7 @@ export function Settings({
                 type="button"
                 data-testid={`pause-${option.ms}`}
                 disabled={busy}
+                onMouseDown={preventFocusSteal}
                 onClick={() => patch({ pauseUntil: now() + option.ms }, true)}
                 className="btn btn-secondary"
               >
@@ -244,6 +333,7 @@ export function Settings({
               data-testid={`strictness-${level}`}
               aria-pressed={level === settings.strictness}
               disabled={busy || level === settings.strictness}
+              onMouseDown={preventFocusSteal}
               onClick={() =>
                 // A-16: Medium ↔ Relaxed is a settings edit. Crossing into or out of
                 // Strict changes the master key, so it is a re-key and belongs to the

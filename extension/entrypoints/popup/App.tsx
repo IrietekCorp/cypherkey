@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SignupResult } from '../../../core/client/session';
 import { createSync } from '../../../core/client/sync';
+import { refreshingRequest } from '../../src/authed';
 import type { BrowserApi } from '../../src/autofill';
 import { API_BASE_URL } from '../../src/config';
 import { THEME_KEY, type ThemeChoice, applyTheme, parseChoice } from '../../src/design/theme';
@@ -183,9 +184,18 @@ export function App() {
     async (keyVersion: number) => {
       const store = indexedDbStore();
       const active = createSyncEngine({
+        /*
+          The token is read per call, and the request renews it.
+
+          A vault stays open for as long as the session does; an access token lasts
+          fifteen minutes (A-8). Before this the engine captured one token at unlock and
+          used it forever, so sync went quiet a quarter of an hour in and the vault fell
+          back to "Offline. Showing what this device already had" -- with no error, on a
+          device that was plainly online.
+        */
         sync: createSync({
-          request: session.authed(),
-          token: session.tokens()?.accessToken ?? '',
+          request: refreshingRequest({ session, memory: sessionArea() }),
+          token: () => session.tokens()?.accessToken ?? '',
         }),
         cache: createCache(store),
         queue: createQueue(store),

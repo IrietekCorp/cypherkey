@@ -1073,3 +1073,84 @@ describe('step-up with a Backup Code (M2-07)', () => {
     expect(session.state()).toBe('unlocked');
   });
 });
+
+describe('authProof (A-17)', () => {
+  let server: ReturnType<typeof mockServer>;
+  let storage: ReturnType<typeof memoryStorage>;
+
+  beforeEach(() => {
+    server = mockServer();
+    storage = memoryStorage();
+  });
+
+  /**
+   * The decisive one. `authHash` on the wire is a derived value, and the server stores a
+   * password hash of it, so a screen that sends the typed passphrase is refused every
+   * time with a message that reads as "wrong passphrase". Comparing against what signup
+   * actually sent is what ties the proof to the value the account holds.
+   */
+  test('reproduces the authHash the account was created with', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const sent = server.state.calls.find((c) => c.path === '/auth/signup');
+
+    const proof = await session.authProof(CREDENTIAL);
+
+    expect(proof).toBe((sent?.body as { authHash: string }).authHash);
+    expect(proof).not.toBe(CREDENTIAL.resolved);
+  });
+
+  test('a different passphrase proves something else', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    expect(await session.authProof(WRONG_CREDENTIAL)).not.toBe(await session.authProof(CREDENTIAL));
+  });
+
+  /**
+   * A-14.2: `kdfInput` folds the script in under Strict and ignores it otherwise. Both
+   * halves matter to the settings screen: it has to prove at the level the account is
+   * on, and it has to capture keystrokes rather than take a typed string.
+   */
+  test('the level the proof is derived at changes it', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+
+    const medium = await session.authProof(CREDENTIAL);
+    const strict = await session.authProof({ ...CREDENTIAL, strictness: 'strict' });
+    expect(strict).not.toBe(medium);
+  });
+
+  test('the script counts under Strict and nowhere else', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const other = `${CREDENTIAL.resolved}x`;
+
+    expect(await session.authProof({ ...CREDENTIAL, script: other })).toBe(
+      await session.authProof(CREDENTIAL),
+    );
+    expect(
+      await session.authProof({ ...CREDENTIAL, script: other, strictness: 'strict' }),
+    ).not.toBe(await session.authProof({ ...CREDENTIAL, strictness: 'strict' }));
+  });
+
+  /**
+   * Proving a passphrase is not unlocking. The options page derives one before it has
+   * any keys of its own, and a proof that needed an unlocked session could not be used
+   * by the screen that exists to weaken protection.
+   */
+  test('it works while locked', async () => {
+    const session = makeSession(server, storage);
+    await session.signup(SIGNUP);
+    const proof = await session.authProof(CREDENTIAL);
+    session.lock();
+
+    expect(session.state()).toBe('locked');
+    expect(await session.authProof(CREDENTIAL)).toBe(proof);
+  });
+
+  test('an unknown device has no salt and says so', async () => {
+    const session = makeSession(server, memoryStorage());
+    expect(session.authProof(CREDENTIAL)).rejects.toThrow('unknown salt');
+  });
+});

@@ -9,8 +9,16 @@ import type { AuthedRequest } from './session';
 export type SyncDeps = {
   /** From `session.authed()`; signs each request with the device key (A-3). */
   request: AuthedRequest;
-  /** A session access token from `session.tokens()`. */
-  token: string;
+  /**
+   * A session access token from `session.tokens()`, or a function returning the current
+   * one.
+   *
+   * A `Sync` outlives its token. Access tokens last fifteen minutes (A-8) and a client
+   * holds one of these for as long as the vault is open, so a fixed string goes stale
+   * mid-session and every call after that is a 401. The function form is what a caller
+   * that can refresh should pass.
+   */
+  token: string | (() => string);
 };
 
 /** An item exactly as it travels: ciphertext and nonce, never plaintext. */
@@ -57,7 +65,8 @@ function array(value: unknown, field: string): unknown[] {
 }
 
 export function createSync(deps: SyncDeps): Sync {
-  const { request, token } = deps;
+  const { request } = deps;
+  const token = () => (typeof deps.token === 'string' ? deps.token : deps.token());
 
   return {
     async pull(since) {
@@ -65,7 +74,7 @@ export function createSync(deps: SyncDeps): Sync {
         'GET',
         `/vault/changes?since=${since}`,
         undefined,
-        token,
+        token(),
       );
       if (status !== 200) raise('/vault/changes', status, body);
       const r = asRecord(body);
@@ -80,7 +89,7 @@ export function createSync(deps: SyncDeps): Sync {
       // back as an opaque 400 that reads like an auth problem.
       if (items.length === 0) throw new Error('nothing to push');
 
-      const { status, body } = await request('POST', '/vault/changes', { items }, token);
+      const { status, body } = await request('POST', '/vault/changes', { items }, token());
       // A-6: 409 means some items conflicted, and the clean ones in the same batch were
       // still applied. It is a partial success and the caller needs both lists.
       if (status !== 200 && status !== 409) raise('/vault/changes', status, body);

@@ -227,6 +227,21 @@ export type Session = {
    * `vaultKey`.
    */
   rotateRecoveryKit(input: Credential): Promise<{ recoveryCode: string }>;
+  /**
+   * The A-17 proof for a passphrase the user has just typed: the `authHash` a
+   * step-up-gated route wants in the same request.
+   *
+   * It exists because `authHash` on the wire is never the passphrase. It is
+   * `toBase64Url(authKey)` — one Argon2id pass over `kdfInput` and an HKDF branch —
+   * and the server stores a password hash *of that*. A caller that sends the typed
+   * text instead is refused every time, and the refusal reads as "wrong passphrase".
+   *
+   * `strictness` is the account's **current** level, not the one being moved to:
+   * `kdfInput` folds the script in under Strict, so the same passphrase proves nothing
+   * at the wrong level. `script` is ignored anywhere else, which is why a screen with
+   * no rhythm capture can still prove a Medium or Relaxed account.
+   */
+  authProof(input: Credential): Promise<string>;
   /** A-9 rotation: exchanges the refresh token for a new pair. */
   refresh(): Promise<boolean>;
   /** Revokes the refresh family server-side, then locks. */
@@ -696,6 +711,30 @@ export function createSession(deps: SessionDeps): Session {
         throw new Error(`recovery kit rotation failed with status ${response.status}`);
       }
       return { recoveryCode };
+    },
+
+    /**
+     * The A-17 proof, derived rather than typed. See the declaration for why.
+     *
+     * Deliberately available while locked: proving a passphrase is what a settings
+     * change needs, and it neither reads nor produces a vault key. The salt is the one
+     * thing it needs from disk, and A-7 already permits that.
+     */
+    async authProof(input) {
+      const saltRaw = await deps.storage.get(KEYS.userSalt);
+      if (saltRaw === null) throw new Error('unknown salt');
+      const {
+        authKey,
+        wrapKey: unusedWrap,
+        phantomKey: unusedPhantom,
+      } = await deriveBranches(input, fromBase64Url(saltRaw));
+      // Two of the three branches are waste here, and they are key material: zero them
+      // rather than leaving a wrap key alive for the garbage collector to get to.
+      unusedWrap.fill(0);
+      unusedPhantom.fill(0);
+      const proof = toBase64Url(authKey);
+      authKey.fill(0);
+      return proof;
     },
 
     async refresh() {

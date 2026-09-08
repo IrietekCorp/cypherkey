@@ -883,7 +883,7 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 
 ---
 
-### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16 · **server DONE, screen NOT REACHABLE**
+### M2-14 · Settings, and the A-17 re-auth the server still owes · M · deps: M2-07 · X-4, A-16 · **DONE**
 
 **Why.** This ticket carries a **server change**, which is why it is not simply a screen.
 
@@ -902,20 +902,79 @@ Parse, map to `VaultItem`, report per-row failures without aborting the batch, a
 - **Even Medium ↔ Relaxed carries the passphrase.** It is a settings PATCH rather than a re-key, but it still loosens an account, and the server refuses it without one.
 - The two guard tests that asserted "a token without a fresh step-up is refused" were rewritten rather than patched: under A-17 an ordinary access token **is** enough, given the passphrase, and freshness is irrelevant. Testing the old rule would have hidden the change.
 
-**What is not done, corrected 2026-09-08.** `Settings.tsx` is written, styled and tested,
-and the server change is live — but **the options page does not render it**. It needs an
-access token, and the session lives in the popup's `chrome.storage.session`, which a
-second document has no claim on. `entrypoints/options/main.tsx` renders a styled page that
-says so rather than presenting controls that would fail.
+**Finished 2026-09-08, and it was not only plumbing.** The remaining work was described
+here as "the options page cannot reach a session". That was true, and it was not the
+whole of it — wiring the page up made a second defect visible immediately, and a third
+underneath that.
 
-Finishing it is session plumbing, not a screen: the options document has to obtain its own
-authenticated session. The resumable-unlock work in M2-18 is the mechanism — `resume.ts`
-already holds a session snapshot in `chrome.storage.session`, which both documents can
-read — so the remaining work is to let the options page resume from it, and to decide what
-it does when there is nothing resumable (almost certainly: say "unlock in the popup first",
-because a second passphrase prompt on a page nobody expects one is worse).
+**1. The session, which the page has to go and find.** `OptionsApp` reads the M2-18
+snapshot out of `chrome.storage.session` — the same one the popup writes — and resumes
+from it. `watchResume` subscribes to that key, so unlocking in the popup opens this page
+without a reload, and a manual lock in the popup closes it rather than leaving a second
+unlocked surface behind the one the user just locked. The page also runs its own idle
+lock: a tab can sit open for days, and the snapshot's deadlines bound the *snapshot*, not
+this document's heap. That lock is deliberately local — it zeroes this page's keys and
+leaves the shared snapshot alone, because an idle settings tab is not an idle browser.
 
----
+**No passphrase box, and that is the answer to the open question.** The page could unlock
+itself with a prompt and one Argon2id pass. It does not, because a passphrase prompt on a
+tab the user did not unlock is indistinguishable, to the user, from the phishing page that
+copies it. The extension has exactly one place a passphrase is typed. The closed screen
+says so, which is a small amount of teaching in the place someone is most likely to read
+it.
+
+**2. `authHash` was the typed passphrase, and could never have worked.** `Settings.tsx`
+put the contents of the passphrase box straight into the request body. On the wire
+`authHash` is `toBase64Url(authKey)` — one Argon2id pass over `kdfInput`, then an HKDF
+branch — and the server stores a password hash *of that*. Every step-up-gated control on
+the screen would have been refused, with a message reading "That passphrase did not
+match." The screen was written, styled and tested, and the tests asserted the wrong value
+was sent.
+
+`session.authProof(credential)` is the fix: the derivation belongs in `core/client`, next
+to the two other places that already do it. The screen takes it as a `prove` prop.
+
+**And the passphrase field had to become a capture field.** `kdfInput` folds the script
+into the master key under Strict (A-14.2), so on a Strict account the typed characters
+alone cannot reproduce `authHash`. A plain input would have worked for Medium and Relaxed
+and silently refused every change a Strict user made — the worst of the three outcomes.
+It now uses `useCapture` and a `RhythmLight` exactly as Unlock does, which brings X-1 with
+it: capture only runs beside a visible light. Every gated control carries
+`preventFocusSteal`, or clicking it would blur the field and void the sample it was meant
+to send.
+
+**3. Nothing in the client ever refreshed an access token.** Found while asking what the
+settings screen would do fifteen minutes after an unlock. Access tokens last fifteen
+minutes (A-8); a resumable session lasts an hour of idle and up to a day, so **every**
+session outlives its token. `session.refresh()` was written and tested in M1 and called
+from nowhere. The effect on the shipped popup: sync stopped pushing a quarter of an hour
+in, the vault fell back to "Offline. Showing what this device already had" on a device
+that was plainly online, and nothing said why. No test caught it because every test issues
+a token and spends it in the same millisecond.
+
+`extension/src/authed.ts` wraps `session.authed()`: on a 401 it refreshes once, writes the
+rotated pair back into the shared snapshot, and retries. Exactly once — a 401 that a
+refresh cannot fix is a revoked session, and retrying further would be a loop against the
+server. Writing the pair back matters because A-9 *rotates*: two documents read one
+snapshot, and spending a token the other document has already spent revokes the whole
+family. `createSync` now takes a token *function* as well as a string, so the sync engine
+reads the current token rather than the one it was built with.
+
+**What is still not built:** crossing into or out of Strict. It is a re-key, not a
+settings change — `session.changeStrictness` exists and is unreachable from any screen.
+The segmented control hands off to `onRekeyRequested`, and the options page says plainly
+that no screen does it yet rather than pretending.
+
+**Tests:** `authProof` reproduces the `authHash` signup actually sent, and differs by
+passphrase, by level, and — under Strict only — by script; the settings screen sends a
+derived proof and not the typed text, proves at the level the account is *on* rather than
+the one requested, and refuses a pasted passphrase; the gate opens on a resumable
+snapshot, refuses each way a snapshot can be unusable, follows the popup in both
+directions, and does not start a write loop against the area it is watching; an expired
+token is refreshed once and the rotated pair lands in the snapshot without moving the hard
+cap. Two more steps in `browser-e2e`: the options page mounts in real Chrome — its Worker,
+its React root, its read of another document's session storage — and offers no passphrase
+box. The console-error watch now covers every document the run opens, not just the first.
 
 ### M2-15 · "Not your rhythm" email · S · deps: none · **DONE**
 

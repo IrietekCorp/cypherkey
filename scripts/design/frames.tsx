@@ -10,6 +10,7 @@
  * Example data, never real: a preview that needed a vault would need a passphrase.
  */
 import { createRoot } from 'react-dom/client';
+import { Settings } from '../../extension/entrypoints/options/Settings';
 import { Enroll } from '../../extension/entrypoints/popup/Enroll';
 import { Feedback } from '../../extension/entrypoints/popup/Feedback';
 import { Generator } from '../../extension/entrypoints/popup/Generator';
@@ -90,7 +91,63 @@ const enrollSession = {
   commitmentsFor: never,
 } as never;
 
-const FRAMES: Array<[string, React.ReactNode]> = [
+/**
+ * The settings screen answers two calls on mount and is otherwise inert here.
+ *
+ * `prove` never resolves: the derivation is an Argon2id pass in a Worker, and a preview
+ * has no session to run one in. Nothing on this screen is clicked, so it never resolves.
+ */
+const settingsRequest = (async (_method: string, path: string) =>
+  path === '/user/devices'
+    ? {
+        status: 200,
+        body: {
+          devices: [
+            {
+              id: 'd1',
+              name: 'ThinkPad X1',
+              platform: 'linux',
+              lastSeenAt: now,
+              revokedAt: null,
+              current: true,
+            },
+            {
+              id: 'd2',
+              name: 'Pixel 8',
+              platform: 'android',
+              lastSeenAt: now - day,
+              revokedAt: null,
+            },
+            {
+              id: 'd3',
+              name: 'Old MacBook',
+              platform: 'macos',
+              lastSeenAt: now - day * 90,
+              revokedAt: now - day * 60,
+            },
+          ],
+        },
+      }
+    : {
+        status: 200,
+        body: {
+          biometricEnabled: true,
+          pauseUntil: null,
+          thresholds: { strictness: 'medium' },
+          keyVersion: 1,
+        },
+      }) as never;
+
+/**
+ * The options page is a tab, not a popup, so it gets its own frame.
+ *
+ * Not a detail: at 380x560 the preview clipped everything below Pause, which is where
+ * the two controls with real consequences live -- Strictness and the device list. A
+ * frame that hides half the screen reviews half the screen.
+ */
+const OPTIONS_FRAME: [number, number] = [620, 1180];
+
+const FRAMES: Array<[string, React.ReactNode, [number, number]?]> = [
   [
     '01/02 · Onboarding',
     <Onboarding
@@ -174,6 +231,17 @@ const FRAMES: Array<[string, React.ReactNode]> = [
   ],
   ['14 · Import', <Import key="import" onImport={noop} onCancel={noop} />],
   [
+    '17 · Settings (options page)',
+    <Settings
+      key="settings"
+      request={settingsRequest}
+      accessToken="preview"
+      prove={never}
+      onRekeyRequested={noop}
+    />,
+    OPTIONS_FRAME,
+  ],
+  [
     '16 · Feedback',
     <div key="feedback" className="ck-app" style={{ padding: 'var(--ck-s5)' }}>
       <Feedback
@@ -207,7 +275,7 @@ if (host !== null) {
     }`;
     row.append(heading);
 
-    for (const [label, node] of FRAMES) {
+    for (const [label, node, frame] of FRAMES) {
       const figure = document.createElement('figure');
       figure.style.cssText = 'margin:0;display:flex;flex-direction:column;gap:8px';
 
@@ -217,10 +285,13 @@ if (host !== null) {
         theme === 'light' ? '#595d6c' : '#9397ab'
       }`;
 
-      // The popup's real width, and a height that shows where a screen would scroll.
+      // The popup's real size, unless the screen has one of its own. The height is
+      // where a popup would start scrolling.
+      const [width, height] = frame ?? [380, 560];
       const box = document.createElement('div');
-      box.style.cssText =
-        'width:380px;height:560px;overflow:hidden;border-radius:8px;background:var(--ck-bg)';
+      box.style.cssText = 'overflow:hidden;border-radius:8px;background:var(--ck-bg)';
+      box.style.width = `${width}px`;
+      box.style.height = `${height}px`;
       box.style.border = `1px solid ${theme === 'light' ? '#cfd3e5' : '#3f424d'}`;
 
       figure.append(caption, box);

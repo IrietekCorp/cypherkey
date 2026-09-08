@@ -1,5 +1,10 @@
 import { createRoot } from 'react-dom/client';
+import { API_BASE_URL } from '../../src/config';
 import { THEME_KEY, parseChoice, resolveTheme, stampTheme } from '../../src/design/theme';
+import { sessionArea } from '../../src/resume';
+import { createExtensionSession } from '../../src/session';
+import { localArea, memoryArea } from '../../src/storage';
+import { OptionsApp } from './OptionsApp';
 import '../popup/style.css';
 
 /*
@@ -24,37 +29,21 @@ void (async () => {
 })();
 
 /**
- * Settings are M2-14, which also carries the A-17 server change.
+ * Settings (M2-14), on a session this document has to resume rather than being handed.
  *
- * `Settings.tsx` is written and tested; what it does not have here is an access token.
- * Every control on it that weakens protection is an authenticated request, and the
- * session lives in the popup's `chrome.storage.session` — a separate document with no
- * claim on it. Wiring that up is the rest of M2-14, and it is a session-plumbing change,
- * not a styling one.
- *
- * Until then this page says so rather than presenting controls that would fail, and the
- * Profile's link lands somewhere that reads as finished-but-empty rather than broken.
+ * `OptionsApp` owns that; everything here is the wiring it needs. The KDF Worker is
+ * real rather than a stub because the A-17 proof is an Argon2id pass at m=64 MiB —
+ * running it on this thread would freeze the page mid-keystroke, which is the same
+ * reason the popup does not.
  */
 const root = document.getElementById('root');
 if (root !== null) {
-  createRoot(root).render(
-    <main
-      className="ck-app flex flex-col"
-      style={{ padding: 'var(--ck-s6)', gap: 'var(--ck-s5)', maxWidth: 620, minHeight: '100vh' }}
-    >
-      <header className="flex items-baseline" style={{ gap: 'var(--ck-s2)' }}>
-        <span className="ck-wordmark">CypherKey</span>
-        <h1 className="ck-h1 ck-muted">settings</h1>
-      </header>
-
-      <section className="card flex flex-col" style={{ gap: 'var(--ck-s2)' }}>
-        <h2 className="ck-h2">Not open yet</h2>
-        <p className="ck-small ck-muted">
-          Strictness, devices, pausing rhythm checks and your Recovery Kit will live here. They need
-          an unlocked session, which this page cannot reach yet — open the extension and use the
-          profile screen in the meantime.
-        </p>
-      </section>
-    </main>,
-  );
+  const session = createExtensionSession({
+    baseUrl: API_BASE_URL,
+    // The same `storage.local` the popup writes: the device key and the user's salt
+    // live there, and this page needs both to sign a request and to prove a passphrase.
+    area: localArea() ?? memoryArea(),
+    worker: new Worker(new URL('../../src/kdf-worker.ts', import.meta.url), { type: 'module' }),
+  });
+  createRoot(root).render(<OptionsApp session={session} memory={sessionArea()} />);
 }

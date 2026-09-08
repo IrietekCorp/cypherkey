@@ -5,8 +5,8 @@ console record is `gcp.md`, and per-ticket truth is `docs/05-work-tickets.md`.
 
 ## The one-line version
 
-M2 is functionally complete and deployed. What is left is a small number of **founder
-decisions**, one piece of **session plumbing** (the options page), and the beta itself.
+M2 is complete and deployed. What is left is a small number of **founder decisions** and
+the beta itself.
 
 ## What is live
 
@@ -22,16 +22,29 @@ session scratchpad and is extracted when needed.
 
 ## What was done most recently
 
-Three commits, all pushed to `main`:
+**M2-14 is finished — the options page reaches a session, and two live bugs came out from
+under it.**
 
-- `8a296ab` — **light is the default**, with a three-state Light/Dark/System control on the
-  extension (Profile → Appearance, stored in `chrome.storage.local`) and on the site (nav).
-  Dark is unchanged and one tap away.
-- `76f728d` — the site's CSP refused the pre-paint theme stamp. The deployed header names
-  that inline script by `sha256-`, and `site/csp.test.ts` pins the hash.
-- `1d25a28` — the **ten screens the restyle had not reached**: onboarding, Recovery Kit and
-  its confirmation, enrolment, item edit, generator, import, feedback, the options page,
-  and `@media print` for the Kit sheet.
+- **The options page resumes.** `OptionsApp` reads the M2-18 snapshot out of
+  `chrome.storage.session`, the same one the popup writes, and watches that key: unlocking
+  in the popup opens the page without a reload, and locking in the popup closes it. It
+  runs its own idle lock, which zeroes this document's keys and deliberately leaves the
+  shared snapshot alone. **It offers no passphrase box** — a prompt on a tab nobody
+  unlocked is the shape a phishing page takes, and the closed screen says so.
+- **`authHash` was the typed passphrase.** Every step-up-gated control on the settings
+  screen would have been refused by the server, with a message reading "That passphrase
+  did not match." On the wire `authHash` is a derived value and the server stores a hash
+  of *that*. `session.authProof()` derives it now, and the passphrase field became a
+  capture field, because under Strict the key sequence is part of the key.
+- **Nothing in the client ever refreshed an access token.** Tokens last fifteen minutes
+  and sessions last an hour, so every session outlived its token: sync went quiet a
+  quarter of an hour in and the vault fell back to "Offline" on a device that was online.
+  `extension/src/authed.ts` refreshes once on a 401, writes the rotated pair back into the
+  shared snapshot (A-9 rotates, and two documents read one snapshot), and retries.
+
+Before that, and already on `main`: `8a296ab` light by default with a Light/Dark/System
+control, `76f728d` the site CSP hash for the pre-paint theme stamp, and `1d25a28` the ten
+screens the restyle had not reached.
 
 ## Next up, in the order I would do it
 
@@ -42,17 +55,19 @@ Three commits, all pushed to `main`:
 2. **Decide on `RESEND_API_KEY`.** M2-15's "not your rhythm" email is built and tested and
    sends nothing without it. A self-hosted instance with no provider is a supported state,
    so this is a choice, not a gap.
-3. **Wire the options page** (the rest of M2-14). `Settings.tsx` is written, styled and
-   tested; the page cannot reach a session. `extension/src/resume.ts` already keeps a
-   snapshot in `chrome.storage.session` that both documents can read — that is the seam.
-4. **Run the beta.** The exit criterion is 25 users for 14 days, zero data-loss reports,
+3. **Run the beta.** The exit criterion is 25 users for 14 days, zero data-loss reports,
    median unlock under 4 s, grey-band rate under 10%.
 
 ## Known issues
 
 - `extension/entrypoints/popup/Vault.test.tsx` — the M2-10 autofill test is
   **order-dependent**: it passes in a full run and fails when run alone. Pre-existing.
-- The **options page** renders a styled "not open yet" placeholder (see above).
+- **Crossing into or out of Strict is not reachable from any screen.** It is a re-key
+  rather than a settings change; `session.changeStrictness()` exists, is tested, and has
+  no caller. The settings screen hands off and says so rather than pretending.
+- The settings screen has **never been driven against the real server** — it was
+  unreachable until now, so the A-17 round trip is exercised by unit tests and by
+  `server/`'s own tests, not end to end. Worth doing on the first real unlock.
 - Editing the inline `<script>` in `site/index.html` requires updating the CSP on the
   `cypherkey-site-backend` backend bucket **first**. `site/csp.test.ts` will fail if you
   forget; `deploy/README.md` has the command.
@@ -60,16 +75,16 @@ Three commits, all pushed to `main`:
 ## How to verify everything at once
 
 ```bash
-bun test                     # 1146 pass, 6 skip
+bun test                     # 1180 pass, 6 skip
 bun run typecheck
 bun run lint
 bun run build:extension
-bun run size-check           # popup eager 119 KB / 150 KB
-bun run design-preview       # writes design-preview.png — both palettes, twelve screens
+bun run size-check           # popup eager 120 KB / 150 KB
+bun run design-preview       # writes design-preview.png — both palettes, thirteen screens
 
 # the browser e2e needs a build pointed at its own server, not production
 VITE_CYPHERKEY_API=http://127.0.0.1:8791 bun run build:extension
-bun run browser-e2e          # 21 steps in real Chrome
+bun run browser-e2e          # 23 steps in real Chrome
 bun run build:extension      # put the production build back
 ```
 
@@ -78,6 +93,12 @@ an injected `fetch`, an in-process app, a controlled clock, SQLite for a pooled 
 config that is always supplied. Five production bugs passed 1,000+ of them. `browser-e2e`
 and `design-preview` exist because of that, and both have since caught defects the tests
 could not see.
+
+The M2-14 pass added a sixth shape to the list, and it is the one to keep in mind: a
+screen that had never been reached. Its tests passed while asserting the wrong value on
+the wire, and the token that every one of them issued was spent in the same millisecond it
+was minted. **A test suite cannot notice time passing, and it cannot notice a screen
+nobody has opened.**
 
 ## Publishing the site
 

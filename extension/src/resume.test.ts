@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import type { SessionSnapshot } from '../../core/client/session';
 import {
   RESUME_IDLE_MS,
@@ -7,6 +7,8 @@ import {
   loadResume,
   saveResume,
   touchResume,
+  updateResumeTokens,
+  watchResume,
 } from './resume';
 import { memoryArea } from './storage';
 
@@ -138,5 +140,127 @@ describe('the snapshot never goes near disk', () => {
     expect(code).toContain('storage?.session');
     expect(code).not.toContain('storage.local');
     expect(code).not.toContain('localArea');
+  });
+});
+
+describe('rotated tokens (A-9)', () => {
+  test('replace the pair in the snapshot without moving the hard cap', async () => {
+    const area = memoryArea();
+    await saveResume(area, SNAPSHOT, 'shawn', T0);
+
+    await updateResumeTokens(area, { accessToken: 'a2', refreshToken: 'r2' }, T0 + 60_000);
+
+    const result = await loadResume(area, T0 + 60_000);
+    expect(result.resumed).toBe(true);
+    if (result.resumed) {
+      expect(result.stored.snapshot.accessToken).toBe('a2');
+      expect(result.stored.snapshot.refreshToken).toBe('r2');
+      // Everything else about the snapshot survives, keys included.
+      expect(result.stored.snapshot.vaultKey).toBe(SNAPSHOT.vaultKey);
+      expect(result.stored.unlockedAt).toBe(T0);
+      expect(result.stored.lastActiveAt).toBe(T0 + 60_000);
+    }
+  });
+
+  /**
+   * A refresh cannot resurrect a session that has already ended, and writing one back
+   * would be how a cleared snapshot came back to life.
+   */
+  test('write nothing when there is no session to write to', async () => {
+    const area = memoryArea();
+
+    await updateResumeTokens(area, { accessToken: 'a2', refreshToken: 'r2' }, T0);
+
+    expect(await loadResume(area, T0)).toEqual({ resumed: false, reason: 'none' });
+  });
+
+  test('a refreshed session still expires on its original schedule', async () => {
+    const area = memoryArea();
+    await saveResume(area, SNAPSHOT, 'shawn', T0);
+
+    await updateResumeTokens(
+      area,
+      { accessToken: 'a2', refreshToken: 'r2' },
+      T0 + RESUME_MAX_MS - 1,
+    );
+
+    const result = await loadResume(area, T0 + RESUME_MAX_MS);
+    expect(result).toEqual({ resumed: false, reason: 'expired' });
+  });
+});
+
+describe('watching for a session appearing or going away', () => {
+  type Handler = (changes: Record<string, unknown>, area?: string) => void;
+
+  /** Stands in for `chrome.storage`, with both places an onChanged event can live. */
+  function fakeChrome(options: { scoped: boolean }) {
+    const handlers = new Set<Handler>();
+    const event = {
+      addListener: (fn: Handler) => void handlers.add(fn),
+      removeListener: (fn: Handler) => void handlers.delete(fn),
+    };
+    const storage = options.scoped
+      ? { session: { onChanged: event } }
+      : { session: {}, onChanged: event };
+    (globalThis as { chrome?: unknown }).chrome = { storage };
+    return {
+      handlers,
+      fire: (changes: Record<string, unknown>, area?: string) => {
+        for (const fn of handlers) fn(changes, area);
+      },
+    };
+  }
+
+  afterEach(() => {
+    (globalThis as { chrome?: unknown }).chrome = undefined;
+  });
+
+  test('a change to the snapshot calls back', async () => {
+    const chrome = fakeChrome({ scoped: true });
+    let fired = 0;
+    const off = watchResume(() => {
+      fired += 1;
+    });
+
+    chrome.fire({ 'cypherkey.session.resume': { newValue: {} } });
+
+    expect(fired).toBe(1);
+    off();
+    expect(chrome.handlers.size).toBe(0);
+  });
+
+  test('a change to something else does not', async () => {
+    const chrome = fakeChrome({ scoped: true });
+    let fired = 0;
+    watchResume(() => {
+      fired += 1;
+    });
+
+    chrome.fire({ 'cypherkey.user.name': { newValue: 'shawn' } });
+
+    expect(fired).toBe(0);
+  });
+
+  /**
+   * The fallback path. `storage.onChanged` fires for every area, and `storage.local`
+   * holds the device key and the salt: a listener that did not filter would wake the
+   * options page on writes that say nothing about a session.
+   */
+  test('on the global event, only the session area counts', async () => {
+    const chrome = fakeChrome({ scoped: false });
+    const seen: string[] = [];
+    watchResume(() => seen.push('fired'));
+
+    chrome.fire({ 'cypherkey.session.resume': { newValue: {} } }, 'local');
+    expect(seen).toHaveLength(0);
+
+    chrome.fire({ 'cypherkey.session.resume': { newValue: {} } }, 'session');
+    expect(seen).toHaveLength(1);
+  });
+
+  /** Outside the extension there is nothing to watch, and that is not a failure. */
+  test('with no chrome at all it returns a no-op', () => {
+    (globalThis as { chrome?: unknown }).chrome = undefined;
+    expect(() => watchResume(() => {})()).not.toThrow();
   });
 });

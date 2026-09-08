@@ -29,7 +29,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import puppeteer, { type Browser } from 'puppeteer-core';
+import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { DEV_EXTENSION_ID } from '../extension/manifest';
 
 const EXTENSION_DIR = join(import.meta.dir, '..', 'extension', '.output', 'chrome-mv3');
@@ -161,12 +161,24 @@ async function main(): Promise<void> {
     const extensionId = DEV_EXTENSION_ID;
     ok(`the extension loaded with a pinned id (${extensionId})`);
 
-    const page = await browser.newPage();
     const consoleErrors: string[] = [];
-    page.on('console', (m) => {
-      if (m.type() === 'error') consoleErrors.push(m.text());
-    });
-    page.on('pageerror', (e) => consoleErrors.push(String(e)));
+    /**
+     * Every document this run opens, not just the first.
+     *
+     * The listener used to be attached to the popup alone, so anything the reopened
+     * popup or the options page logged went unread -- and the options page is the one
+     * that builds a Worker and mounts React outside the popup, which is exactly where a
+     * silent failure would hide.
+     */
+    const watch = <T extends Page>(target: T): T => {
+      target.on('console', (m) => {
+        if (m.type() === 'error') consoleErrors.push(m.text());
+      });
+      target.on('pageerror', (e) => consoleErrors.push(String(e)));
+      return target;
+    };
+
+    const page = watch(await browser.newPage());
 
     await page.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
     await page.waitForSelector('[data-testid="consent"]', { timeout: 30_000 });
@@ -280,7 +292,7 @@ async function main(): Promise<void> {
     */
     const before = await submitted();
     await page.close();
-    const reopened = await browser.newPage();
+    const reopened = watch(await browser.newPage());
     await reopened.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
     await reopened.waitForFunction(
       () => document.body.textContent?.includes('Checking this device') !== true,
@@ -329,6 +341,32 @@ async function main(): Promise<void> {
       throw new Error(`a resumable session was written to disk: ${onDisk}`);
     }
     ok(`nothing resumable is on disk (local holds: ${stored.local.join(', ') || 'nothing'})`);
+
+    /*
+      The options page, which is a second document with no claim on the popup's keys.
+
+      It is here rather than in a unit test because everything that can go wrong with it
+      is browser-only: it constructs a KDF Worker under the MV3 CSP, mounts React from
+      its own entrypoint, and reads `chrome.storage.session` from a document that did not
+      write it. A test with a storage double proves none of that.
+
+      Enrolment is unfinished in this run, so there is no session to resume -- which
+      makes this the refusal path, and the refusal path is the one a user meets first.
+    */
+    const options = watch(await browser.newPage());
+    await options.goto(`chrome-extension://${extensionId}/options.html`, { waitUntil: 'load' });
+    await options.waitForSelector('[data-testid="closed-message"]', { timeout: 30_000 });
+    ok('the options page loaded and asked for an unlock in the popup');
+
+    const optionsText = await options.$eval('main', (el) => el.textContent ?? '');
+    if (optionsText.includes('Not open yet')) {
+      throw new Error('the options page is still the placeholder');
+    }
+    // The decision, asserted rather than described: the passphrase is typed in one place.
+    if ((await options.$('[data-testid="passphrase"]')) !== null) {
+      throw new Error('the options page is asking for a passphrase');
+    }
+    ok('it offers no passphrase box of its own');
 
     if (consoleErrors.length > 0) {
       throw new Error(`the page logged errors:\n  ${consoleErrors.join('\n  ')}`);

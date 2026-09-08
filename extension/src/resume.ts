@@ -77,6 +77,75 @@ export async function touchResume(area: StorageArea, now: number): Promise<void>
   await area.set({ [RESUME_KEY]: { ...stored, lastActiveAt: now } });
 }
 
+/**
+ * Writes a rotated token pair into the stored snapshot.
+ *
+ * Access tokens live fifteen minutes (A-8) and a resumable session lives an hour, so
+ * every session outlives its own access token. `session.refresh()` exchanges the pair —
+ * and A-9 *rotates* the refresh token, retiring the one that was spent. A rotated pair
+ * that is not written back here leaves a snapshot holding a spent refresh token, and
+ * the next document to use it revokes the whole family: the user is signed out for
+ * being careful.
+ *
+ * `unlockedAt` is deliberately untouched. Refreshing a token is not re-proving a
+ * passphrase, and a session that could push its hard cap out by refreshing would have
+ * no cap at all.
+ */
+export async function updateResumeTokens(
+  area: StorageArea,
+  tokens: { accessToken: string; refreshToken: string },
+  now: number,
+): Promise<void> {
+  const stored = await readStored(area);
+  if (stored === null) return;
+  await area.set({
+    [RESUME_KEY]: {
+      ...stored,
+      snapshot: { ...stored.snapshot, ...tokens },
+      lastActiveAt: now,
+    },
+  });
+}
+
+/**
+ * Calls back whenever the snapshot changes, for a second document that is watching.
+ *
+ * The options page is the reason. It is a full tab and outlives any number of popups,
+ * so "there is no session yet" is a state it can sit in while the user goes and unlocks
+ * in the popup. Without this it would keep saying so until reloaded; with it the page
+ * comes alive by itself, which is what someone who just unlocked expects.
+ *
+ * Returns a no-op unsubscribe where there is nothing to watch, so a caller outside the
+ * extension does not have to know the difference.
+ */
+export function watchResume(listener: () => void): () => void {
+  type Changes = Record<string, unknown>;
+  type Event = {
+    addListener(fn: (changes: Changes, area?: string) => void): void;
+    removeListener(fn: (changes: Changes, area?: string) => void): void;
+  };
+  const storage = (
+    globalThis as {
+      chrome?: { storage?: { session?: { onChanged?: Event }; onChanged?: Event } };
+    }
+  ).chrome?.storage;
+
+  // `chrome.storage.session.onChanged` is the narrow one and is preferred; the global
+  // `storage.onChanged` fires for every area, so it is filtered by name. Either way a
+  // change to some other key is not this page's business.
+  const scoped = storage?.session?.onChanged;
+  const target = scoped ?? storage?.onChanged;
+  if (target === undefined) return () => {};
+
+  const handler = (changes: Changes, area?: string) => {
+    if (scoped === undefined && area !== 'session') return;
+    if (!(RESUME_KEY in changes)) return;
+    listener();
+  };
+  target.addListener(handler);
+  return () => target.removeListener(handler);
+}
+
 /** Drops the snapshot. See `SessionSnapshot`: this removes a reference, it does not erase bytes. */
 export async function clearResume(area: StorageArea): Promise<void> {
   await area.remove(RESUME_KEY);
