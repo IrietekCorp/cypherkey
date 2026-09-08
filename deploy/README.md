@@ -94,6 +94,22 @@ repo rather than uploaded:
 If you add a header, add it to the backend bucket. There is no file in the repo that does
 it any more, and re-adding one would be a second source of truth that silently loses.
 
+**The CSP carries a script hash, and `site/csp.test.ts` guards it.** `site/index.html`
+stamps the palette in `<head>` before first paint, so a visitor who chose dark does not
+watch the page load light and swap. `script-src` is `'self'` with no `unsafe-inline`, so
+the header names that one script by
+`'sha256-mmJN3GwOEPpR6oAUsPnSozXTcUFPKLc4vUiwODCiL/A='`. Editing the script without
+updating the header is silent in every way that matters — the page builds, deploys and
+serves; only the browser refuses to run it. The test pins the hash so that edit fails
+here instead. Update the header first, then the constant in the test.
+
+    gcloud compute backend-buckets update cypherkey-site-backend \
+      --project=<GCP_PROJECT_ID> \
+      --custom-response-header="Content-Security-Policy: ..."
+
+Note that `--custom-response-header` **replaces the whole list**: pass every header, not
+just the one that changed.
+
 **The bucket also needs `--web-main-page-suffix=index.html`.** Without it a request for
 `/` returns the bucket's public XML object listing with a 200, which looks like a working
 deploy until you read the content type.
