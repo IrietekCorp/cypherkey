@@ -57,6 +57,16 @@ export function Unlock({
   const [stage, setStage] = useState<Stage>('entry');
   const [message, setMessage] = useState<string | null>(null);
   const [failures, setFailures] = useState(0);
+  /**
+   * The band of the last attempt, for the light and the header.
+   *
+   * The board also shows a score -- "Amber band · 0.53" -- which the server does not
+   * send: grey answers `{band, stepUp}` and fail `{band, error}`. It is not invented
+   * here. Surfacing one is a server change and worth a moment's thought first, because a
+   * live score is exactly the feedback an attacker needs to hill-climb toward a profile.
+   */
+  const [band, setBand] = useState<'pass' | 'grey' | 'fail' | null>(null);
+  const [failCode, setFailCode] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState<HTMLInputElement | null>(null);
@@ -68,6 +78,7 @@ export function Unlock({
   const begin = () => {
     if (input !== null && light !== null) {
       setMessage(null);
+      setBand(null);
       capture.start(input, light);
     }
   };
@@ -90,6 +101,7 @@ export function Unlock({
     if (result.band === 'grey') {
       // X-3: the grey band asks for a second sample and scores the average. The user
       // is not being refused, so the copy must not read like a refusal.
+      setBand('grey');
       setStage('grey');
       setMessage(GREY_MESSAGE);
       return;
@@ -99,6 +111,8 @@ export function Unlock({
       setMessage(LOCKED_MESSAGE);
       return;
     }
+    setBand('fail');
+    setFailCode(result.error);
     setFailures((n) => n + 1);
     // A failed grey retype has nowhere left to go on rhythm alone, so offer the factor
     // that does not depend on it.
@@ -127,6 +141,8 @@ export function Unlock({
         // online unlock, which is the earliest it can be known.
         if (ok) onUnlocked(0);
         else {
+          // No band here: nothing was scored. The cached vault simply did not open, and
+          // saying "that didn't match your rhythm" would name the wrong cause.
           setFailures((n) => n + 1);
           setMessage('That passphrase did not open the offline vault on this device.');
         }
@@ -165,49 +181,94 @@ export function Unlock({
     }
   };
 
+  /*
+    Frames 06-08 of Design Pass v2.
+
+    One screen, three faces: entry, amber and refused. The heading and the tag carry the
+    outcome so the light is not the only thing saying it -- the guide is explicit that
+    amber gets a line and a dot and nothing that amplifies it, so there is no filled
+    panel, no icon and no exclamation anywhere below.
+  */
+  const heading =
+    band === 'grey'
+      ? 'Looks a little different'
+      : band === 'fail'
+        ? "That didn't match your rhythm"
+        : 'Welcome back';
+
   return (
-    <main className="flex flex-col gap-3 p-4 font-sans text-sm">
-      <h1 className="text-base font-semibold">Unlock CypherKey</h1>
+    <main className="ck-app flex flex-col" style={{ padding: 'var(--ck-s5)', gap: 'var(--ck-s5)' }}>
+      <header className="flex items-center" style={{ gap: 'var(--ck-s2)' }}>
+        <span className="ck-wordmark ck-small ck-muted">CypherKey</span>
+      </header>
+
+      <div className="flex flex-col" style={{ gap: 'var(--ck-s1)' }}>
+        <div className="flex items-baseline flex-wrap" style={{ gap: 'var(--ck-s2)' }}>
+          <h1 className="ck-h1">{heading}</h1>
+          {band === 'grey' && (
+            <span data-testid="band" className="tag tag-amber">
+              Amber band
+            </span>
+          )}
+          {band === 'fail' && (
+            <span data-testid="band" className="tag tag-fail">
+              {failCode === null ? 'Fail' : `Fail · ${failCode}`}
+            </span>
+          )}
+        </div>
+        <p className="ck-small ck-muted">
+          {band === null ? 'Type your passphrase the way you always type it.' : null}
+        </p>
+      </div>
+
       {offline && (
-        <p data-testid="offline" className="text-xs text-neutral-600">
+        <p data-testid="offline" className="ck-small ck-muted">
           You are offline. This device can still open its cached vault.
         </p>
       )}
 
-      <input
-        ref={setInput}
-        type="password"
-        data-testid="passphrase"
-        onFocus={begin}
-        /*
-          Unlocking is the interaction this product asks for every day, and it is the one
-          where reaching for the mouse is worst: the click has to be preceded by a
-          `preventFocusSteal` to avoid blurring the sample it is submitting. Enter ends
-          the sample without focus moving at all, and A-14.1 treats it as a terminator
-          that produces no token.
-        */
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' || busy || locked || stage === 'step-up') return;
-          e.preventDefault();
-          void submit();
-        }}
-        disabled={busy || locked || stage === 'step-up'}
-        className="rounded border border-neutral-300 px-2 py-1"
-      />
+      {/*
+        X-1: the light is never hidden to tidy a layout. Capture stops entirely if it is,
+        so it stays on screen through every stage of this component.
+      */}
+      <RhythmLight ref={setLight} state={capture.state} {...(band === null ? {} : { band })} />
 
-      <RhythmLight ref={setLight} state={capture.state} />
+      <label className="field">
+        <span>Passphrase</span>
+        <input
+          ref={setInput}
+          type="password"
+          data-testid="passphrase"
+          onFocus={begin}
+          /*
+            Unlocking is the interaction this product asks for every day, and it is the one
+            where reaching for the mouse is worst: the click has to be preceded by a
+            `preventFocusSteal` to avoid blurring the sample it is submitting. Enter ends
+            the sample without focus moving at all, and A-14.1 treats it as a terminator
+            that produces no token.
+          */
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || busy || locked || stage === 'step-up') return;
+            e.preventDefault();
+            void submit();
+          }}
+          disabled={busy || locked || stage === 'step-up'}
+          className="input"
+        />
+      </label>
 
       {message !== null && (
         <p
           data-testid="message"
-          className={stage === 'grey' ? 'text-xs text-amber-700' : 'text-xs text-rose-700'}
+          className="ck-small"
+          style={{ color: stage === 'grey' ? 'var(--ck-amber-text)' : 'var(--ck-fail-text)' }}
         >
           {message}
         </p>
       )}
 
       {failures >= WARN_AFTER && !locked && (
-        <p data-testid="lockout-warning" className="text-xs text-neutral-600">
+        <p data-testid="lockout-warning" className="ck-small ck-muted">
           {LOCKOUT_WARNING}
         </p>
       )}
@@ -219,20 +280,20 @@ export function Unlock({
           disabled={busy || locked}
           onMouseDown={preventFocusSteal}
           onClick={submit}
-          className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+          className="btn btn-primary btn-block"
         >
-          {stage === 'grey' ? 'Type it once more' : 'Unlock'}
+          {stage === 'grey' ? 'Type it again' : 'Unlock'}
         </button>
       )}
 
       {(stage === 'step-up' || locked) && (
-        <div data-testid="step-up" className="flex flex-col gap-2">
-          <p className="text-xs text-neutral-700">
+        <div data-testid="step-up" className="card flex flex-col" style={{ gap: 'var(--ck-s3)' }}>
+          <p className="ck-small ck-muted">
             {/*
               Backup Codes, never "recovery codes". A Backup Code opens a session; the
               Recovery Kit opens a vault, and is deliberately not offered here.
             */}
-            Enter one of your Backup Codes to get in.
+            Enter one of your Backup Codes to get in. Each code works once.
           </p>
           <input
             ref={setCodeField}
@@ -243,28 +304,62 @@ export function Unlock({
               e.preventDefault();
               void useBackupCode();
             }}
-            className="rounded border border-neutral-300 px-2 py-1 font-mono"
+            className="input font-mono"
           />
           <button
             type="button"
             data-testid="use-backup-code"
             disabled={busy}
             onClick={useBackupCode}
-            className="rounded bg-neutral-900 px-2 py-1 text-white disabled:opacity-40"
+            className="btn btn-primary btn-block"
           >
-            Use Backup Code
+            Use code
           </button>
+          {!locked && (
+            <button
+              type="button"
+              data-testid="retry-typing"
+              disabled={busy}
+              onClick={() => {
+                setStage('entry');
+                setBand(null);
+                setFailCode(null);
+                setMessage(null);
+                clear();
+              }}
+              className="btn btn-ghost ck-small"
+            >
+              Try typing again
+            </button>
+          )}
         </div>
       )}
 
-      <button
-        type="button"
-        data-testid="forgot"
-        onClick={onForgotPassphrase}
-        className="self-start text-xs text-neutral-500 underline"
-      >
-        I've forgotten my passphrase
-      </button>
+      {/*
+        The de-escalating line the guide asks for: amber is "probably still you", and the
+        vault is never at risk in either direction.
+      */}
+      {stage === 'grey' && (
+        <p className="ck-small ck-muted">
+          One retype, then a Backup Code. Your vault stays where it is either way.
+        </p>
+      )}
+
+      {/*
+        Hidden during step-up, which is frame 08 and also a rule: the Recovery Kit opens
+        a vault and re-keys the account, a Backup Code opens one session. Offering both
+        at the moment someone is failing a rhythm check invites the destructive one.
+      */}
+      {stage !== 'step-up' && !locked && (
+        <button
+          type="button"
+          data-testid="forgot"
+          onClick={onForgotPassphrase}
+          className="btn btn-ghost ck-small self-start"
+        >
+          Lost every device? Use your Recovery Kit
+        </button>
+      )}
     </main>
   );
 }

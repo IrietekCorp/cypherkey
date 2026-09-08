@@ -139,7 +139,9 @@ describe('bands drive the screen (X-3)', () => {
     await typeAndSubmit();
     expect(el('message')?.textContent).toBe(GREY_MESSAGE);
     expect(text()).not.toContain(FAIL_MESSAGE);
-    expect(el('submit')?.textContent).toBe('Type it once more');
+    // Board copy (frame 07). "Type it again" reads as an invitation; the old
+    // "Type it once more" reads as a last chance, which amber is not.
+    expect(el('submit')?.textContent).toBe('Type it again');
   });
 
   test('a second sample after grey goes to step-up, not login', async () => {
@@ -219,6 +221,22 @@ describe('step-up with a Backup Code', () => {
     await reachStepUp();
     expect(text()).toContain('Backup Code');
     expect(text().toLowerCase()).not.toContain('recovery code');
+  });
+
+  /**
+   * Frame 08 omits the Recovery Kit link, and that omission is a rule rather than a
+   * layout choice: a Backup Code opens one session, the Kit opens the vault and re-keys
+   * the account, discarding the rhythm profile. Offering both at the moment someone is
+   * failing a rhythm check puts the destructive option in front of a frustrated user.
+   */
+  test('a way back to typing is offered instead', async () => {
+    await reachStepUp();
+    expect(el('retry-typing')).not.toBeNull();
+    await click('retry-typing');
+    // Back to a plain entry screen: the band, the message and the step-up are all gone.
+    expect(el('step-up')).toBeNull();
+    expect(el('band')).toBeNull();
+    expect(el('submit')?.textContent).toBe('Unlock');
   });
 
   test('the Recovery Kit is not offered as a step-up factor', async () => {
