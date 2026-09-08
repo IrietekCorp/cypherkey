@@ -61,6 +61,14 @@ const text = () => host.textContent ?? '';
 
 /** Captures the "I already have an account" choice for assertions. */
 const hasAccount: { name: string | null } = { name: null };
+/*
+  Reset through a call, not an assignment: assigning `null` inline narrows the property
+  to `null` for the rest of the block, and the assertion that it later holds a username
+  then fails to typecheck against a value the test itself is about to produce.
+*/
+const forgetHasAccount = () => {
+  hasAccount.name = null;
+};
 
 const render = async (
   session: Pick<Session, 'signup'>,
@@ -283,7 +291,7 @@ describe('the fields are ordered so a refusal costs least', () => {
  */
 describe('an existing account can be reached without a failed signup', () => {
   test('the choice carries the username that was typed', async () => {
-    hasAccount.name = null;
+    forgetHasAccount();
     const { session, calls } = fakeSession();
     await render(session);
     await fill('username', 'shawn');
@@ -296,7 +304,7 @@ describe('an existing account can be reached without a failed signup', () => {
   });
 
   test('without a username it asks for one rather than guessing', async () => {
-    hasAccount.name = null;
+    forgetHasAccount();
     const { session } = fakeSession();
     await render(session);
 
