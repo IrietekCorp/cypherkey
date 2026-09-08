@@ -108,3 +108,49 @@ describe('loadConfig — A-13 defaults and ranges', () => {
     expect(() => loadConfig(env({ SCORE_PASS: '0.4', SCORE_GREY: '0.45' }))).toThrow(/SCORE_PASS/);
   });
 });
+
+describe('loadConfig - the mail provider is optional, and never half-set', () => {
+  test('neither variable means no mail, which is a supported way to run', () => {
+    expect(loadConfig(env()).mail).toBeNull();
+  });
+
+  test('both variables give a mail config', () => {
+    const config = loadConfig(
+      env({ RESEND_API_KEY: 're_key', MAIL_FROM: 'CypherKey <noreply@cypherkey.io>' }),
+    );
+    expect(config.mail).toEqual({
+      apiKey: 're_key',
+      from: 'CypherKey <noreply@cypherkey.io>',
+    });
+  });
+
+  /**
+   * The state worth refusing: an operator who set the key believes the X-3 notice is
+   * going out. Starting anyway and sending nothing is how `RESEND_API_KEY` sat in the
+   * deploy plan while no code read it.
+   */
+  test('a key with no sender refuses to start, and says which is missing', () => {
+    expect(() => loadConfig(env({ RESEND_API_KEY: 're_key' }))).toThrow(ConfigError);
+    expect(() => loadConfig(env({ RESEND_API_KEY: 're_key' }))).toThrow(/MAIL_FROM is not/);
+  });
+
+  test('a sender with no key refuses too', () => {
+    expect(() => loadConfig(env({ MAIL_FROM: 'noreply@cypherkey.io' }))).toThrow(
+      /RESEND_API_KEY is not/,
+    );
+  });
+
+  /** A deployment template that sets a variable to nothing has not set it. */
+  test('empty strings are unset, not half-configured', () => {
+    expect(loadConfig(env({ RESEND_API_KEY: '', MAIL_FROM: '  ' })).mail).toBeNull();
+  });
+
+  test('the failure message never quotes the key', () => {
+    try {
+      loadConfig(env({ RESEND_API_KEY: 're_the_actual_secret' }));
+      throw new Error('expected a ConfigError');
+    } catch (err) {
+      expect((err as Error).message).not.toContain('re_the_actual_secret');
+    }
+  });
+});

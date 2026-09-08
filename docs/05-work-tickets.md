@@ -1010,6 +1010,41 @@ X-3 calls this a feature, not a notification: *"Someone typed your passphrase bu
 - **The mailer is optional on `createApp`.** A self-hosted instance with no provider simply does not send, rather than failing logins it cannot email about.
 - **The body carries no score.** A score would tell an attacker how close they got, which is a hill-climbing signal, and a mailbox is often the first account an attacker compromises. Location is coarse or absent — it says "somewhere" rather than inventing precision.
 
+**Corrected 2026-09-08: none of it was reachable, and the plan to switch it on was wrong.**
+`createMailer`, `resendTransport` and the throttle were written and tested behind an
+injected `Transport`, and `createApp` took an optional `mailer` — but **nothing ever built
+one**, and `RESEND_API_KEY` was read by no line of code. `gcp.md` 5.3 described setting the
+secret as the whole job. It was not: creating it would have changed nothing, silently, and
+the first evidence would have been a beta user who was never told someone had typed their
+passphrase.
+
+This is the second instance of one failure shape, and it is worth naming as a shape rather
+than as two bugs: **a seam every test supplies and the entrypoint does not.** M2-16's was
+`createApp({ db })` without a config, which left the deployed server mounting only
+`/healthz` while every route test passed. The tests here were no weaker — `mail.test.ts`
+still asserts the POST, its shape, the throttle across eleven minutes and that no score
+leaves the building. They simply all began after the wiring.
+
+**What was built.** `Config` now carries `mail: MailConfig | null`, and `index.ts`
+constructs the mailer from it. Absent is a first-class answer: a self-hosted instance with
+no provider sends nothing and logs people in. **Half of it is refused** — `RESEND_API_KEY`
+without `MAIL_FROM`, or the reverse, exits with a message naming the missing half, on the
+same reasoning as `JWT_SECRET`. Half-configured mail is precisely the state where an
+operator believes the notice is going out; that belief is what this ticket has been in for
+three days.
+
+The entrypoint says which state it is in, in one line at boot that names the sender and
+never the key. That line exists to be read from Cloud Run's logs, and to be asserted:
+`server/src/index.test.ts` **starts the real file** — the first test in the tree that does
+— and checks all four outcomes. It cannot prove a message reaches Resend, which is
+`mail.test.ts`'s job over an injected fetch, but it proves the entrypoint read the variable
+and built something out of it, which is exactly what it did not do.
+
+**Still a decision, and now genuinely one line of config.** `deploy/service.yaml` carries
+the `RESEND_API_KEY` and `MAIL_FROM` block commented out, because `cypherkey.io` publishes
+no TXT records and Resend will not send from an unverified domain. gcp.md 5.3 lists the
+four steps.
+
 ---
 
 ### M2-16 · Hosted deploy · M · deps: M2-00f · **DONE 2026-09-08**

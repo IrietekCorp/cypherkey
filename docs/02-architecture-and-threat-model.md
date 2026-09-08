@@ -363,7 +363,9 @@ All routes except `/auth/salt`, `/auth/signup`, `/auth/login`, `/healthz` requir
 | `JWT_SECRET` | none — **server refuses to start without it** | ≥32 random bytes |
 | `ENROLLMENT_SAMPLES` | `8` | 5–20 |
 | `SCORE_PASS` / `SCORE_GREY` | `0.62` / `0.45` | overridden per-user in M3 |
-| `RESEND_API_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | none | hosted only |
+| `RESEND_API_KEY` | none — no provider, no mail | hosted only. Set **with** `MAIL_FROM` or the server refuses to start |
+| `MAIL_FROM` | none | the verified sender, e.g. `CypherKey <noreply@cypherkey.io>` |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | none | hosted only |
 
 `ENCRYPTION_KEY` is **removed**. The server no longer participates in credential encryption. Insecure defaults are removed; the server exits with a clear message if a required secret is missing.
 

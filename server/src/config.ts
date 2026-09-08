@@ -11,10 +11,20 @@ export type DbConfig =
   | { dialect: 'sqlite'; url: string; path: string }
   | { dialect: 'postgres'; url: string };
 
+/**
+ * The X-3 failure email, or nothing.
+ *
+ * Null is a first-class answer: a self-hosted instance with no provider sends no mail
+ * and still logs people in. What is *not* allowed is half of it — see `loadConfig`.
+ */
+export type MailConfig = { apiKey: string; from: string };
+
 export type Config = {
   port: number;
   db: DbConfig;
   jwtSecret: string;
+  /** Null when no provider is configured, which is a supported way to run. */
+  mail: MailConfig | null;
   /**
    * A-2: Argon2id cost is recorded per account at signup and returned by `/auth/salt`.
    * The server is authoritative — it records its own defaults rather than trusting a
@@ -38,6 +48,8 @@ const envSchema = z.object({
   ENROLLMENT_SAMPLES: z.coerce.number().int().min(5).max(20).default(8),
   SCORE_PASS: z.coerce.number().min(0).max(1).default(0.62),
   SCORE_GREY: z.coerce.number().min(0).max(1).default(0.45),
+  RESEND_API_KEY: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
 });
 
 /**
@@ -95,11 +107,40 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
     port: e.PORT,
     db: parseDatabaseUrl(e.DATABASE_URL),
     jwtSecret,
+    mail: parseMail(blank(e.RESEND_API_KEY), blank(e.MAIL_FROM)),
     argonParams: ARGON_PARAMS,
     enrollmentSamples: e.ENROLLMENT_SAMPLES,
     scorePass: e.SCORE_PASS,
     scoreGrey: e.SCORE_GREY,
   };
+}
+
+/** An empty variable is an unset one. Deployment templates set both far too easily. */
+function blank(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === '' ? undefined : value;
+}
+
+/**
+ * Both halves or neither, and refusing in between.
+ *
+ * Sending mail needs a key *and* an address the provider will accept as the sender, so
+ * either alone is a configuration nobody meant. Refusing is deliberate and follows
+ * `JWT_SECRET`: half-configured mail is the state where an operator believes the X-3
+ * notice is going out and it is not, which is worse than not offering it at all. That is
+ * the failure this variable already had — it was in Secret Manager's plan and read by
+ * nothing.
+ */
+function parseMail(apiKey: string | undefined, from: string | undefined): MailConfig | null {
+  if (apiKey === undefined && from === undefined) return null;
+  if (apiKey === undefined) {
+    throw new ConfigError('MAIL_FROM is set but RESEND_API_KEY is not, so no mail can be sent.');
+  }
+  if (from === undefined) {
+    throw new ConfigError(
+      'RESEND_API_KEY is set but MAIL_FROM is not. Set the verified sender address, e.g. MAIL_FROM="CypherKey <noreply@cypherkey.io>".',
+    );
+  }
+  return { apiKey, from };
 }
 
 /** Loads the config, or prints the reason and exits non-zero. Used by the entrypoint only. */

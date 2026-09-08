@@ -42,6 +42,15 @@ under it.**
   `extension/src/authed.ts` refreshes once on a 401, writes the rotated pair back into the
   shared snapshot (A-9 rotates, and two documents read one snapshot), and retries.
 
+**`RESEND_API_KEY` was read by no line of code.** M2-15's mailer, its transport and its
+one-per-hour throttle were written and tested behind an injected seam, `createApp` took an
+optional `mailer` — and nothing ever built one. Creating the secret would have changed
+nothing, silently, and the first evidence would have been a beta user who was never told
+someone had typed their passphrase. Same shape as M2-16's `createApp({ db })`: a seam
+every test supplies and the entrypoint does not. `Config` carries `mail` now, the
+entrypoint builds the mailer from it, half-configured mail refuses to start, and
+`server/src/index.test.ts` boots the real file — the first test in the tree that does.
+
 **`browser-e2e` now goes the whole way**, 21 steps to 33. It finishes the eight enrolment
 samples, builds the profile, unlocks against it, and opens the vault — then leaves the
 options page open across the unlock and watches it come alive on its own, lists the
@@ -59,9 +68,12 @@ screens the restyle had not reached.
    GitHub links on the site (`site/index.html`, two blocks marked
    `HIDDEN UNTIL PUBLIC RELEASE`). Then tighten the workload-identity condition to
    `refs/heads/main`, which is deliberately loose while the repo is private.
-2. **Decide on `RESEND_API_KEY`.** M2-15's "not your rhythm" email is built and tested and
-   sends nothing without it. A self-hosted instance with no provider is a supported state,
-   so this is a choice, not a gap.
+2. **Turn mail on, or leave it off.** M2-15's "not your rhythm" email is wired to the
+   config now — it was not, and setting the secret alone would have done nothing (below).
+   Off is a supported state and costs nothing. On is four steps, in `gcp.md` 5.3, and the
+   long pole is **verifying a sending domain**: `cypherkey.io` publishes no TXT records,
+   so Resend will not send from it until DKIM and SPF are in the `cypherkey-io` zone.
+   `deploy/service.yaml` carries the block, commented.
 3. **Run the beta.** The exit criterion is 25 users for 14 days, zero data-loss reports,
    median unlock under 4 s, grey-band rate under 10%.
 
@@ -82,7 +94,7 @@ screens the restyle had not reached.
 ## How to verify everything at once
 
 ```bash
-bun test                     # 1180 pass, 6 skip
+bun test                     # 1190 pass, 6 skip
 bun run typecheck
 bun run lint
 bun run build:extension

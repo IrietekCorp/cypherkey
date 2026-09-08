@@ -72,6 +72,21 @@ spec:
                 secretKeyRef:
                   name: JWT_SECRET
                   key: latest
+            # MAIL — OFF UNTIL THE SENDING DOMAIN IS VERIFIED. Restore by removing this
+            # comment and its closing marker, and see gcp.md 5.3 for the three things
+            # that have to be true first: a Resend account, the DKIM and SPF records
+            # published in the `cypherkey-io` zone, and the RESEND_API_KEY secret created
+            # with secretAccessor granted to cypherkey-run on that secret alone.
+            #
+            # Both or neither: the server refuses to start on half of this, because an
+            # operator who set the key believes the X-3 notice is going out.
+            # - name: RESEND_API_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: RESEND_API_KEY
+            #       key: latest
+            # - name: MAIL_FROM
+            #   value: CypherKey <noreply@cypherkey.io>
           resources:
             limits:
               cpu: '1'
