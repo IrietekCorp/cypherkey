@@ -185,6 +185,45 @@ describe('bands drive the screen (X-3)', () => {
   });
 });
 
+/**
+ * No score reaches the screen, in any band.
+ *
+ * The design board sketched "Amber band · 0.53" and "Fail · 0.31 · RH-04". A live number
+ * is the one piece of feedback an attacker can iterate against -- type, read, adjust,
+ * repeat until it clears -- and it gives an honest user nothing to act on, because nobody
+ * can decide how to type differently from a decimal. The band and a sentence carry the
+ * whole message.
+ *
+ * Asserted on the rendered text rather than on a prop, so it also catches a score arriving
+ * through some other route later.
+ */
+describe('no score is ever shown', () => {
+  const noDecimal = (where: string) => {
+    // 0.53, .31, 53% -- any shape a score could take on the way to the screen.
+    expect(where).not.toMatch(/\d*\.\d+/);
+    expect(where).not.toMatch(/\d+\s?%/);
+  };
+
+  test('the amber band shows a name, not a number', async () => {
+    const { session } = fakeSession({ logins: [{ band: 'grey', stepUp: ['backup_code'] }] });
+    await render(session);
+    await typeAndSubmit();
+    expect(el('band')?.textContent).toBe('Amber band');
+    noDecimal(text());
+  });
+
+  test('a refusal shows a name, not a number or an internal code', async () => {
+    const { session } = fakeSession({ logins: [{ band: 'fail', error: 'phantom_mismatch' }] });
+    await render(session);
+    await typeAndSubmit();
+    expect(el('band')?.textContent).toBe('Refused');
+    // `phantom_mismatch` is an identifier, not copy. A support code belongs in a bug
+    // report, not on the screen someone is stuck on.
+    expect(text()).not.toContain('phantom_mismatch');
+    noDecimal(text());
+  });
+});
+
 describe('step-up with a Backup Code', () => {
   const reachStepUp = async () => {
     const { session, seen } = fakeSession({

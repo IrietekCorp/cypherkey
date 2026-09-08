@@ -60,13 +60,18 @@ export function Unlock({
   /**
    * The band of the last attempt, for the light and the header.
    *
-   * The board also shows a score -- "Amber band · 0.53" -- which the server does not
-   * send: grey answers `{band, stepUp}` and fail `{band, error}`. It is not invented
-   * here. Surfacing one is a server change and worth a moment's thought first, because a
-   * live score is exactly the feedback an attacker needs to hill-climb toward a profile.
+   * No score, ever -- not shown, and not asked of the server.
+   *
+   * The board sketched "Amber band · 0.53" and "Fail · 0.31 · RH-04". A live number is
+   * the one piece of feedback an attacker can actually iterate against: type, read 0.31,
+   * adjust, read 0.38, repeat until it clears. It gives an honest user nothing to act on
+   * in exchange -- nobody can decide how to type differently from a decimal -- so the
+   * band and a sentence carry the whole message.
+   *
+   * The raw error code goes with it. `phantom_mismatch` is an internal identifier, not
+   * copy; a support code belongs in a bug report, not on the screen someone is stuck on.
    */
   const [band, setBand] = useState<'pass' | 'grey' | 'fail' | null>(null);
-  const [failCode, setFailCode] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState<HTMLInputElement | null>(null);
@@ -112,7 +117,6 @@ export function Unlock({
       return;
     }
     setBand('fail');
-    setFailCode(result.error);
     setFailures((n) => n + 1);
     // A failed grey retype has nowhere left to go on rhythm alone, so offer the factor
     // that does not depend on it.
@@ -212,7 +216,7 @@ export function Unlock({
           )}
           {band === 'fail' && (
             <span data-testid="band" className="tag tag-fail">
-              {failCode === null ? 'Fail' : `Fail · ${failCode}`}
+              Refused
             </span>
           )}
         </div>
@@ -323,7 +327,6 @@ export function Unlock({
               onClick={() => {
                 setStage('entry');
                 setBand(null);
-                setFailCode(null);
                 setMessage(null);
                 clear();
               }}
