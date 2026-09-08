@@ -660,7 +660,19 @@ Also: the shared `unsupported_key` copy originally said "an arrow, a function ke
 
 ---
 
-### M2-06 · In-app Party Trick · S · deps: M2-05 · X-7 · **DONE**
+### M2-06 · In-app Party Trick · S · deps: M2-05 · X-7 · **REMOVED 2026-09-07**
+
+**Removed from the extension.** Founder's call after using the flow end to end: the demo
+belongs on the marketing site, where a visitor with no account can try it, and not in the
+manager itself, where it is a detour between finishing enrolment and reaching the vault.
+
+It also cost something to keep. The screen needed the *resolved passphrase* in order to
+show it to a friend, so `Onboarding` handed the plaintext up to the popup shell, which
+held it in React state until the trick was dismissed. That is a copy of the credential
+living longer and further from where it was typed, for a demonstration. Removing the
+screen removed the copy: the passphrase now stops at the screen where it is typed.
+
+The demo on `cypherkey.io` is unaffected, and X-7 is still met there.
 
 **Why.** It is the moment the product explains itself, and the web demo already taught us its shape.
 

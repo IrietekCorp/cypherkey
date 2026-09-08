@@ -38,6 +38,7 @@ type Progress = { required: number; submitted: number; remaining: number; built:
 export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProps) {
   const capture = useCapture();
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [buildButton, setBuildButton] = useState<HTMLButtonElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState<HTMLInputElement | null>(null);
@@ -96,6 +97,18 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
     input.focus();
     capture.start(input, light);
   }, [busy, complete, input, light, capture.state.status, capture.start]);
+
+  /**
+   * When the eighth sample lands, focus moves to the button that finishes.
+   *
+   * The passphrase field is disabled once the count is complete, so Enter there does
+   * nothing and the screen appears to stop responding to a key it accepted eight times
+   * in a row. Moving focus keeps the whole flow on the keyboard, and Enter activates a
+   * focused button without any handler of ours.
+   */
+  useEffect(() => {
+    if (complete && !busy && buildButton !== null) buildButton.focus();
+  }, [complete, busy, buildButton]);
 
   const submit = async () => {
     const sample = capture.stop();
@@ -205,6 +218,7 @@ export function Enroll({ session, enrollmentToken, script, onBuilt }: EnrollProp
             not kept.
           </p>
           <button
+            ref={setBuildButton}
             type="button"
             data-testid="build"
             disabled={busy}

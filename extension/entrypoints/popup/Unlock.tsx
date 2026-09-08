@@ -179,6 +179,18 @@ export function Unlock({
         type="password"
         data-testid="passphrase"
         onFocus={begin}
+        /*
+          Unlocking is the interaction this product asks for every day, and it is the one
+          where reaching for the mouse is worst: the click has to be preceded by a
+          `preventFocusSteal` to avoid blurring the sample it is submitting. Enter ends
+          the sample without focus moving at all, and A-14.1 treats it as a terminator
+          that produces no token.
+        */
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' || busy || locked || stage === 'step-up') return;
+          e.preventDefault();
+          void submit();
+        }}
         disabled={busy || locked || stage === 'step-up'}
         className="rounded border border-neutral-300 px-2 py-1"
       />
@@ -226,6 +238,11 @@ export function Unlock({
             ref={setCodeField}
             data-testid="backup-code"
             placeholder="XXXXX-XXXXX"
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || busy) return;
+              e.preventDefault();
+              void useBackupCode();
+            }}
             className="rounded border border-neutral-300 px-2 py-1 font-mono"
           />
           <button

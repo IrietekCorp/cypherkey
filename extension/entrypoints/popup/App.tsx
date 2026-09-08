@@ -17,7 +17,6 @@ import { Import } from './Import';
 import { ItemEdit } from './ItemEdit';
 import { ItemView } from './ItemView';
 import { Onboarding } from './Onboarding';
-import { PartyTrick } from './PartyTrick';
 import { RecoveryKit } from './RecoveryKit';
 import { Unlock } from './Unlock';
 import { VaultList } from './VaultList';
@@ -69,9 +68,6 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [viewing, setViewing] = useState<VaultItem | null>(null);
   const [importing, setImporting] = useState(false);
-  /** X-7: offered once, straight after enrolment, while the idea is still new. */
-  const [partyTrickShown, setPartyTrickShown] = useState(false);
-  const [resolved, setResolved] = useState('');
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );
@@ -186,11 +182,10 @@ export function App() {
       <Onboarding
         session={session}
         consentPolicyVersion={CONSENT_POLICY_VERSION}
-        onComplete={(result, captured, name, plain) => {
+        onComplete={(result, captured, name) => {
           setSignedUp(result);
           setScript(captured);
           setUsername(name);
-          setResolved(plain);
           // So the next open knows whose account this is. The device keys core wrote
           // are useless to `Unlock` without a name to log in with.
           void localArea()?.set({ [USERNAME_KEY]: name });
@@ -319,25 +314,6 @@ export function App() {
     setEditing(null);
     setViewing(null);
   };
-
-  /**
-   * Offered once, immediately after enrolment. It needs the resolved passphrase, which
-   * only exists in memory during this flow — after a reload there is nothing to show a
-   * friend, which is the other reason it is a one-time screen.
-   */
-  if (!partyTrickShown && resolved.length > 0) {
-    return (
-      <PartyTrick
-        session={session}
-        resolved={resolved}
-        strictness="medium"
-        onDone={() => {
-          setPartyTrickShown(true);
-          setResolved('');
-        }}
-      />
-    );
-  }
 
   if (importing) {
     return (

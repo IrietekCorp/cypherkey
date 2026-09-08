@@ -15,11 +15,15 @@ export type OnboardingProps = {
    * sequence, and A-7 permits none of it on disk.
    */
   /**
-   * `resolved` is handed on for the X-7 party trick, which has to show the passphrase
-   * to a friend. In memory for the length of the flow only; A-7 permits none of it on
-   * disk, and it is dropped as soon as the trick is done.
+   * The resolved passphrase is deliberately NOT handed on.
+   *
+   * It used to be, for the in-app Party Trick, which has been removed: an onboarding
+   * screen that passes the plaintext passphrase up to a shell that keeps it in state is
+   * a copy of the credential living longer and further from where it was typed, for a
+   * demonstration. The script goes up because enrolment needs it to catch a mismatch
+   * without a round trip; the passphrase itself stops here.
    */
-  onComplete(result: SignupResult, script: string, username: string, resolved: string): void;
+  onComplete(result: SignupResult, script: string, username: string): void;
   /**
    * "I already have an account", carrying the username typed above.
    *
@@ -143,7 +147,7 @@ export function Onboarding({
         devicePlatform: navigator.platform,
       });
       clearField();
-      onComplete(result, sample.script, enteredUsername, sample.resolved);
+      onComplete(result, sample.script, enteredUsername);
     } catch (err) {
       setProblems([(err as Error).message]);
       resetForRetry();
