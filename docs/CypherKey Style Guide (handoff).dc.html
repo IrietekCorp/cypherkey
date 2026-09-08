@@ -41,7 +41,7 @@
         <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">01 · Foundation</div>
         <p style="margin:0 0 4px">Every surface loads the bound system and takes all colour, type, spacing, radius and shadow from its variables. Never hard-code a value the tokens already carry.</p>
         <div style="font-family:ui-monospace,Menlo,monospace;font-size:7.2px;line-height:1.6;background:var(--color-bg);border:1px solid var(--color-neutral-800);padding:5px 6px;word-break:break-all">&lt;link rel="stylesheet" href="_ds/nocturne-…/styles.css"&gt;<br>&lt;script src="_ds/nocturne-…/_ds_bundle.js"&gt;&lt;/script&gt;</div>
-        <p style="margin:4px 0 0"><strong style="font-weight:600">Type:</strong> Inter throughout — heading token at weight 500, body at 400. Never bolder than 500; hierarchy is size and space.</p>
+        <p style="margin:4px 0 0"><strong style="font-weight:600">Type:</strong> <strong style="font-weight:600">Inter for the wordmark only</strong>, bundled and subset to its seven letters (3&nbsp;KB). Everything else takes the platform interface face — SF&nbsp;Pro, Segoe&nbsp;UI, the system grotesque — chosen to sit beside Inter, not against it. Heading token at weight 500, body at 400. Never bolder than 500; hierarchy is size and space. <em>Inter throughout applies to cypherkey.io, which has no payload budget.</em></p>
         <p style="margin:3px 0 0"><strong style="font-weight:600">Icons:</strong> Phosphor, regular, 13–20px, on currentColor. The only bespoke glyph is the four-bar mark.</p>
       </div>
 
@@ -150,8 +150,23 @@
           <div><strong style="font-weight:600">Privacy</strong> No favicons, ever. Vault rows use letter marks generated locally from the entry, tinted by category.</div>
           <div><strong style="font-weight:600">A-4.1</strong> Diagnostics stop at band, score and error code. No feature vector, key script, commitment or debug panel.</div>
           <div><strong style="font-weight:600">Recovery</strong> The Recovery Kit is a printed artefact. No dark grounds, no accent fills, nothing dependent on colour; the cost of using it appears twice and every value clears 4.5:1 in ink.</div>
-          <div><strong style="font-weight:600">Platform</strong> 380px popup. No remote scripts, styles or fonts — bundle the typeface. 150 KB gzipped eager budget, 72% used.</div>
+          <div><strong style="font-weight:600">Platform</strong> 380px popup. No remote scripts, styles or fonts — bundle the typeface. 150&nbsp;KB gzipped eager budget, <strong style="font-weight:600">79% used</strong>. <em>The 72% figure was measured by a check that counted only JavaScript reachable from <code>src=</code> — it could see neither a stylesheet nor a font, which are the two things a redesign adds most of. Corrected 8&nbsp;Sep.</em></div>
           <div><strong style="font-weight:600">Scope</strong> Logins and secure notes only. No cards, no identities, no team or shared-vault surface, no mobile.</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-family:var(--font-heading);font-size:8.6px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--color-accent);border-bottom:1px solid var(--color-divider);padding-bottom:3px;margin-bottom:4px">11 · As implemented — decisions the build forced</div>
+        <p style="margin:0 0 4px">Everything below was settled while building the foundation. Where one of these disagrees with a section above, this section is the newer decision.</p>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div><strong style="font-weight:600">Nocturne is rebuilt, not bound.</strong> The boards link to <code>_ds/nocturne-cf337738-…/styles.css</code> and that file was never handed over, so the component layer is written from this guide. This guide is therefore the source of truth: if the code disagrees with it, the code is wrong.</div>
+          <div><strong style="font-weight:600">Inter is the wordmark alone.</strong> Subset to <code>C K e h p r y</code> at 3&nbsp;KB. A latin Inter for the whole UI is 30–40&nbsp;KB against a budget already at 77% before any typeface. The UI face is the platform grotesque; a test fails if <code>--ck-font</code> ever names Inter, because a seven-glyph face asked to render a screen falls back silently.</div>
+          <div><strong style="font-weight:600">The theme is stamped, not queried.</strong> Light is <code>[data-theme=&quot;light&quot;]</code> set from JS. A media query would mean a second copy of the light palette in CSS, and two copies of a palette drift.</div>
+          <div><strong style="font-weight:600">X-1 outranks the copy.</strong> &#8220;Listening to your rhythm&#8221; is the label and it does say capture is running, but the explicit sentence — &#8220;Your rhythm is being measured while this light is on&#8221; — stays beside it. X-1 is a hard limit and the line costs nothing.</div>
+          <div><strong style="font-weight:600">Running and static are separate declarations.</strong> A paused <code>ck-bar</code> holds the frame it stopped on, which at 0% is <code>scaleY(0.45)</code>, and the first bar renders squashed. Static states emit no animation at all.</div>
+          <div><strong style="font-weight:600">Amber in the UI, grey in the code.</strong> Both names are live and neither is being retired: the band is <code>grey</code> in every API, log and test, and &#8220;amber&#8221; everywhere a person reads it.</div>
+          <div><strong style="font-weight:600">Phosphor is not bundled.</strong> The icon web font is a remote stylesheet the MV3 policy refuses, and the whole family would dwarf the budget. Icons ship as inline SVG for the few glyphs actually used.</div>
+          <div><strong style="font-weight:600">Feedback conflicts with what shipped.</strong> Frame&nbsp;16 shows <code>band=grey&nbsp;×3 · code=RH-02</code> in the payload. M2-17 attaches version and browser only, deliberately, with a test that greps the component for reachable session state. Band and code are permitted by A-4.1, so this is a change to make on purpose rather than a limit being broken.</div>
         </div>
       </div>
 
@@ -167,7 +182,7 @@
   </div>
 
   <div style="margin-top:auto;border-top:1px solid var(--color-divider);padding-top:6px;display:flex;justify-content:space-between;gap:18px;font-size:7.6px;color:var(--color-neutral-500)">
-    <span><strong style="font-weight:600;color:var(--color-text)">Still open:</strong> which Rhythm Light form ships (Concentric recommended; Trace and Arc are on the board), and light-theme coverage beyond Unlock, Vault and Item detail.</span>
+    <span><strong style="font-weight:600;color:var(--color-text)">Settled 8 Sep:</strong> Form A · Concentric ships. <strong style="font-weight:600;color:var(--color-text)">Still open:</strong> light-theme coverage beyond Unlock, Vault and Item detail.</span>
     <span style="flex:none">Page 1 of 1</span>
   </div>
 

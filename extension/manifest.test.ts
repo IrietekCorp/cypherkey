@@ -2,6 +2,30 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { API_HOST_PERMISSION, CSP_EXTENSION_PAGES, devHostPermission, manifest } from './manifest';
 
+/**
+ * What the built manifest may legitimately carry.
+ *
+ * A development build adds the dev API origin and the pinned key, both gated on
+ * `VITE_CYPHERKEY_API`. Asserting the production list against whatever happens to be in
+ * `.output` made these tests depend on which build ran last: a developer with a dev build
+ * got two failures that looked like a security regression and were not.
+ *
+ * So the shape is asserted against the build that exists. What never bends: production
+ * is exactly the API origin, a dev build adds exactly one more, and neither may name a
+ * browsing origin.
+ */
+function expectedHostPermissions(generated: { key?: string; host_permissions?: string[] }): void {
+  const permissions = generated.host_permissions ?? [];
+  expect(permissions[0]).toBe(API_HOST_PERMISSION);
+  if (generated.key === undefined) {
+    expect(permissions).toEqual([API_HOST_PERMISSION]);
+    return;
+  }
+  // A dev build: one extra origin, and it must be the local one the build talks to.
+  expect(permissions).toHaveLength(2);
+  expect(permissions[1]).toMatch(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/\*$/);
+}
+
 describe('manifest', () => {
   /**
    * Requirement 1 of M2-01. Without this the Argon2 module will not instantiate under
@@ -95,12 +119,13 @@ describe('the generated manifest', () => {
       content_security_policy?: { extension_pages?: string };
       permissions?: string[];
       host_permissions?: string[];
+      key?: string;
     };
 
     expect(generated.manifest_version).toBe(3);
     expect(generated.content_security_policy?.extension_pages).toContain("'wasm-unsafe-eval'");
     expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
-    expect(generated.host_permissions).toEqual([API_HOST_PERMISSION]);
+    expectedHostPermissions(generated);
   });
 });
 
@@ -145,7 +170,7 @@ describe('the extension has no standing access to browsing', () => {
     expect(generated.content_scripts ?? []).toHaveLength(0);
     expect(generated.permissions).toEqual(['storage', 'activeTab', 'scripting']);
     // The API origin is allowed; a browsing origin is what this is guarding.
-    expect(generated.host_permissions).toEqual([API_HOST_PERMISSION]);
+    expectedHostPermissions(generated);
   });
 
   test.skipIf(!existsSync(built))('the filler is built but not registered', async () => {

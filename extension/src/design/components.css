@@ -37,6 +37,16 @@
   font-size: 11.5px;
 }
 
+/*
+ * The wordmark: the only place Inter is used, and the only place it can be -- the
+ * bundled face carries no other glyphs.
+ */
+.ck-wordmark {
+  font-family: var(--ck-font-wordmark);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
 /* Counts, scores and anything that lines up. */
 .ck-num {
   font-variant-numeric: tabular-nums;

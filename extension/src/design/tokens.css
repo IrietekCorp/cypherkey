@@ -1,4 +1,21 @@
 /*
+ * The wordmark face. Bundled: the MV3 policy admits no remote font, and a `@font-face`
+ * pointing at Google would silently fail inside the extension while working in every
+ * browser tab used to test it.
+ *
+ * Subset to the seven glyphs of "CypherKey" -- C K e h p r y -- which is why it is 3 KB
+ * rather than 30. It cannot render anything else, and it is not meant to.
+ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/inter-wordmark.woff2") format("woff2");
+  unicode-range: U+43, U+4b, U+65, U+68, U+70, U+72, U+79;
+}
+
+/*
  * Nocturne, as the CypherKey style guide fixes it.
  *
  * Rebuilt from `docs/CypherKey Style Guide (handoff).dc.html` rather than bound to the
@@ -79,8 +96,22 @@
   --ck-shadow-1: 0 1px 2px rgb(0 0 0 / 0.28);
   --ck-shadow-2: 0 4px 12px rgb(0 0 0 / 0.34);
 
-  /* Inter, bundled. The MV3 policy admits no remote font. */
-  --ck-font: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /*
+    Two faces, and only one of them is bundled.
+
+    Inter is reserved for the wordmark. The UI runs on the platform's own interface face,
+    chosen to sit beside Inter rather than against it: SF Pro on macOS, Segoe UI on
+    Windows, the system grotesque elsewhere. All are neutral grotesques of the same family
+    of shapes, so the wordmark reads as of a piece with the text without the extension
+    carrying a typeface for every screen.
+
+    The reason is the budget, and it is not marginal. Inter across the whole UI is a
+    30-40 KB latin subset against a 150 KB eager popup already at 77%; subset to the seven
+    letters of the wordmark it is 3 KB. The guide's "Inter throughout" therefore applies to
+    cypherkey.io, which has no such limit.
+  */
+  --ck-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ck-font-wordmark: "Inter", var(--ck-font);
 }
 
 /*
