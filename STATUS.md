@@ -59,8 +59,8 @@ devices the server actually holds, refuses a weakening change with nothing typed
 the same change accepted with the passphrase typed. That last step is the A-17 round trip,
 which had never run outside a test double.
 
-Before that, and already on `main`: `8a296ab` light by default with a Light/Dark/System
-control, `76f728d` the site CSP hash for the pre-paint theme stamp, and `1d25a28` the ten
+Before that, and already on `main`: `5061d15` light by default with a Light/Dark/System
+control, `9934739` the site CSP hash for the pre-paint theme stamp, and `d1740de` the ten
 screens the restyle had not reached.
 
 ## Next up, in the order I would do it
