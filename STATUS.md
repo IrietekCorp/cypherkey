@@ -14,7 +14,7 @@ the beta itself.
 | | Where | State |
 |---|---|---|
 | API | `https://api.cypherkey.io` | Cloud Run + Cloud SQL behind an HTTPS LB with Cloud Armor. `/healthz` → `{"ok":true,"db":"postgres"}` |
-| Site | `https://cypherkey.io` | Cloud Storage + Cloud CDN. Light by default, Light/Dark/Auto in the nav |
+| Site | `https://cypherkey.io` | Cloud Storage + Cloud CDN. Five pages — landing, the Rhythm Trial, pricing, beta, the one-pager. Dark by default, Light/Dark in the nav. Published 2026-09-09 |
 | Extension | not published | Loads unpacked from `extension/.output/chrome-mv3`; onboarding, enrolment, unlock, the vault and the settings page all work end to end in real Chrome |
 
 GCP project is **`<GCP_PROJECT_ID>`** (project number `<GCP_PROJECT_NUMBER>`, `us-central1`).
@@ -49,8 +49,8 @@ living signal and blue is measurement.
   structure. The palette, type, defaults and the Rhythm Light are the redesign's; the
   four Unlock faces and the Vault's avatar and counts are not yet the handoff's exact
   screens.
-- **The site is built but not published.** The deployed CSP names the old inline theme
-  stamp by hash and would refuse the new one — see below.
+- **The extension's Unlock and Vault markup** is the one part of the handoff the redesign
+  did not reach — see the note above.
 
 
 **M2-14 is finished — the options page reaches a session, and two live bugs came out from
@@ -161,12 +161,20 @@ nobody has opened.**
 
 ## Publishing the site
 
-**Update the CSP first.** Every page now carries the pre-paint theme stamp, and its body
-changed, so the deployed header's `sha256-` no longer matches. Publishing before the
-header is updated leaves every page loading on the wrong palette and swapping.
+**Update the CSP first, whenever the inline theme stamp changes.** The deployed header
+names that one script by `sha256-`, so a page whose stamp has changed loads on the wrong
+palette and swaps — silently, because the only symptom is a console error.
 
-Add the new hash *beside* the old one, publish, then drop the old one — a header carrying
-only the new hash breaks the currently-live pages until the upload finishes.
+Add the new hash *beside* the old one, publish, then drop the old one. A header carrying
+only the new hash breaks the currently-live pages until the upload finishes, and one
+carrying only the old one breaks the new pages the moment they land.
+
+**Budget three to five minutes for each header change to reach the edge.** The API accepts
+it instantly and `curl` keeps showing the previous value; on 2026-09-09 the two changes
+took roughly 120 s and 160 s. Poll for the new hash before concluding anything is wrong.
+
+Uploads go assets → fonts and media → documents, so no page can reference something that
+is not there yet.
 
 ```bash
 # the value site/csp.test.ts pins
