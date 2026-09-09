@@ -38,20 +38,41 @@ const API = `http://127.0.0.1:${PORT}`;
 /** Argon2id at production cost, eight times, is not what this is testing. */
 const JWT_SECRET = 'browser-e2e-secret-not-used-in-production-32b';
 
-/** Chrome, wherever this machine keeps it. CI sets CHROME_PATH. */
+/**
+ * Chrome, wherever this machine keeps it. CI sets CHROME_PATH.
+ *
+ * **Branded Google Chrome cannot run this test any more.** From 137 it ignores
+ * `--load-extension` in an automated session, and from 152 the feature switch that
+ * opted back out is gone as well. That is a deliberate end-user protection -- the switch
+ * was being used to sideload extensions onto people -- and there is nothing to work
+ * around: this browser simply will not load an unpacked extension for a script.
+ *
+ * Chrome for Testing is the same browser build with those protections relaxed, which is
+ * precisely what it exists for, and it is what CI installs. Chromium honours the switch
+ * too, which is why a developer on Arch never saw any of this.
+ */
 function chromePath(): string {
   const candidates = [
     Bun.env.CHROME_PATH,
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/google-chrome',
+    // Chrome for Testing, where `npx @puppeteer/browsers install` puts it.
+    ...new Bun.Glob('chrome/*/chrome-linux64/chrome').scanSync('.'),
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter((c): c is string => c !== undefined && c !== '');
   const found = candidates.find((c) => existsSync(c));
   if (found === undefined) {
     throw new Error(
-      `no Chrome found. Tried:\n  ${candidates.join('\n  ')}\nSet CHROME_PATH to override.`,
+      [
+        'no Chrome found. Tried:',
+        ...candidates.map((c) => `  ${c}`),
+        '',
+        'Install one that can load an unpacked extension:',
+        '  bunx @puppeteer/browsers install chrome@stable',
+        'or set CHROME_PATH. Branded Google Chrome 152+ will not work; see chromePath().',
+      ].join('\n'),
     );
   }
   return found;
@@ -146,18 +167,10 @@ async function main(): Promise<void> {
         `--disable-extensions-except=${EXTENSION_DIR}`,
         `--load-extension=${EXTENSION_DIR}`,
         /*
-          Chrome 137 stopped honouring `--load-extension` in an automated session.
-
-          It is a real hardening measure -- the switch was being used to sideload
-          extensions onto people -- and it is enforced in branded Google Chrome and not
-          in Chromium, which is exactly the split that made this pass on a developer's
-          Arch box and fail on CI. Nothing errors: the flag is accepted and ignored, the
-          browser starts with no extension, and the first symptom is
-          `net::ERR_BLOCKED_BY_CLIENT` from a `chrome-extension://` URL that has nothing
-          behind it.
-
-          Naming the feature turns it back on for this process only. An unknown feature
-          name is ignored, so this stays harmless on the versions that never had it.
+          The kill switch for the 137 restriction. It works on branded Chrome 137-151 and
+          was removed in 152, so it is no longer a fix on its own -- see `chromePath()`
+          for what actually is. Kept because it costs nothing (an unknown feature name is
+          ignored) and it is still the difference on a machine pinned to an older Chrome.
         */
         '--disable-features=DisableLoadExtensionCommandLineSwitch',
         '--no-sandbox',
@@ -218,12 +231,16 @@ async function main(): Promise<void> {
           'A chrome-extension:// URL with nothing behind it is refused by the browser,',
           'which is what ERR_BLOCKED_BY_CLIENT means here.',
           '',
-          'Most likely: this Chrome ignores --load-extension in an automated session',
-          '(branded Chrome 137 and later). The launch already passes',
-          '--disable-features=DisableLoadExtensionCommandLineSwitch to opt back out; if',
-          'that has stopped working, the switch has probably been removed entirely.',
+          'Almost certainly this is branded Google Chrome, which ignores --load-extension',
+          'in an automated session from 137 and lost the switch that opted back out in',
+          '152. It is not a bug and there is no flag left to set.',
           '',
-          `This run used: ${await browser?.version()}`,
+          'Use Chrome for Testing instead -- the same build, without the sideloading',
+          'protections that exist to defend end users rather than test runners:',
+          '',
+          '  bunx @puppeteer/browsers install chrome@stable',
+          '',
+          `This run used: ${await browser?.version()} at ${binary}`,
         ].join('\n'),
       );
     }

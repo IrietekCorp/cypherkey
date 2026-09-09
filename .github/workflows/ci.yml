@@ -144,9 +144,29 @@ jobs:
       # process and controls the clock, so it is blind to an unbound `fetch`, an
       # entrypoint that mounts no routes, and any UI that only misbehaves in a browser.
       # All three shipped. This runs the production entrypoint and a real extension.
+      # Branded Google Chrome cannot run this any more. From 137 it ignores
+      # --load-extension in an automated session, and from 152 the feature switch that
+      # opted back out is gone too -- a deliberate protection for end users, since that
+      # switch was being used to sideload extensions onto people. Chrome for Testing is
+      # the same build with those protections relaxed, which is what it is for.
+      #
+      # This is a download per run rather than the Chrome already on the runner. It is
+      # worth it: the alternative is not running the test.
+      - name: install Chrome for Testing
+        id: chrome
+        run: |
+          bunx @puppeteer/browsers install chrome@stable | tee /tmp/cft.txt
+          path=$(awk '/^chrome@/{print $2}' /tmp/cft.txt)
+          if [ ! -x "$path" ]; then
+            echo "could not find the installed browser; @puppeteer/browsers printed:"
+            cat /tmp/cft.txt
+            exit 1
+          fi
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
       - name: onboarding end to end
         env:
-          CHROME_PATH: /usr/bin/google-chrome-stable
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
         run: bun run browser-e2e
 
   docker:

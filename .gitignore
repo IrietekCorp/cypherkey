@@ -21,3 +21,10 @@ design-preview.png
 
 # Account-specific operations log. Kept locally; see deploy/README.md.
 gcp.md
+
+# Chrome for Testing, installed by @puppeteer/browsers for browser-e2e.
+chrome/
+
+# Design source bundles and raw media deliverables. Large, and build inputs rather
+# than sources: the optimised assets that ship live under site/.
+docs/design/
