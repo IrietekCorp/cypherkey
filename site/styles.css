@@ -70,6 +70,9 @@
 
   --r: 12px;
   --rs: 8px;
+  /* The fixed nav's height: 14px padding twice plus a 35px row. Everything that has to
+     sit clear of it, or stick under it, positions against this rather than a copy. */
+  --nav-h: 63px;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans: "Archivo", Helvetica, Arial, sans-serif;
 
@@ -1137,7 +1140,7 @@ h3 {
 }
 .ck-milestones-intro {
   position: sticky;
-  top: 92px;
+  top: calc(var(--nav-h) + 29px);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1266,24 +1269,48 @@ h3 {
   animation: ck-drift 30s linear infinite;
 }
 
+/*
+ * The trial has to fit a laptop, and it did not.
+ *
+ * Two readouts have to be visible at the same time or the game does not work: the stage
+ * and streak at the top, and the submit button at the bottom. On a ~740px viewport the
+ * whole instrument came to 794px, so `scrollIntoView` did the only thing it could and
+ * pushed the HUD up under the fixed nav — leaving you typing a sample with no idea which
+ * one it was.
+ *
+ * Trimmed here by 68px, and the HUD is stuck below the nav so that on a viewport too
+ * short for any amount of trimming it stays put rather than scrolling away.
+ */
 .ck-trial {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 104px 28px 48px;
+  padding: calc(var(--nav-h) + 21px) 28px 40px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .ck-hud {
+  position: sticky;
+  top: var(--nav-h);
+  /* Under the nav, over the pane it now slides across. */
+  z-index: 20;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  /*
+    Opaque, unlike every other pane on the page.
+
+    This is the one element content scrolls underneath, and a glass HUD ghosts the stage
+    title through itself as the pane passes behind. An instrument panel is a solid
+    object.
+  */
+  background: var(--surface);
 }
 .ck-hud-cell {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
+  gap: 6px;
+  padding: 12px 18px;
   border-right: 1px solid var(--line);
 }
 .ck-hud-cell:last-child {
@@ -1336,13 +1363,14 @@ h3 {
 }
 
 .ck-stage-pane {
-  padding: 28px;
-  min-height: 520px;
+  padding: 24px 28px;
+  min-height: 480px;
 }
+/* 12 rather than 16: the teach stage has eight gaps, so this is 32px of the 68. */
 .ck-stage-pane > div {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 .ck-stage-title {
   font-size: clamp(26px, 3.4vw, 40px);
@@ -1456,7 +1484,7 @@ h3 {
   gap: 10px;
   align-items: flex-start;
   text-align: left;
-  padding: 20px;
+  padding: 16px 18px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -1502,12 +1530,12 @@ h3 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px;
-  padding-top: 20px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 .ck-explainer .ck-body {
   font-size: 14px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .ck-error {
   margin: 0;
@@ -1532,7 +1560,7 @@ h3 {
 
 .ck-waveform {
   position: relative;
-  height: 120px;
+  height: 104px;
   border: 1px solid var(--line);
   border-radius: var(--rs);
   background: repeating-linear-gradient(90deg, transparent 0 39px, var(--line) 39px 40px),
@@ -1732,9 +1760,15 @@ h3 {
 
 /* ---- rail --------------------------------------------------------------------- */
 
+/*
+ * Not sticky, deliberately.
+ *
+ * It was, for a page that scrolled. Now that every stage fits a laptop viewport there is
+ * nothing to follow, and sticky was actively wrong: it clamps to its container's bottom,
+ * so once that came into view the rail slid up under the stuck HUD and lost its own
+ * heading. A reference panel on a page that does not scroll is just a column.
+ */
 .ck-rail {
-  position: sticky;
-  top: 92px;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1823,9 +1857,6 @@ h3 {
 @media (max-width: 1040px) {
   .ck-trial-layout {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .ck-rail {
-    position: static;
   }
 }
 @media (max-width: 860px) {

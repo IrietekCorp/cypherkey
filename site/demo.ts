@@ -220,6 +220,7 @@ function armCapture(): void {
   disarmCapture();
   liveKeys = [];
   if (waveform !== null) paintWaveform(waveform, liveKeys);
+  updateKeyCount();
 
   try {
     handle = startCapture(input, light, {
@@ -233,7 +234,7 @@ function armCapture(): void {
   setLight('ready');
 
   const down = (event: KeyboardEvent) => {
-    if (event.key.length !== 1 && event.key !== 'Backspace' && event.key !== 'Escape') return;
+    if (event.key.length !== 1 && event.key !== 'Backspace') return;
     liveKeys.push({ downT: performance.now(), upT: null });
     updateKeyCount();
     if (waveform !== null) paintWaveform(waveform, liveKeys, phase === 'intruder' ? profile : null);
@@ -271,6 +272,40 @@ function updateKeyCount(): void {
   if (progress !== null) {
     progress.style.width = `${Math.min(100, (liveKeys.length / Math.max(1, target)) * 100)}%`;
   }
+}
+
+/**
+ * Throws the current sample away and starts it again, cleanly.
+ *
+ * **Escape is the reset here, and that is a deliberate divergence from the product.**
+ * In the extension an Escape tap is a legitimate Phantom Key (A-14.1) — a keystroke that
+ * leaves no character behind and becomes part of the secret. The trial gives it up
+ * because a refused sample used to leave the typed text sitting in the box, looking like
+ * progress that no longer existed, and the fix a keyboard reaches for is Escape.
+ *
+ * Backspace still carries the Phantom Keys demonstration, which is the more legible half
+ * of it anyway: a character that appears and is deleted is visible in a way a lone
+ * Escape never was.
+ *
+ * The recorded sample does not need protecting from this. `armCapture` cancels the
+ * handle, so whatever core had buffered — the Escape included — is discarded rather than
+ * scored.
+ */
+function resetSample(reason: 'escape' | 'refused'): void {
+  const stage = stageOf(phase);
+  const input = $<HTMLInputElement>('[data-type-input]', stage);
+  if (input === null) return;
+
+  input.value = '';
+  if (reason === 'escape') {
+    const feedback = $('[data-feedback]', stage);
+    if (feedback !== null) feedback.textContent = '';
+    log('sample cleared');
+  }
+  armCapture();
+  // Focus last: `armCapture` arms on the element, and typing should be able to resume
+  // without reaching for the mouse.
+  input.focus();
 }
 
 /**
@@ -427,10 +462,10 @@ function submitTeach(): void {
   const taken = takeSample();
 
   if (typeof taken === 'string') {
-    feedback.textContent = taken;
+    feedback.textContent = `${taken} Escape clears the box.`;
     setLight('refused');
     log('sample rejected', 'amber');
-    armCapture();
+    resetSample('refused');
     return;
   }
 
@@ -448,11 +483,11 @@ function submitTeach(): void {
     streak = 0;
     resets += 1;
     feedback.textContent =
-      'Different keystrokes that time — a Backspace or an Esc that was not there before. Kept, but the run resets.';
+      'Different keystrokes that time — a Backspace that was not there before, or one that was. Kept, but the run resets.';
     setLight('amber');
     log('sample rejected · script mismatch', 'amber');
     renderStreak();
-    armCapture();
+    resetSample('refused');
     return;
   }
 
@@ -483,9 +518,7 @@ function submitTeach(): void {
   }
 
   renderTeach();
-  const input = $<HTMLInputElement>('[data-type-input]', stage);
-  if (input !== null) input.value = '';
-  armCapture();
+  resetSample('refused');
 }
 
 /* ---- forge ------------------------------------------------------------------- */
@@ -574,8 +607,8 @@ function submitIntruder(): void {
   const feedback = $('[data-feedback]', stage) as HTMLElement;
   const taken = takeSample();
   if (typeof taken === 'string') {
-    feedback.textContent = taken;
-    armCapture();
+    feedback.textContent = `${taken} Escape clears the box.`;
+    resetSample('refused');
     return;
   }
 
@@ -603,9 +636,7 @@ function submitIntruder(): void {
     verdict === 'grey'
       ? 'Amber. Looks a little different. Once more.'
       : 'Refused. That did not match the rhythm.';
-  const input = $<HTMLInputElement>('[data-type-input]', stage);
-  if (input !== null) input.value = '';
-  armCapture();
+  resetSample('refused');
 }
 
 function submitYou(): void {
@@ -613,8 +644,8 @@ function submitYou(): void {
   const feedback = $('[data-feedback]', stage) as HTMLElement;
   const taken = takeSample();
   if (typeof taken === 'string') {
-    feedback.textContent = taken;
-    armCapture();
+    feedback.textContent = `${taken} Escape clears the box.`;
+    resetSample('refused');
     return;
   }
 
@@ -788,6 +819,13 @@ for (const input of $$<HTMLInputElement>('[data-type-input]')) {
     if (handle === null) armCapture();
   });
   input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      // Ahead of core's own Escape handling, which records it as a token. The sample is
+      // being discarded, so what it recorded does not matter.
+      event.preventDefault();
+      resetSample('escape');
+      return;
+    }
     if (event.key !== 'Enter') return;
     event.preventDefault();
     if (phase === 'teach') submitTeach();

@@ -149,6 +149,55 @@ await page.click('[data-strictness="strict"]');
 await new Promise((r) => setTimeout(r, 100));
 ok(`strictness re-evaluates without retyping (you: ${(await read('you')).band} at Strict)`);
 
+/*
+  Escape clears the box, and a voided sample does not leave text behind.
+
+  The complaint this came from: a refused sample left the typed phrase sitting in the
+  field, looking like progress that had already been thrown away, and the only way out
+  was selecting it and deleting it by hand. Escape is the reset a keyboard reaches for.
+
+  It costs the trial one Phantom Key — in the extension an Escape tap is a legitimate
+  token — so Backspace carries that demonstration alone here.
+*/
+await page.click('[data-again-you]');
+await page.focus('[data-stage="you"] [data-type-input]');
+await typePhrase(page, 'not the phrase at all');
+const beforeEscape = await page.$eval(
+  '[data-stage="you"] [data-type-input]',
+  (el) => (el as HTMLInputElement).value,
+);
+if (beforeEscape.length === 0) throw new Error('the typing never reached the field');
+await page.keyboard.press('Escape');
+await new Promise((r) => setTimeout(r, 120));
+
+const afterEscape = await page.evaluate(() => {
+  const input = document.querySelector('[data-stage="you"] [data-type-input]') as HTMLInputElement;
+  return { value: input.value, focused: document.activeElement === input };
+});
+if (afterEscape.value !== '') throw new Error(`Escape left "${afterEscape.value}" in the field`);
+if (!afterEscape.focused) throw new Error('Escape cleared the field but dropped focus');
+ok('Escape clears the box and keeps the cursor in it');
+
+// The reset must re-arm, or the next sample cannot be taken at all.
+await typePhrase(page, phrase);
+await page.keyboard.press('Enter');
+await new Promise((r) => setTimeout(r, 200));
+if (!(await visible('verdict'))) throw new Error('the sample after an Escape was not accepted');
+ok('a sample typed after the reset is still measured');
+
+// And a refused sample clears itself, which is where the complaint started.
+await page.click('[data-again-you]');
+await page.focus('[data-stage="you"] [data-type-input]');
+await typePhrase(page, 'wrong phrase entirely');
+await page.keyboard.press('Enter');
+await new Promise((r) => setTimeout(r, 200));
+const afterRefusal = await page.$eval(
+  '[data-stage="you"] [data-type-input]',
+  (el) => (el as HTMLInputElement).value,
+);
+if (afterRefusal !== '') throw new Error(`a refused sample left "${afterRefusal}" behind`);
+ok('a refused sample does not leave its text in the box');
+
 if (errors.length > 0) throw new Error(`console errors:\n  ${errors.join('\n  ')}`);
 ok('no console errors through the whole trial');
 
