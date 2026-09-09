@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — The Rhythm Trial</title>
+    <meta
+      name="description"
+      content="Teach it your rhythm in eight samples, then hand the keyboard to someone else. Runs entirely in your browser with zero network requests."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="ck-trial-body">
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html" aria-current="page">Demo</a>
+        <a href="/pricing.html">Pricing</a>
+        <a href="/beta.html">Beta</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <button class="ck-btn ck-btn--ghost ck-btn--sm ck-reset" type="button" data-reset>
+          Reset trial
+        </button>
+      </div>
+    </nav>
+
+    <div class="ck-trial-ground" aria-hidden="true"></div>
+
+    <main id="main" class="ck-trial">
+      <!--
+        The HUD is one pane divided by hairlines rather than five cards.
+
+        Five cards would read as five things to do. This is one instrument with five
+        readouts, which is what it is.
+      -->
+      <section class="ck-glass ck-hud" aria-label="Trial status">
+        <div class="ck-hud-cell">
+          <span class="ck-hud-label">Stage</span>
+          <span class="ck-hud-value ck-said" data-hud-stage>Calibrate</span>
+        </div>
+        <div class="ck-hud-cell">
+          <span class="ck-hud-label">Streak</span>
+          <div class="ck-streak" data-hud-streak aria-hidden="true"></div>
+        </div>
+        <div class="ck-hud-cell">
+          <span class="ck-hud-label">Keys this sample</span>
+          <span class="ck-hud-value" data-hud-keys>0 / 0</span>
+        </div>
+        <div class="ck-hud-cell">
+          <span class="ck-hud-label">Consistency</span>
+          <span class="ck-hud-value ck-hud-blue" data-hud-consistency>—</span>
+        </div>
+        <div class="ck-hud-cell ck-hud-cell--light">
+          <span class="ck-light" data-light data-state="idle" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </span>
+          <span class="ck-hud-value" data-light-label>Idle</span>
+        </div>
+      </section>
+
+      <div class="ck-trial-layout">
+        <section class="ck-glass ck-stage-pane" aria-live="polite">
+          <!-- Stage 0 -->
+          <div data-stage="calibrate">
+            <span class="ck-kicker ck-kicker--green">Stage 0 · Calibrate</span>
+            <h1 class="ck-stage-title">Choose the phrase you will teach.</h1>
+            <p class="ck-body">
+              Four words give distinct dwell and flight intervals. Minimum 10 characters.
+              <b>Do not use a real password.</b> Everything runs in this tab; no network request is
+              made.
+            </p>
+
+            <div class="ck-choice-grid">
+              <button class="ck-choice" type="button" data-choice="random" aria-pressed="true">
+                <span class="ck-choice-head">Random four-word phrase</span>
+                <span class="ck-choice-phrase ck-said" data-random-phrase></span>
+                <span class="ck-choice-shuffle" data-shuffle>Shuffle ↻</span>
+              </button>
+              <button class="ck-choice" type="button" data-choice="own" aria-pressed="false">
+                <span class="ck-choice-head">Or type your own</span>
+                <input
+                  class="ck-input ck-choice-input"
+                  type="text"
+                  data-own-phrase
+                  placeholder="at least ten characters"
+                  aria-label="Your own phrase"
+                />
+                <span class="ck-choice-hint">≥ 10 characters</span>
+              </button>
+            </div>
+
+            <div class="ck-explainer">
+              <div>
+                <span class="ck-kicker">Level 1–8</span>
+                <p class="ck-body">
+                  Teach. You type the same phrase eight times and the trial keeps what is
+                  consistent about how you do it.
+                </p>
+              </div>
+              <div>
+                <span class="ck-kicker">Intruder round</span>
+                <p class="ck-body">
+                  Hand the keyboard over. They can see the phrase — that is the point — and they
+                  get three attempts.
+                </p>
+              </div>
+              <div>
+                <span class="ck-kicker">Your turn</span>
+                <p class="ck-body">
+                  Take it back and type it once. Then both attempts are scored against the same
+                  profile.
+                </p>
+              </div>
+            </div>
+
+            <p class="ck-error" data-error hidden></p>
+            <button class="ck-btn ck-btn--primary" type="button" data-begin>Begin level 1 →</button>
+          </div>
+
+          <!-- Stage 1 -->
+          <div data-stage="teach" hidden>
+            <span class="ck-kicker ck-kicker--green" data-teach-kicker>Stage 1 · Teach · Level 1 of 8</span>
+            <h1 class="ck-stage-title" data-teach-title>Type it the way you normally would.</h1>
+            <p class="ck-body">
+              Press Enter to submit. Backspaces and Esc taps are legitimate keystrokes and become
+              part of your secret if you repeat them every time.
+            </p>
+
+            <p class="ck-phrase-chip" data-phrase-chip></p>
+
+            <div class="ck-waveform" data-waveform aria-hidden="true">
+              <span class="ck-waveform-label">Dwell (bar) · flight (gap) · live</span>
+              <div class="ck-waveform-bars" data-waveform-bars></div>
+            </div>
+
+            <div class="ck-typefield">
+              <input
+                class="ck-input ck-typefield-input"
+                type="text"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                data-type-input
+                aria-label="Type the phrase"
+              />
+              <span class="ck-typefield-edge" data-type-progress></span>
+            </div>
+
+            <p class="ck-feedback" data-feedback></p>
+            <p class="ck-mono">Phantom Keys this sample · <b data-phantom>0</b></p>
+            <button class="ck-btn ck-btn--primary" type="button" data-submit-sample>
+              Submit sample ↵
+            </button>
+          </div>
+
+          <!-- Stage 2 -->
+          <div data-stage="forged" hidden>
+            <span class="ck-kicker ck-kicker--green">Stage 2 · Profile forged</span>
+            <h1 class="ck-stage-title">Eight samples collapsed into one envelope.</h1>
+            <p class="ck-body">
+              Means and standard deviations per feature, σ floored at 8 ms. The raw keystroke events
+              that built it were destroyed. What remains cannot be replayed as typing.
+            </p>
+
+            <div class="ck-envelope" data-envelope aria-hidden="true"></div>
+
+            <div class="ck-statstrip">
+              <div><span class="ck-hud-label">Dimensions</span><span class="ck-hud-blue" data-stat-dims>—</span></div>
+              <div><span class="ck-hud-label">Mean dwell</span><span data-stat-dwell>—</span></div>
+              <div><span class="ck-hud-label">Mean flight</span><span data-stat-flight>—</span></div>
+              <div><span class="ck-hud-label">Consistency</span><span class="ck-said" data-stat-consistency>—</span></div>
+              <div><span class="ck-hud-label">Raw events kept</span><span class="ck-said">0 B</span></div>
+            </div>
+
+            <button class="ck-btn ck-btn--primary" type="button" data-to-intruder>
+              Hand the keyboard to someone →
+            </button>
+          </div>
+
+          <!-- Stage 3 -->
+          <div data-stage="intruder" hidden>
+            <span class="ck-kicker ck-kicker--amber">Stage 3 · Intruder round</span>
+            <h1 class="ck-stage-title">Hand the keyboard over. Show them the phrase.</h1>
+            <p class="ck-body">
+              They type exactly what they see. Three attempts. Their trace is drawn against your
+              envelope; bars leaving it turn red.
+            </p>
+
+            <p class="ck-phrase-chip" data-phrase-chip></p>
+
+            <div class="ck-waveform ck-waveform--amber" data-waveform aria-hidden="true">
+              <span class="ck-waveform-label">Red = outside ±2σ of your profile</span>
+              <div class="ck-waveform-bars" data-waveform-bars></div>
+            </div>
+
+            <div class="ck-typefield">
+              <input
+                class="ck-input ck-typefield-input"
+                type="text"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                data-type-input
+                aria-label="Type the phrase"
+              />
+              <span class="ck-typefield-edge" data-type-progress></span>
+            </div>
+
+            <p class="ck-mono">Attempt <b data-attempt>1</b> / 3</p>
+            <p class="ck-feedback" data-feedback></p>
+            <div class="ck-stage-actions">
+              <button class="ck-btn ck-btn--primary" type="button" data-submit-sample>
+                Evaluate intruder ↵
+              </button>
+              <button class="ck-btn ck-btn--ghost" type="button" data-give-up>
+                Give up · hand it back
+              </button>
+            </div>
+          </div>
+
+          <!-- Stage 4 -->
+          <div data-stage="you" hidden>
+            <span class="ck-kicker ck-kicker--green">Stage 4 · Your turn</span>
+            <h1 class="ck-stage-title">Take it back. Type it once.</h1>
+            <p class="ck-body">
+              Your natural rhythm against the profile you taught it. Nothing else is asked for.
+            </p>
+
+            <p class="ck-phrase-chip" data-phrase-chip></p>
+
+            <div class="ck-waveform" data-waveform aria-hidden="true">
+              <span class="ck-waveform-label">Dwell (bar) · flight (gap) · live</span>
+              <div class="ck-waveform-bars" data-waveform-bars></div>
+            </div>
+
+            <div class="ck-typefield">
+              <input
+                class="ck-input ck-typefield-input"
+                type="text"
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                data-type-input
+                aria-label="Type the phrase"
+              />
+              <span class="ck-typefield-edge" data-type-progress></span>
+            </div>
+
+            <p class="ck-mono">One attempt</p>
+            <p class="ck-feedback" data-feedback></p>
+            <button class="ck-btn ck-btn--primary" type="button" data-submit-sample>Evaluate ↵</button>
+          </div>
+
+          <!-- Stage 5 -->
+          <div data-stage="verdict" hidden>
+            <span class="ck-kicker ck-kicker--green">Stage 5 · Verdict</span>
+            <h1 class="ck-stage-title">Same phrase. <span class="ck-said">Different rhythm.</span></h1>
+
+            <div class="ck-strictness">
+              <div class="ck-seg" role="group" aria-label="Strictness">
+                <button type="button" data-strictness="relaxed">Relaxed</button>
+                <button type="button" data-strictness="medium" aria-pressed="true">Medium</button>
+                <button type="button" data-strictness="strict">Strict</button>
+              </div>
+              <p class="ck-mono">Re-evaluates the recorded attempts. Nothing is retyped.</p>
+            </div>
+
+            <div class="ck-verdicts">
+              <article class="ck-glass ck-verdict" data-verdict="intruder">
+                <span class="ck-kicker">Intruder · last attempt</span>
+                <span class="ck-band" data-band>—</span>
+                <h2 class="ck-h3" data-headline>—</h2>
+                <p class="ck-body" data-sentence>—</p>
+                <span class="ck-mono" data-foot>—</span>
+              </article>
+              <article class="ck-glass ck-verdict" data-verdict="you">
+                <span class="ck-kicker">You · authorized</span>
+                <span class="ck-band" data-band>—</span>
+                <h2 class="ck-h3" data-headline>—</h2>
+                <p class="ck-body" data-sentence>—</p>
+                <span class="ck-mono" data-foot>—</span>
+              </article>
+            </div>
+
+            <div class="ck-stage-actions">
+              <button class="ck-btn ck-btn--ghost" type="button" data-again-intruder>
+                Another intruder
+              </button>
+              <button class="ck-btn ck-btn--ghost" type="button" data-again-you>Re-test yourself</button>
+              <a class="ck-btn ck-btn--primary" href="/beta.html">Join the private beta →</a>
+            </div>
+
+            <div class="ck-grid ck-grid--4 ck-safe-strip">
+              <div><span class="ck-kicker">Zero-knowledge</span><p class="ck-body">The server would hold ciphertext and an Argon2id hash. It could not read this phrase, and neither could we.</p></div>
+              <div><span class="ck-kicker">No score, ever</span><p class="ck-body">You were told a band and a sentence. The number behind it is the one thing an attacker could tune against.</p></div>
+              <div><span class="ck-kicker">Never locked out by your body</span><p class="ck-body">Amber asks for a retype, then a Backup Code. A broken wrist is an inconvenience, not a lockout.</p></div>
+              <div><span class="ck-kicker">Rhythm Light</span><p class="ck-body">Capture refuses to run without a visible light. That is enforced in code, not in policy.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!--
+          The rail is the argument the page is making, in numbers: this is all that is
+          derived, and none of it leaves. `network requests 0` is the line that matters
+          and it is not a claim -- there is no fetch in this bundle to make it false.
+        -->
+        <aside class="ck-glass ck-rail" aria-label="Live math">
+          <span class="ck-kicker ck-kicker--green">Live math</span>
+          <dl class="ck-rail-list">
+            <div><dt>script tokens</dt><dd data-m="tokens">—</dd></div>
+            <div><dt>vector 3n+5</dt><dd data-m="vector">—</dd></div>
+            <div><dt>dwell</dt><dd data-m="dwell">—</dd></div>
+            <div><dt>flight</dt><dd data-m="flight">—</dd></div>
+            <div><dt>digraph</dt><dd data-m="digraph">—</dd></div>
+            <div><dt>globals</dt><dd>7</dd></div>
+            <div><dt>weights d/f/g/glob</dt><dd>1.0 1.5 1.0 0.5</dd></div>
+            <div><dt>σ floor</dt><dd>8 ms</dd></div>
+            <div><dt>samples enrolled</dt><dd data-m="enrolled">0 / 8</dd></div>
+            <div><dt>profile mean σ</dt><dd data-m="sigma">—</dd></div>
+            <div><dt>strictness</dt><dd data-m="strictness">medium</dd></div>
+            <div><dt>network requests</dt><dd class="ck-said">0</dd></div>
+          </dl>
+
+          <span class="ck-kicker">Current sample</span>
+          <dl class="ck-rail-list">
+            <div><dt>total time</dt><dd data-m="total">—</dd></div>
+            <div><dt>mean dwell / σ</dt><dd data-m="cur-dwell">—</dd></div>
+            <div><dt>mean flight / σ</dt><dd data-m="cur-flight">—</dd></div>
+            <div><dt>phantom keys</dt><dd data-m="cur-phantom">—</dd></div>
+          </dl>
+
+          <span class="ck-kicker">Event log</span>
+          <ul class="ck-log" data-log></ul>
+        </aside>
+      </div>
+
+      <section class="ck-achievements" aria-label="Achievements">
+        <span class="ck-chip" data-ach="phantom"><i></i>Phantom · used a Phantom Key in all 8 samples</span>
+        <span class="ck-chip" data-ach="metronome"><i></i>Metronome · consistency ≥ 90%</span>
+        <span class="ck-chip" data-ach="sweep"><i></i>Clean sweep · 8 samples, 0 resets</span>
+        <span class="ck-chip" data-ach="gatekeeper"><i></i>Gatekeeper · intruder refused on all attempts</span>
+        <span class="ck-chip" data-ach="homecoming"><i></i>Homecoming · you passed on the first try</span>
+        <span class="ck-chip" data-ach="strict"><i></i>Strict mode · passed at Strict</span>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:security@cypherkey.io">SECURITY DISCLOSURE</a>
+        <span>MIT CLIENT · AGPL SERVER</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/demo.ts"></script>
+  </body>
+</html>

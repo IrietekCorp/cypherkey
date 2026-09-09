@@ -1,252 +1,1866 @@
-@import "tailwindcss";
+/*
+ * cypherkey.io — "eco, human, precise".
+ *
+ * Dark blue-grey ground, mint green as the living signal, sky blue for maths and data,
+ * glass panes over photography, rounded cards inside flat sections.
+ *
+ * Two rules carry most of the identity:
+ *
+ *   Green is *life* — the Rhythm Light, a pass band, the primary action. Blue is *maths*
+ *   — vectors, timings, kickers, links. Never both on one element; an element that is
+ *   both is claiming to be a measurement and an invitation at once.
+ *
+ *   Containers nest three deep and no further. Level 1 is a page section: flat, square,
+ *   a hairline top rule, never a coloured one. Level 2 is a content width with no box of
+ *   its own. Level 3 is the rounded glass card. A level-3 card inside a level-2 box is
+ *   the thing that makes a page look like a form.
+ *
+ * Tailwind is deliberately gone. The palette below is not a utility set — it is a small
+ * number of design objects used many times, and expressing those as classes keeps the
+ * markup readable and the identity in one file.
+ */
 
 /*
- * Nocturne on cypherkey.io.
+ * Self-hosted, and not only for speed.
  *
- * The site now carries the same identity as the extension: one product, one look, so a
- * visitor who installs from here sees what they were shown. The teal #0D9488 is retired
- * outright -- the guide's "retired to cypherkey.io" described where it was left before
- * this page was redesigned, not where it belongs.
+ * Both faces are variable, so one file each covers 400 through 800 and there is no
+ * per-weight request. They are served from our own origin because a zero-knowledge
+ * product should not hand every visitor's IP to a font CDN to render a page about not
+ * trusting servers -- and because the CSP is `default-src 'self'`, which would have to
+ * be loosened to allow it.
  *
- * Unlike the extension there is no payload budget here, so Inter is used throughout as
- * the guide's §01 specifies, loaded from Google Fonts rather than subset.
+ * The site previously asked Google for Inter and never got it: the `@import` was dropped
+ * at build time and the CSP would have refused it anyway, so every visitor has been
+ * reading the system face. This is also the fix for that.
  */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
-
-@theme {
-  /*
-    Light is the default here as it is in the extension, on the founder's call: the dark
-    ground read as heavier than a password manager wants to be, and a marketing page is
-    read once by a stranger in daylight. Dark is a tap away and the palettes are the
-    guide's, unchanged -- only which one arrives first has moved.
-  */
-  --color-ck-bg: #eceef8;
-  --color-ck-surface: #f7f8fd;
-  --color-ck-raised: #ffffff;
-  --color-ck-text: #232532;
-
-  /* Accent ramp. A line, a mark or a glow -- never a flood fill. */
-  --color-ck-accent: #5d5294;
-  --color-ck-accent-300: #4b4179;
-  --color-ck-accent-400: #6d61a8;
-  --color-ck-accent-700: #d2cefd;
-  --color-ck-accent-900: #e7e5fe;
-
-  /* On a light surface muted copy takes the darker step, never a dark-ground grey. */
-  --color-ck-muted: #595d6c;
-  --color-ck-border: #cfd3e5;
-  --color-ck-inset: #e4e7f4;
-
-  /* Bands, kept off the accent. */
-  --color-ck-pass: #047857;
-  --color-ck-pass-text: #065f46;
-  --color-ck-amber: #b45309;
-  --color-ck-amber-text: #92400e;
-  --color-ck-fail: #be123c;
-  --color-ck-fail-text: #9f1239;
-
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --radius-ck: 10px;
-  --radius-ck-lg: 14px;
+@font-face {
+  font-family: "Archivo";
+  src: url("/fonts/archivo-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
 }
 
-/* Hierarchy is size and space. Never bolder than 500. */
-body {
-  font-weight: 400;
-}
-h1,
-h2,
-h3,
-h4 {
-  font-weight: 500;
-}
-.font-bold,
-.font-extrabold,
-.font-semibold {
-  font-weight: 500 !important;
-}
+:root {
+  --bg: #141f2b;
+  --bg2: #182636;
+  --surface: #1c2c3c;
+  --glass: linear-gradient(160deg, rgba(52, 76, 102, 0.72), rgba(26, 42, 60, 0.62));
+  --glass2: rgba(24, 38, 54, 0.9);
+  --glass-hi: rgba(255, 255, 255, 0.09);
+  --glass-sh: 0 14px 44px rgba(0, 0, 0, 0.28);
+  --line: rgba(214, 228, 240, 0.14);
+  --line2: rgba(214, 228, 240, 0.3);
+  --text: #e6eef5;
+  --muted: #9fb2c4;
+  --green: #3fdcb4;
+  --green-deep: #0f5a48;
+  --green-ink: #062a24;
+  --blue: #63c5f2;
+  --blue-deep: #123a52;
+  --amber: #f0b45a;
+  --fail: #ff6b7a;
 
-/* Keyframe animations for Rhythm Light */
-@keyframes rhythm-pulse {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ck-accent) 60%, transparent);
-  }
-  50% {
-    transform: scale(1.6);
-    box-shadow: 0 0 0 10px transparent;
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 transparent;
-  }
-}
-
-@keyframes rhythm-wave {
-  0% {
-    opacity: 0.8;
-    transform: scaleY(0.4);
-  }
-  50% {
-    opacity: 1;
-    transform: scaleY(1.3);
-  }
-  100% {
-    opacity: 0.8;
-    transform: scaleY(0.4);
-  }
-}
-
-.rhythm-pulse-active {
-  animation: rhythm-pulse 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
-}
-
-.rhythm-wave-bar {
-  display: inline-block;
-  width: 3px;
-  height: 14px;
-  background-color: var(--color-ck-accent);
-  border-radius: 2px;
-  margin: 0 1px;
-  transition: transform 0.15s ease, background-color 0.2s ease;
-}
-
-/* Base Rhythm Light styling */
-.rhythm-light-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  transition: all 0.2s ease-in-out;
-  display: inline-block;
-  position: relative;
-}
-
-/*
- * The light's states, on the tokens.
- *
- * These were the last of the retired teal and a pair of hard-coded slates, which meant
- * the one element the product is named for kept a palette the rest of the site had left
- * -- and the idle ring vanished on the dark ground. Band colours come from the same
- * pass/amber/fail tokens the score copy uses, so the two never disagree.
- */
-.rhythm-light-dot.idle {
-  background-color: var(--color-ck-muted);
-  box-shadow: 0 0 0 2px var(--color-ck-border);
-}
-
-.rhythm-light-dot.listening {
-  background-color: var(--color-ck-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ck-accent) 25%, transparent), 0 0 12px
-    color-mix(in srgb, var(--color-ck-accent) 40%, transparent);
-}
-
-.rhythm-light-dot.pass {
-  background-color: var(--color-ck-pass);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-pass) 30%, transparent), 0 0 16px
-    color-mix(in srgb, var(--color-ck-pass) 50%, transparent);
-  transform: scale(1.2);
-}
-
-.rhythm-light-dot.grey {
-  background-color: var(--color-ck-amber);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-amber) 30%, transparent), 0 0 16px
-    color-mix(in srgb, var(--color-ck-amber) 50%, transparent);
-}
-
-.rhythm-light-dot.fail {
-  background-color: var(--color-ck-fail);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-ck-fail) 30%, transparent), 0 0 16px
-    color-mix(in srgb, var(--color-ck-fail) 50%, transparent);
-}
-
-/*
- * The primary action, and it is an outline.
- *
- * This matches the extension's `.btn-primary` exactly: an accent outline that fills on
- * hover. The guide keeps the accent ramp for a line, a mark or a glow -- never a flood
- * fill -- and the six buttons that ignored that were filled with `--ck-accent-900`,
- * which on the light ground is a pale lavender behind dark text. They read as disabled.
- */
-.site-btn-primary {
-  background: transparent;
-  border: 1px solid var(--color-ck-accent-700);
-  color: var(--color-ck-accent-300);
-  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
-}
-.site-btn-primary:hover {
-  background: var(--color-ck-accent-900);
-  border-color: var(--color-ck-accent);
-}
-
-/*
- * The demo's own controls, on the tokens rather than hard-coded slate.
- * These were inline in index.html and light-only.
- */
-.setup-choice {
-  border-color: var(--color-ck-border);
-  background: var(--color-ck-inset);
-}
-.setup-choice:hover {
-  border-color: var(--color-ck-accent-700);
-}
-.setup-choice[aria-pressed="true"] {
-  border-color: var(--color-ck-accent);
-  background: var(--color-ck-accent-900);
-}
-.setup-choice .choice-marker {
-  border-color: var(--color-ck-border);
-}
-.setup-choice[aria-pressed="true"] .choice-marker {
-  border-color: var(--color-ck-accent);
-  background: var(--color-ck-accent);
-  box-shadow: inset 0 0 0 2px var(--color-ck-bg);
-}
-.strictness-option {
-  background: var(--color-ck-inset);
-  color: var(--color-ck-muted);
-}
-.strictness-option:hover {
-  background: var(--color-ck-raised);
-  color: var(--color-ck-text);
-}
-.strictness-option[aria-pressed="true"] {
-  background: var(--color-ck-accent-900);
-  color: var(--color-ck-accent-300);
-}
-
-/*
- * Dark, as the same variables remapped.
- *
- * Tailwind's `@theme` emits custom properties, so overriding them here re-points every
- * generated class at once -- no second set of `dark:` variants in the markup, which is a
- * second copy of the design and drifts from the first.
- */
-[data-theme="dark"] {
-  --color-ck-bg: #161826;
-  --color-ck-surface: #232532;
-  --color-ck-raised: #2a2d3d;
-  --color-ck-text: #e9e9ed;
-
-  --color-ck-accent: #9184d9;
-  --color-ck-accent-300: #d2cefd;
-  --color-ck-accent-400: #b5abfc;
-  --color-ck-accent-700: #5d5294;
-  --color-ck-accent-900: #2b2741;
-
-  --color-ck-muted: #9397ab;
-  --color-ck-border: #3f424d;
-  --color-ck-inset: #292b31;
-
-  --color-ck-pass: #34d399;
-  --color-ck-pass-text: #6ee7b7;
-  --color-ck-amber: #fbbf24;
-  --color-ck-amber-text: #fcd34d;
-  --color-ck-fail: #e5484d;
-  --color-ck-fail-text: #fca5a5;
+  --r: 12px;
+  --rs: 8px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Archivo", Helvetica, Arial, sans-serif;
 
   color-scheme: dark;
 }
 
-:root {
+/*
+ * Light is a full second palette, not a filter over the first.
+ *
+ * Green and blue both darken hard here: mint on white is unreadable, and the rule that
+ * body text clears 4.5:1 applies in both grounds or it is not a rule.
+ */
+[data-theme="light"] {
+  --bg: #eef2f6;
+  --bg2: #e3e9f0;
+  --surface: #f7f9fb;
+  --glass: rgba(247, 249, 251, 0.74);
+  --glass2: rgba(247, 249, 251, 0.92);
+  --glass-hi: rgba(255, 255, 255, 0.55);
+  --glass-sh: 0 14px 40px rgba(20, 31, 43, 0.16);
+  --line: rgba(16, 32, 44, 0.14);
+  --line2: rgba(16, 32, 44, 0.32);
+  --text: #10202c;
+  --muted: #4f6577;
+  --green: #0d8f6e;
+  --green-deep: #bff0e0;
+  --green-ink: #e6eef5;
+  --blue: #0f6f9e;
+  --blue-deep: #d3ecf8;
+  --amber: #a2620c;
+  --fail: #c0263a;
+
   color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/*
+ * `hidden` wins over any display we set.
+ *
+ * The UA sheet's `[hidden] { display: none }` is a single element selector, so any class
+ * that sets `display` beats it. The trial's stage panes are `display: flex`, and the
+ * result was every stage of the game -- calibrate, teach, forged, intruder, verdict --
+ * stacked down the page at once.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--green);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--blue);
+}
+
+:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* Skipping past a fixed nav and a full-height hero is not optional for a keyboard. */
+.ck-skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--green);
+  color: var(--green-ink);
+  padding: 12px 18px;
+  border-radius: var(--rs);
+  font-weight: 600;
+}
+.ck-skip:focus {
+  left: 12px;
+  top: 12px;
+  color: var(--green-ink);
+}
+
+/* ---- type ------------------------------------------------------------- */
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  text-wrap: pretty;
+}
+
+.ck-h1 {
+  font-size: clamp(44px, 7vw, 92px);
+  line-height: 0.98;
+}
+.ck-h2 {
+  font-size: clamp(28px, 3.6vw, 44px);
+  line-height: 1.05;
+}
+.ck-h3 {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ck-lede {
+  margin: 0;
+  font-size: clamp(16px, 1.5vw, 20px);
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 600px;
+  text-wrap: pretty;
+}
+
+.ck-body {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* Every kicker is mono, uppercase and tracked. Blue by default: a kicker labels data. */
+.ck-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+.ck-kicker--green {
+  color: var(--green);
+}
+
+.ck-mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---- containers ------------------------------------------------------- */
+
+/* Level 1: the page section. Flat, square, one hairline. Never a coloured rule. */
+.ck-section {
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.ck-section--surface {
+  background: var(--surface);
+}
+
+/* Level 2: a content width, and nothing else. No background, no border, no radius. */
+.ck-wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 56px 28px;
+}
+.ck-wrap--tall {
+  padding: 80px 28px;
+}
+
+/* Level 3: the card. This is the only level that is allowed a radius. */
+.ck-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 28px;
+}
+
+.ck-glass {
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: inset 0 1px 0 var(--glass-hi), var(--glass-sh);
+}
+
+.ck-grid {
+  display: grid;
+  gap: 16px;
+}
+
+/*
+ * A panel that sits over photography is fixed dark in both themes.
+ *
+ * The image underneath does not change with the palette, so a panel that did would put
+ * dark grey text on a dark photograph the moment someone chose light.
+ */
+.ck-panel-dark {
+  background: rgba(20, 31, 43, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(228, 238, 234, 0.18);
+  border-radius: var(--r);
+  color: #e6eef5;
+}
+.ck-panel-dark .ck-body,
+.ck-panel-dark .ck-lede {
+  color: #c5d3df;
+}
+.ck-panel-dark .ck-mono {
+  color: #9fb2c4;
+}
+
+/* ---- buttons ---------------------------------------------------------- */
+
+.ck-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--rs);
+  padding: 14px 22px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.ck-btn--primary {
+  background: var(--green);
+  color: var(--green-ink);
+}
+.ck-btn--primary:hover {
+  background: var(--blue);
+  color: #0b2a3a;
+}
+
+.ck-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--line2);
+  color: var(--text);
+  font-weight: 500;
+}
+.ck-btn--ghost:hover {
+  border-color: var(--green);
+  color: var(--text);
+}
+
+/* Over photography the ghost needs its own ground to stay legible. */
+.ck-panel-dark.ck-btn--ghost,
+.ck-btn--onmedia {
+  background: rgba(20, 31, 43, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(228, 238, 234, 0.35);
+  color: #e6eef5;
+  font-weight: 500;
+}
+.ck-btn--onmedia:hover {
+  border-color: var(--green);
+  color: #e6eef5;
+}
+
+.ck-btn--sm {
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+.ck-btn--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+  font-family: var(--mono);
+}
+
+/* ---- the mark --------------------------------------------------------- */
+
+/*
+ * Four keys inside a ring, and a second ring that leaves.
+ *
+ * The keys rise and fall out of phase, which is the whole idea in one object: a rhythm
+ * is a pattern in time, not a shape. The pulse ring is `z-index: -1` inside an isolated
+ * stacking context so it can travel about 9px past the frame without ever overlapping a
+ * neighbour.
+ */
+.ck-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5px;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  isolation: isolate;
+}
+.ck-mark i {
+  display: block;
+  width: 1.5px;
+  background: var(--green);
+  animation: ck-key 1.4s ease-in-out infinite;
+}
+.ck-mark i:nth-child(1) {
+  height: 5px;
+}
+.ck-mark i:nth-child(2) {
+  height: 8px;
+  animation-delay: 0.18s;
+}
+.ck-mark i:nth-child(3) {
+  height: 6px;
+  animation-delay: 0.36s;
+}
+.ck-mark i:nth-child(4) {
+  height: 7px;
+  animation-delay: 0.54s;
+}
+.ck-mark::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border: 2px solid var(--green);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: ck-logo-pulse 1.8s ease-out infinite;
+}
+
+@keyframes ck-key {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+@keyframes ck-logo-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+@keyframes ck-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(63, 220, 180, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 0 14px rgba(63, 220, 180, 0);
+  }
+}
+@keyframes ck-drift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 64px;
+  }
+}
+
+/* ---- nav -------------------------------------------------------------- */
+
+.ck-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 28px;
+  background: var(--glass2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--line);
+}
+
+.ck-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+.ck-wordmark:hover {
+  color: var(--text);
+}
+
+.ck-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  font-size: 13px;
+  font-weight: 500;
+}
+/* `:not(.ck-btn)` because this rule is one specificity step above `.ck-btn--primary`,
+   and without it the call to action was muted grey ink on a green fill. */
+.ck-nav-links a:not(.ck-btn) {
+  color: var(--muted);
+}
+.ck-nav-links a:not(.ck-btn):hover,
+.ck-nav-links a:not(.ck-btn)[aria-current="page"] {
+  color: var(--text);
+}
+
+.ck-theme-toggle {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line2);
+  border-radius: var(--rs);
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ck-theme-toggle:hover {
+  color: var(--text);
+  border-color: var(--line2);
+}
+
+/* ---- media sections --------------------------------------------------- */
+
+.ck-media {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+}
+.ck-media > video,
+.ck-media > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.ck-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ck-scrim--down {
+  background: linear-gradient(
+    180deg,
+    rgba(20, 31, 43, 0.35) 0%,
+    rgba(20, 31, 43, 0.6) 40%,
+    rgba(20, 31, 43, 0.95) 100%
+  );
+}
+.ck-scrim--across {
+  background: linear-gradient(
+    90deg,
+    rgba(20, 31, 43, 0.94) 0%,
+    rgba(20, 31, 43, 0.65) 60%,
+    rgba(20, 31, 43, 0.3) 100%
+  );
+}
+.ck-scrim--soft {
+  background: linear-gradient(180deg, rgba(20, 31, 43, 0.45) 0%, rgba(20, 31, 43, 0.96) 100%);
+}
+
+/* The scanlines read as a signal being sampled rather than as texture. */
+.ck-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(99, 197, 242, 0.05) 3px 4px);
+}
+
+/* ---- footer ----------------------------------------------------------- */
+
+.ck-footer {
+  border-top: 1px solid var(--line);
+  padding: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.ck-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.ck-footer a {
+  color: var(--muted);
+}
+.ck-footer a:hover {
+  color: var(--text);
+}
+
+/* ---- reduced motion ---------------------------------------------------- */
+
+/*
+ * Everything that moves here is decorative. Collapsing the pulses to a plain colour
+ * loses nothing a reader needs, and the carousel keeps working -- it just arrives
+ * instead of sliding.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .ck-mark::after {
+    display: none;
+  }
+  .ck-media > video {
+    display: none;
+  }
+}
+
+/* ---- landing: hero ----------------------------------------------------- */
+
+.ck-hero {
+  min-height: 100vh;
+  align-items: flex-end;
+}
+
+.ck-hero-inner {
+  position: relative;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 140px 28px 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+  gap: 40px;
+  align-items: end;
+}
+
+.ck-hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Over the video the ink is fixed, for the reason in `.ck-panel-dark`. */
+.ck-hero-copy .ck-h1 {
+  color: #e6eef5;
+}
+.ck-kicker--onmedia {
+  color: #3fdcb4;
+}
+.ck-lede--onmedia {
+  color: #c5d3df;
+}
+
+/* The living signal, and the only green in a line of text. */
+.ck-said {
+  color: var(--green);
+}
+.ck-hero-copy .ck-said {
+  color: #3fdcb4;
+}
+
+.ck-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3fdcb4;
+  animation: ck-pulse 1.6s ease-out infinite;
+}
+
+.ck-arrow {
+  font-family: var(--mono);
+}
+
+.ck-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ck-hero-stat {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #c5d3df;
+}
+.ck-hero-stat-head,
+.ck-hero-stat-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ck-hero-stat-head {
+  color: #9fb2c4;
+}
+.ck-listening {
+  color: #3fdcb4;
+}
+.ck-hero-stat-foot b {
+  color: #e6eef5;
+  font-weight: 400;
+}
+.ck-hero-stat-foot .ck-said {
+  color: #3fdcb4;
+}
+
+/* 28 bars, one per recent keystroke, the newest in green because it is the live one. */
+.ck-wave {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 56px;
+}
+.ck-wave span {
+  flex: 1;
+  background: var(--blue);
+  transition: height 0.3s;
+}
+.ck-wave span:last-child {
+  background: var(--green);
+}
+
+/* ---- landing: carousel -------------------------------------------------- */
+
+.ck-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-bottom: 64px;
+}
+.ck-carousel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ck-carousel-arrows {
+  display: flex;
+  gap: 8px;
+}
+.ck-carousel-window {
+  overflow: hidden;
+}
+.ck-carousel-track {
+  display: flex;
+  gap: 16px;
+  transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ck-slide {
+  flex: 0 0 min(78%, 720px);
+  min-height: 340px;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 18px;
+  padding: 32px;
+  /* Inactive slides recede rather than disappear: the next one is part of the promise. */
+  opacity: 0.45;
+  transition: opacity 0.5s;
+}
+.ck-slide[data-active="true"] {
+  opacity: 1;
+}
+.ck-slide-title {
+  font-size: clamp(34px, 4.6vw, 64px);
+  line-height: 1;
+}
+.ck-slide-foot {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  align-self: end;
+}
+
+.ck-carousel-bars {
+  display: flex;
+  gap: 6px;
+}
+.ck-carousel-bars button {
+  height: 3px;
+  flex: 1;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: var(--line2);
+  transition: background 0.3s;
+}
+.ck-carousel-bars button[aria-current="true"] {
+  background: var(--green);
+}
+
+/* ---- landing: origin and invite ----------------------------------------- */
+
+.ck-origin {
+  min-height: 70vh;
+  align-items: center;
+}
+.ck-origin-ground {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 82% 20%, rgba(63, 220, 180, 0.12), transparent 60%),
+    radial-gradient(90% 80% at 10% 90%, rgba(99, 197, 242, 0.1), transparent 60%),
+    linear-gradient(90deg, #101922 0%, #16232f 60%, #1b2b3a 100%);
+}
+/*
+ * The photograph for this strip is the one asset the handoff left open.
+ *
+ * Rather than a dead right-hand third waiting for art, the space carries a timing trace:
+ * vertical hairlines fading in from the right, at the same spacing as the hero's
+ * scanlines. It is the product's own motif, it is honest about being decoration, and
+ * dropping a photograph in later means deleting this rule.
+ */
+.ck-origin-ground::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 10px,
+    rgba(99, 197, 242, 0.11) 10px 12px
+  );
+  -webkit-mask-image: linear-gradient(90deg, transparent 38%, #000 88%);
+  mask-image: linear-gradient(90deg, transparent 38%, #000 88%);
+}
+
+.ck-origin-inner {
+  position: relative;
+  width: 100%;
+}
+.ck-origin-panel {
+  max-width: 560px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ck-origin-title {
+  font-size: 32px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #e6eef5;
+}
+.ck-origin-meta {
+  font-size: 13px;
+  color: #9fb2c4;
+}
+.ck-origin-meta a {
+  color: #3fdcb4;
+}
+
+.ck-invite {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 32px;
+  align-items: center;
+  padding-top: 64px;
+  padding-bottom: 64px;
+}
+.ck-invite-title {
+  font-size: clamp(30px, 4vw, 52px);
+  line-height: 1;
+}
+.ck-invite-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ck-invite-alt {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ---- narrow ------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .ck-hero-inner {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 120px;
+    gap: 28px;
+  }
+  .ck-slide {
+    flex-basis: 88%;
+    padding: 24px;
+  }
+  .ck-nav {
+    padding: 12px 16px;
+  }
+  .ck-nav-links {
+    gap: 14px;
+  }
+  .ck-wrap {
+    padding: 40px 18px;
+  }
+}
+
+/* The nav is the one place a link list can honestly be dropped on a phone. */
+@media (max-width: 560px) {
+  .ck-nav-links a:not(.ck-btn) {
+    display: none;
+  }
+}
+
+/* ---- a page hero (pricing, beta) ---------------------------------------- */
+
+.ck-page-hero {
+  min-height: 56vh;
+  align-items: flex-end;
+}
+.ck-page-hero-inner {
+  position: relative;
+  width: 100%;
+  padding-top: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.ck-page-hero-title {
+  font-size: clamp(34px, 5vw, 64px);
+  line-height: 1;
+  color: #e6eef5;
+  max-width: 15ch;
+}
+
+/* ---- pricing ------------------------------------------------------------ */
+
+.ck-tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ck-tier {
+  padding: 28px 24px;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* The featured tier is marked by its ring, never by being bigger: a taller card in a
+   row of equals reads as a layout accident rather than a recommendation. */
+.ck-tier--featured {
+  border-color: var(--green);
+}
+.ck-tier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ck-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--green);
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  padding: 3px 8px;
+}
+
+.ck-price {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+}
+.ck-price-figure {
+  font-size: 40px;
+  color: var(--blue);
+  letter-spacing: -0.02em;
+}
+.ck-price-period {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ck-tier-limit {
+  margin: 0 0 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ck-tier-features {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+  flex: 1;
+}
+/* A square, not a tick. A tick says "verified"; these are contents, not claims. */
+.ck-tier-features li {
+  display: grid;
+  grid-template-columns: 6px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.ck-tier-features li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  background: var(--green);
+}
+
+.ck-tier-cta {
+  align-self: stretch;
+  justify-content: flex-start;
+}
+
+.ck-grid--4 {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  margin-top: 24px;
+}
+.ck-feature {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ck-feature .ck-body {
+  font-size: 14px;
+}
+
+.ck-code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  color: var(--blue);
+}
+
+.ck-enterprise {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.ck-enterprise-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ck-enterprise-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ck-mono-btn {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+@media (max-width: 860px) {
+  .ck-enterprise {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ck-page-hero-inner {
+    padding-top: 120px;
+  }
+}
+
+/* ---- beta --------------------------------------------------------------- */
+
+.ck-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ck-beta-hero {
+  min-height: 88vh;
+  align-items: center;
+}
+.ck-beta-hero-inner {
+  position: relative;
+  width: 100%;
+  padding-top: 140px;
+}
+.ck-beta-panel {
+  max-width: 560px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ck-beta-title {
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.03;
+  color: #e6eef5;
+}
+
+.ck-beta-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+/* Only here is the field a row item that should take the slack. */
+.ck-beta-form .ck-input {
+  flex: 1 1 220px;
+}
+.ck-input {
+  min-width: 0;
+  background: rgba(10, 18, 26, 0.55);
+  border: 1px solid rgba(228, 238, 234, 0.28);
+  border-radius: var(--rs);
+  color: #e6eef5;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 13px 14px;
+}
+.ck-input::placeholder {
+  color: #7d90a2;
+}
+.ck-input:focus-visible {
+  border-color: var(--green);
+}
+
+.ck-beta-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3fdcb4;
+}
+.ck-beta-foot {
+  color: #9fb2c4;
+  line-height: 1.5;
+}
+
+/* ---- milestones --------------------------------------------------------- */
+
+.ck-milestones {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 40px;
+  align-items: start;
+}
+.ck-milestones-intro {
+  position: sticky;
+  top: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ck-milestone-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ck-milestone {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: start;
+  padding: 24px 0;
+  border-top: 1px solid var(--line);
+}
+.ck-milestone-id {
+  font-family: var(--mono);
+  font-size: 22px;
+  color: var(--muted);
+}
+.ck-milestone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ck-milestone-body .ck-body {
+  font-size: 15px;
+}
+
+/* Status colours the id and the tag and nothing else -- a whole row tinted green would
+   read as a state the row is in rather than a fact about the milestone. */
+.ck-is-done {
+  color: var(--green);
+}
+.ck-is-now {
+  color: var(--blue);
+}
+
+.ck-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.ck-section-title {
+  margin-top: 12px;
+  max-width: 22ch;
+}
+.ck-source-line {
+  margin-top: 24px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.ck-safe-close {
+  margin-top: 28px;
+  max-width: 70ch;
+}
+
+.ck-grid--safe {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  margin-top: 24px;
+}
+.ck-guarantee {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ck-guarantee-n {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--blue);
+}
+.ck-guarantee .ck-body {
+  font-size: 14px;
+}
+
+@media (max-width: 860px) {
+  .ck-milestones {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .ck-milestones-intro {
+    position: static;
+  }
+  .ck-milestone {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .ck-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .ck-beta-hero-inner {
+    padding-top: 120px;
+  }
+}
+
+/* ---- the trial ----------------------------------------------------------- */
+
+.ck-trial-body {
+  position: relative;
+}
+/* Radial glows plus drifting scanlines: a field being sampled, behind an instrument. */
+.ck-trial-ground {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(70% 55% at 88% 8%, rgba(63, 220, 180, 0.16), transparent 62%),
+    radial-gradient(60% 55% at 6% 96%, rgba(99, 197, 242, 0.14), transparent 62%), var(--bg);
+}
+.ck-trial-ground::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  background: repeating-linear-gradient(180deg, transparent 0 3px, rgba(99, 197, 242, 0.05) 3px 4px);
+  animation: ck-drift 30s linear infinite;
+}
+
+.ck-trial {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 104px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ck-hud {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.ck-hud-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border-right: 1px solid var(--line);
+}
+.ck-hud-cell:last-child {
+  border-right: 0;
+}
+.ck-hud-cell--light {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+.ck-hud-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ck-hud-value {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--text);
+}
+.ck-hud-blue {
+  color: var(--blue);
+}
+
+.ck-streak {
+  display: flex;
+  gap: 4px;
+}
+.ck-streak span {
+  flex: 1;
+  height: 14px;
+  border: 1px solid var(--line2);
+}
+.ck-streak span[data-state="streak"] {
+  background: var(--green);
+  border-color: var(--green);
+}
+.ck-streak span[data-state="kept"] {
+  background: var(--green-deep);
+  border-color: var(--green-deep);
+}
+
+.ck-trial-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.ck-stage-pane {
+  padding: 28px;
+  min-height: 520px;
+}
+.ck-stage-pane > div {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ck-stage-title {
+  font-size: clamp(26px, 3.4vw, 40px);
+  line-height: 1.04;
+}
+.ck-stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ---- the light (v2) ------------------------------------------------------- */
+
+/*
+ * The same mark as the wordmark, at 28px, recoloured per state.
+ *
+ * It is not an icon for capture, it is the condition of capture: `startCapture` refuses
+ * to run beside one that is not visible, so this element being on screen is the consent
+ * signal itself.
+ */
+.ck-light {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  isolation: isolate;
+  transition: border-color 0.2s, background 0.2s;
+}
+.ck-light i {
+  display: block;
+  width: 2px;
+  background: var(--muted);
+  transition: background 0.2s;
+}
+.ck-light i:nth-child(1) {
+  height: 8px;
+}
+.ck-light i:nth-child(2) {
+  height: 14px;
+}
+.ck-light i:nth-child(3) {
+  height: 10px;
+}
+.ck-light i:nth-child(4) {
+  height: 12px;
+}
+
+.ck-light[data-state="ready"],
+.ck-light[data-state="recording"] {
+  border-color: var(--green);
+}
+.ck-light[data-state="ready"] i,
+.ck-light[data-state="recording"] i {
+  background: var(--green);
+}
+.ck-light[data-state="recording"] i {
+  animation: ck-key 0.7s ease-in-out infinite;
+}
+.ck-light[data-state="recording"] i:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.ck-light[data-state="recording"] i:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.ck-light[data-state="recording"] i:nth-child(4) {
+  animation-delay: 0.3s;
+}
+.ck-light[data-state="captured"] {
+  border-color: var(--blue);
+}
+.ck-light[data-state="captured"] i {
+  background: var(--blue);
+}
+.ck-light[data-state="matched"] {
+  border-color: var(--green);
+  background: var(--green);
+}
+.ck-light[data-state="matched"] i {
+  background: var(--green-ink);
+}
+.ck-light[data-state="amber"] {
+  border-color: var(--amber);
+}
+.ck-light[data-state="amber"] i {
+  background: var(--amber);
+}
+.ck-light[data-state="refused"] {
+  border-color: var(--fail);
+  background: rgba(255, 107, 122, 0.08);
+}
+.ck-light[data-state="refused"] i {
+  background: var(--fail);
+}
+
+/* ---- calibrate ------------------------------------------------------------- */
+
+.ck-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+.ck-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.ck-choice[aria-pressed="true"] {
+  border-color: var(--green);
+}
+.ck-choice-head {
+  font-weight: 600;
+  font-size: 15px;
+}
+.ck-choice-phrase {
+  font-family: var(--mono);
+  font-size: 15px;
+}
+.ck-choice-shuffle,
+.ck-choice-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ck-choice-shuffle {
+  cursor: pointer;
+}
+.ck-choice-shuffle:hover {
+  color: var(--green);
+}
+.ck-choice-input {
+  width: 100%;
+  background: var(--bg);
+  border-color: var(--line2);
+  color: var(--text);
+  font-size: 14px;
+  padding: 10px 12px;
+}
+
+.ck-explainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.ck-explainer .ck-body {
+  font-size: 14px;
+  margin-top: 8px;
+}
+.ck-error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 14px;
+}
+
+/* ---- typing ---------------------------------------------------------------- */
+
+.ck-phrase-chip {
+  margin: 0;
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--rs);
+  padding: 10px 14px;
+  user-select: all;
+}
+
+.ck-waveform {
+  position: relative;
+  height: 120px;
+  border: 1px solid var(--line);
+  border-radius: var(--rs);
+  background: repeating-linear-gradient(90deg, transparent 0 39px, var(--line) 39px 40px),
+    var(--bg2);
+  padding: 10px;
+  overflow: hidden;
+}
+.ck-waveform-label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ck-waveform-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  padding-top: 18px;
+}
+.ck-waveform-bars span {
+  width: 10px;
+  flex: none;
+  background: var(--green);
+  box-shadow: 0 0 8px currentColor;
+  color: var(--green);
+  transition: height 0.1s;
+}
+.ck-waveform--amber .ck-waveform-bars span {
+  background: var(--amber);
+  color: var(--amber);
+}
+.ck-waveform-bars span[data-outside="true"] {
+  background: var(--fail);
+  color: var(--fail);
+}
+
+.ck-typefield {
+  position: relative;
+}
+.ck-typefield-input {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 20px;
+  background: var(--bg2);
+  border-color: var(--line2);
+  color: var(--text);
+}
+/* The edge fills as the sample approaches the enrolled length. A progress bar would
+   imply a target to hit; an edge is just where you are. */
+.ck-typefield-edge {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--green);
+  transition: width 0.12s;
+}
+
+.ck-feedback {
+  margin: 0;
+  font-size: 14px;
+  color: var(--amber);
+  min-height: 1.2em;
+}
+
+/* ---- envelope and stats ------------------------------------------------------ */
+
+.ck-envelope {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 140px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--rs);
+  background: var(--bg2);
+}
+.ck-envelope-col {
+  position: relative;
+  flex: 1;
+  height: var(--mu);
+  background: var(--blue-deep);
+  border-top: 2px solid var(--blue);
+}
+/* ±1σ, drawn around the mean rather than from the floor: the spread is the point. */
+.ck-envelope-col::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--band) / -2);
+  height: var(--band);
+  background: rgba(99, 197, 242, 0.22);
+}
+
+.ck-statstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--rs);
+}
+.ck-statstrip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border-right: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 15px;
+}
+.ck-statstrip > div:last-child {
+  border-right: 0;
+}
+
+/* ---- verdict ------------------------------------------------------------------ */
+
+.ck-strictness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.ck-seg {
+  display: inline-flex;
+  border: 1px solid var(--line2);
+  border-radius: var(--rs);
+  overflow: hidden;
+}
+.ck-seg button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 16px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.ck-seg button:last-child {
+  border-right: 0;
+}
+/* The current level is the pressed one, never the disabled one: a selected option must
+   not look unavailable. */
+.ck-seg button[aria-pressed="true"] {
+  background: var(--green);
+  color: var(--green-ink);
+}
+
+.ck-verdicts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.ck-verdict {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ck-band {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: var(--muted);
+}
+.ck-band[data-band="pass"] {
+  color: var(--green);
+}
+.ck-band[data-band="grey"] {
+  color: var(--amber);
+}
+.ck-band[data-band="fail"] {
+  color: var(--fail);
+}
+.ck-verdict .ck-body {
+  font-size: 14px;
+}
+
+.ck-safe-strip {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.ck-safe-strip .ck-body {
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* ---- rail --------------------------------------------------------------------- */
+
+.ck-rail {
+  position: sticky;
+  top: 92px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ck-rail-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ck-rail-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ck-rail-list dt {
+  color: var(--muted);
+}
+.ck-rail-list dd {
+  margin: 0;
+  color: var(--text);
+}
+
+.ck-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 120px;
+}
+.ck-log li {
+  color: var(--text);
+}
+.ck-log li[data-tone="green"] {
+  color: var(--green);
+}
+.ck-log li[data-tone="amber"] {
+  color: var(--amber);
+}
+.ck-log li[data-tone="fail"] {
+  color: var(--fail);
+}
+
+/* ---- achievements --------------------------------------------------------------- */
+
+.ck-achievements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ck-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+}
+.ck-chip i {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+}
+.ck-chip[data-unlocked="true"] {
+  color: var(--green);
+  border-color: var(--green);
+  background: rgba(63, 220, 180, 0.08);
+}
+
+.ck-kicker--amber {
+  color: var(--amber);
+}
+.ck-reset:hover {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+@media (max-width: 1040px) {
+  .ck-trial-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ck-rail {
+    position: static;
+  }
+}
+@media (max-width: 860px) {
+  .ck-trial {
+    padding: 92px 16px 40px;
+  }
+  .ck-stage-pane {
+    padding: 20px;
+  }
 }

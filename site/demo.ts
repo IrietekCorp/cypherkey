@@ -1,958 +1,809 @@
-import { initTheme } from './theme';
-import './styles.css';
-
 import { startCapture } from '../core/biometrics/capture';
-import { extractFeatures } from '../core/biometrics/features';
-import { buildProfile, score } from '../core/biometrics/score';
-import type { Profile } from '../core/biometrics/score';
-import {
-  describeEvents,
-  eventsToScript,
-  readableToken,
-  scriptLength,
-  scriptsEqual,
-} from '../core/biometrics/script';
+import { extractFeatures, getFeatureRanges } from '../core/biometrics/features';
+import { type Profile, band, buildProfile, score } from '../core/biometrics/score';
+import { eventsToScript, scriptLength, scriptsEqual } from '../core/biometrics/script';
 import type { FeatureVector, KeyEvent } from '../core/biometrics/types';
 import { type Strictness, rhythmBands } from '../core/crypto/phantom';
-
-type DemoState = 'idle' | 'enrolling' | 'built' | 'challenge_friend' | 'challenge_you' | 'results';
-
-const SAMPLE_PHRASES = [
-  'correct horse battery staple',
-  'blue ocean waves under starlight',
-  'sunflower seeds in summer wind',
-  'quantum encryption guards every key',
-  'whispering forest morning dew',
-];
-
-// App State
-let currentState: DemoState = 'idle';
-let targetPassphrase = 'correct horse battery staple';
+import { initTheme } from './theme';
 
 /**
- * The canonical script from the first enrollment sample (docs/02 A-14). With Phantom
- * Keys on, this is what every later sample — and the friend's attempt — must
- * reproduce. It holds the phantoms; `targetPassphrase` holds only what survives them.
- */
-let canonicalScript: string | null = null;
-
-/** Live keystroke count for the current sample, since the field only shows characters. */
-let keystrokesTyped = 0;
-
-/** X-3 lets the friend try more than once; an attacker would. Best score is what counts. */
-const FRIEND_ATTEMPTS = 3;
-let friendAttempts: number[] = [];
-
-/**
- * A-16 Strictness, adjustable live. Bands are derived from the recorded scores, so
- * moving the control re-judges the same attempts without anyone typing again.
- */
-let strictness: Strictness = 'medium';
-
-/** Which of the two setup options is active. Nothing else decides the phrase. */
-let setupChoice: 'random' | 'own' = 'random';
-let enrollmentSamples: FeatureVector[] = [];
-let userProfile: Profile | null = null;
-let friendScoreResult: { score: number; band: 'pass' | 'grey' | 'fail' } | null = null;
-let youScoreResult: { score: number; band: 'pass' | 'grey' | 'fail' } | null = null;
-
-// Active capture handles
-let activeCapture: { stop(): KeyEvent[]; cancel(): void } | null = null;
-
-// DOM Elements
-const stateLabel = document.getElementById('state-label') as HTMLElement;
-const btnReset = document.getElementById('btn-reset') as HTMLButtonElement;
-
-// Step Sections
-const stepSetup = document.getElementById('step-setup') as HTMLElement;
-const stepEnroll = document.getElementById('step-enroll') as HTMLElement;
-const stepBuilt = document.getElementById('step-built') as HTMLElement;
-const stepChallengeFriend = document.getElementById('step-challenge-friend') as HTMLElement;
-const stepChallengeYou = document.getElementById('step-challenge-you') as HTMLElement;
-const stepResults = document.getElementById('step-results') as HTMLElement;
-
-// Step 1: Setup Elements
-const inputPassphraseSetup = document.getElementById('input-passphrase-setup') as HTMLInputElement;
-const btnSamplePhrase = document.getElementById('btn-sample-phrase') as HTMLButtonElement;
-const btnBeginEnroll = document.getElementById('btn-begin-enroll') as HTMLButtonElement;
-const setupError = document.getElementById('setup-error') as HTMLElement;
-
-// Step 2: Enroll Elements
-const enrollCurrentStep = document.getElementById('enroll-current-step') as HTMLElement;
-const enrollTargetPhrase = document.getElementById('enroll-target-phrase') as HTMLElement;
-const enrollDotsContainer = document.getElementById('enroll-dots-container') as HTMLElement;
-const enrollKeyCounter = document.getElementById('enroll-key-counter') as HTMLElement;
-const inputEnroll = document.getElementById('input-enroll') as HTMLInputElement;
-const rhythmLight = document.getElementById('rhythm-light') as HTMLElement;
-const optionRandom = document.getElementById('option-random') as HTMLButtonElement;
-const optionOwn = document.getElementById('option-own') as HTMLButtonElement;
-const randomPhraseDisplay = document.getElementById('random-phrase-display') as HTMLElement;
-const friendAttemptCounter = document.getElementById('friend-attempt-counter') as HTMLElement;
-const friendAttemptHistory = document.getElementById('friend-attempt-history') as HTMLElement;
-const friendAttemptList = document.getElementById('friend-attempt-list') as HTMLElement;
-const btnFriendGiveUp = document.getElementById('btn-friend-give-up') as HTMLButtonElement;
-const btnTestAnotherFriend = document.getElementById(
-  'btn-test-another-friend',
-) as HTMLButtonElement;
-const youTargetPhrase = document.getElementById('you-target-phrase') as HTMLElement;
-const strictnessHintYou = document.getElementById('strictness-hint-you') as HTMLElement;
-const strictnessHintResults = document.getElementById('strictness-hint-results') as HTMLElement;
-const friendOutcome = document.getElementById('friend-outcome') as HTMLElement;
-const youOutcome = document.getElementById('you-outcome') as HTMLElement;
-const debugPanel = document.getElementById('debug-panel') as HTMLElement;
-const debugRows = document.getElementById('debug-rows') as HTMLElement;
-const phantomReadout = document.getElementById('phantom-script-readout') as HTMLElement;
-const phantomCounts = document.getElementById('phantom-counts') as HTMLElement;
-const phantomDetail = document.getElementById('phantom-detail') as HTMLElement;
-const rhythmMiniBars = document.getElementById('rhythm-mini-bars') as HTMLElement;
-const enrollFeedback = document.getElementById('enroll-feedback') as HTMLElement;
-const btnSubmitEnrollSample = document.getElementById(
-  'btn-submit-enroll-sample',
-) as HTMLButtonElement;
-
-// Step 3: Built Elements
-const profileStatLen = document.getElementById('profile-stat-len') as HTMLElement;
-const profileStatDim = document.getElementById('profile-stat-dim') as HTMLElement;
-const btnGotoChallenge = document.getElementById('btn-goto-challenge') as HTMLButtonElement;
-
-// Step 4: Challenge Friend Elements
-const friendTargetPhrase = document.getElementById('friend-target-phrase') as HTMLElement;
-const friendKeyCounter = document.getElementById('friend-key-counter') as HTMLElement;
-const inputChallengeFriend = document.getElementById('input-challenge-friend') as HTMLInputElement;
-const rhythmLightFriend = document.getElementById('rhythm-light-friend') as HTMLElement;
-const friendMiniBars = document.getElementById('friend-mini-bars') as HTMLElement;
-const friendFeedback = document.getElementById('friend-feedback') as HTMLElement;
-const btnSubmitFriendChallenge = document.getElementById(
-  'btn-submit-friend-challenge',
-) as HTMLButtonElement;
-
-// Step 5: Challenge You Elements
-const youKeyCounter = document.getElementById('you-key-counter') as HTMLElement;
-const inputChallengeYou = document.getElementById('input-challenge-you') as HTMLInputElement;
-const rhythmLightYou = document.getElementById('rhythm-light-you') as HTMLElement;
-const youMiniBars = document.getElementById('you-mini-bars') as HTMLElement;
-const youFeedback = document.getElementById('you-feedback') as HTMLElement;
-const btnSubmitYouChallenge = document.getElementById(
-  'btn-submit-you-challenge',
-) as HTMLButtonElement;
-
-// Step 6: Results Elements
-const friendScoreDisplay = document.getElementById('friend-score-display') as HTMLElement;
-const friendBandBadge = document.getElementById('friend-band-badge') as HTMLElement;
-const friendExplanation = document.getElementById('friend-explanation') as HTMLElement;
-const youScoreDisplay = document.getElementById('you-score-display') as HTMLElement;
-const youBandBadge = document.getElementById('you-band-badge') as HTMLElement;
-const youExplanation = document.getElementById('you-explanation') as HTMLElement;
-const btnRetestYou = document.getElementById('btn-retest-you') as HTMLButtonElement;
-const btnNewPassphrase = document.getElementById('btn-new-passphrase') as HTMLButtonElement;
-
-// Email form elements
-const emailForm = document.getElementById('email-form') as HTMLFormElement;
-const emailConfirmation = document.getElementById('email-confirmation') as HTMLElement;
-
-/**
- * Triggers a visual pulse animation on a Rhythm Light element and companion wave bars.
- */
-function triggerPulse(lightEl: HTMLElement, barsEl?: HTMLElement) {
-  lightEl.classList.remove('rhythm-pulse-active');
-  void lightEl.offsetWidth; // force reflow
-  lightEl.classList.add('rhythm-pulse-active');
-
-  if (barsEl) {
-    const bars = barsEl.querySelectorAll('.rhythm-wave-bar');
-    for (const bar of bars) {
-      const scale = 0.5 + Math.random() * 1.3;
-      (bar as HTMLElement).style.transform = `scaleY(${scale})`;
-      setTimeout(() => {
-        (bar as HTMLElement).style.transform = 'scaleY(0.5)';
-      }, 150);
-    }
-  }
-}
-
-/**
- * Updates the visual state label and shows/hides appropriate containers.
- */
-function setState(newState: DemoState) {
-  currentState = newState;
-  stateLabel.textContent = newState.replace('_', ' ');
-
-  // Hide all sections first
-  stepSetup.classList.add('hidden');
-  stepEnroll.classList.add('hidden');
-  stepBuilt.classList.add('hidden');
-  stepChallengeFriend.classList.add('hidden');
-  stepChallengeYou.classList.add('hidden');
-  stepResults.classList.add('hidden');
-
-  // Cancel any active capture
-  if (activeCapture) {
-    activeCapture.cancel();
-    activeCapture = null;
-  }
-
-  switch (newState) {
-    case 'idle':
-      stepSetup.classList.remove('hidden');
-      inputPassphraseSetup.focus();
-      break;
-
-    case 'enrolling':
-      stepEnroll.classList.remove('hidden');
-      enrollTargetPhrase.textContent = targetPassphrase;
-      renderEnrollDots();
-      prepareEnrollSample();
-      break;
-
-    case 'built':
-      stepBuilt.classList.remove('hidden');
-      if (userProfile) {
-        profileStatLen.textContent = `${userProfile.len} characters`;
-        profileStatDim.textContent = `${userProfile.means.length} features (3n + 5)`;
-      }
-      break;
-
-    case 'challenge_friend':
-      stepChallengeFriend.classList.remove('hidden');
-      friendTargetPhrase.textContent = targetPassphrase;
-      renderFriendAttempts();
-      renderStrictness();
-      prepareChallengeFriend();
-      break;
-
-    case 'challenge_you':
-      stepChallengeYou.classList.remove('hidden');
-      // Shown again on purpose: after watching someone else type it, nobody should
-      // have to remember the phrase they were handed minutes ago.
-      youTargetPhrase.textContent = targetPassphrase;
-      renderStrictness();
-      prepareChallengeYou();
-      break;
-
-    case 'results':
-      stepResults.classList.remove('hidden');
-      renderStrictness();
-      renderResults();
-      break;
-  }
-}
-
-/**
- * Renders the 8 progress indicator pills for enrollment.
- */
-function renderEnrollDots() {
-  enrollDotsContainer.innerHTML = '';
-  for (let i = 0; i < 8; i++) {
-    const pill = document.createElement('span');
-    const isCompleted = i < enrollmentSamples.length;
-    const isCurrent = i === enrollmentSamples.length;
-
-    let styles = 'bg-slate-100 border-slate-300 text-slate-400';
-    if (isCompleted) {
-      styles = 'bg-teal-600 border-teal-600 text-white font-bold shadow-xs';
-    } else if (isCurrent) {
-      styles = 'bg-white border-teal-600 text-teal-700 ring-2 ring-teal-500/20 font-bold';
-    }
-
-    pill.className = `w-6 h-6 rounded-full border text-[10px] flex items-center justify-center transition-all duration-200 ${styles}`;
-    pill.textContent = isCompleted ? '✓' : String(i + 1);
-    enrollDotsContainer.appendChild(pill);
-  }
-}
-
-/**
- * Prepares the input and capture listener for an enrollment sample.
- */
-/**
- * Resets the field for the next sample.
+ * The Rhythm Trial.
  *
- * `keepFeedback` exists because every rejection path used to call this immediately
- * after showing its reason, which wiped the message before anyone could read it — the
- * sample was refused and the screen said nothing at all.
- */
-function prepareEnrollSample(keepFeedback = false) {
-  if (activeCapture) {
-    activeCapture.cancel();
-    activeCapture = null;
-  }
-
-  inputEnroll.value = '';
-  keystrokesTyped = 0;
-  enrollKeyCounter.textContent = '0 keystrokes · 0 characters';
-  if (!keepFeedback) {
-    enrollFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-    enrollFeedback.textContent = '';
-  }
-  enrollCurrentStep.textContent = String(enrollmentSamples.length + 1);
-
-  rhythmLight.className = 'rhythm-light-dot listening';
-
-  try {
-    activeCapture = startCapture(inputEnroll, rhythmLight, {
-      onPulse: () => {
-        triggerPulse(rhythmLight, rhythmMiniBars);
-        // Keystrokes and characters diverge the moment a Phantom Key is typed, which
-        // is the whole idea — the field shows the resolved length, the counter does not.
-        keystrokesTyped++;
-        enrollKeyCounter.textContent = `${keystrokesTyped} keystrokes · ${inputEnroll.value.length} characters`;
-      },
-    });
-  } catch (err) {
-    console.error('Failed to start capture:', err);
-  }
-
-  setTimeout(() => inputEnroll.focus(), 50);
-}
-
-/**
- * Diagnostics, enabled with `?debug=1`.
+ * The whole page is one claim -- that how you type is a factor -- and the only honest way
+ * to make it is to let a stranger try. So this is a game with a losing condition for the
+ * visitor's friend, and everything it says has to be true of the shipped product or the
+ * demonstration is a magic trick.
  *
- * Scope is deliberate. This lives in the demo and nowhere else: `core/` gains no debug
- * hook, so nothing here can reach the extension, which imports `core/` and never this
- * file. It holds only the throwaway phrase the visitor just invented on a page with no
- * account and no network, and the page already prints that phrase on screen. It never
- * writes to storage, never logs to the console (AGENTS forbids logging key material),
- * and never sends anything anywhere — the demo has no server to send it to.
+ * Which is why it imports `core/biometrics` rather than reimplementing it. The tokenizer,
+ * the 3n+5 feature vector, the σ floor, the weights and the bands are the same code the
+ * extension unlocks with. A demo with its own scoring maths would drift, and the first
+ * person to notice would be someone deciding whether to trust the product.
  *
- * The extension must never grow an equivalent. Real feature vectors and real scripts
- * are exactly what A-4.1 and A-14 say must not be surfaced, and a runtime flag would
- * be the wrong control there: it would have to be stripped at build time.
+ * Nothing here is sent anywhere. There is no `fetch` in this module and none in what it
+ * imports, which is what makes `network requests 0` on the rail a fact rather than a
+ * promise.
  */
-const DEBUG = new URLSearchParams(window.location.search).get('debug') === '1';
 
-/** Bands a score at the current Strictness (A-16), not at a hardcoded default. */
-function bandFor(value: number): 'pass' | 'grey' | 'fail' {
-  const { pass, grey } = rhythmBands(strictness);
-  if (value >= pass) return 'pass';
-  if (value >= grey) return 'grey';
-  return 'fail';
-}
+initTheme();
 
-/** Renders control tokens so a phantom is visible rather than invisible. */
-function readableScript(script: string): string {
-  return [...script].map(readableToken).join('');
-}
+/* ---- constants ---------------------------------------------------------- */
 
-function debugNote(stage: string, outcome: string, detail = '', trace = '') {
-  if (!DEBUG) return;
-  const row = document.createElement('div');
-  row.className = outcome === 'accepted' ? 'text-emerald-800' : 'text-rose-800';
-  row.textContent = `${stage.padEnd(8)} ${outcome.padEnd(9)} ${detail}`;
-  debugRows.appendChild(row);
-  if (trace !== '') {
-    // The key sequence as captured. Keys and order only — never timings, and this is
-    // a throwaway demo phrase the page already prints in full.
-    const traceRow = document.createElement('div');
-    traceRow.className = 'text-amber-700 pl-4 break-all';
-    traceRow.textContent = trace;
-    debugRows.appendChild(traceRow);
-  }
-  debugRows.scrollTop = debugRows.scrollHeight;
-}
+const SAMPLES_REQUIRED = 8;
+const MIN_PHRASE = 10;
+const INTRUDER_ATTEMPTS = 3;
 
-/** Human wording for each reason a sample can be void (A-14.1). */
-const SCRIPT_ERROR_COPY: Record<string, string> = {
-  unsupported_key: 'That used a key we can’t time — arrows, Tab and paste all end a sample.',
-  unsupported_combo: 'Ctrl, Alt and ⌘ combinations end a sample. A lone tap is fine.',
-  focus_lost: 'The field lost focus mid-sample. Let’s try that one again.',
-  malformed: 'That sample came out garbled. Let’s try again.',
+/** Four-word phrases out of this bank give distinct dwell and flight intervals. */
+const WORDS =
+  'quiet river carries stone amber lantern folds north copper meadow drifts signal velvet harbor counts ember silent orbit holds cedar paper tide opens window'.split(
+    ' ',
+  );
+
+const TEACH_TITLES: Record<number, string> = {
+  1: 'Type it the way you normally would.',
+  2: 'Again. Consistency beats speed.',
+  5: 'Keep the same Phantom Keys, if any.',
+  8: 'Last one. Same rhythm.',
 };
 
-/** Shows "12 keystrokes · 8 characters" — the count A-14 says the user should see. */
-function showScriptCounts(script: string, resolved: string) {
-  const keystrokes = scriptLength(script);
-  phantomCounts.textContent = `${keystrokes} keystrokes · ${resolved.length} characters`;
-  const phantoms = keystrokes - resolved.length;
-  phantomDetail.textContent =
-    phantoms > 0
-      ? `  —  ${phantoms} phantom ${phantoms === 1 ? 'key' : 'keys'} that never reach the passphrase`
-      : '  —  no phantom keys yet';
-  phantomReadout.classList.remove('hidden');
+type Phase = 'calibrate' | 'teach' | 'forged' | 'intruder' | 'you' | 'verdict';
+
+type Attempt = {
+  vector: FeatureVector;
+  tokens: number;
+  totalMs: number;
+  meanDwell: number;
+  meanFlight: number;
+  /** A script that does not match the enrolled one is refused before it is scored. */
+  scriptMatched: boolean;
+};
+
+/* ---- state -------------------------------------------------------------- */
+
+let phase: Phase = 'calibrate';
+let phrase = '';
+let usingOwnPhrase = false;
+let canonicalScript: string | null = null;
+let samples: FeatureVector[] = [];
+let profile: Profile | null = null;
+let level = 1;
+let streak = 0;
+let resets = 0;
+let phantomEverySample = true;
+let consistency: number | null = null;
+
+let intruderAttempts: Attempt[] = [];
+let intruderTriesUsed = 0;
+let yourAttempt: Attempt | null = null;
+let yourFirstTry = true;
+let strictness: Strictness = 'medium';
+
+const unlocked = new Set<string>();
+
+/* ---- element helpers ---------------------------------------------------- */
+
+const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) =>
+  root.querySelector<T>(sel);
+const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => [
+  ...root.querySelectorAll<T>(sel),
+];
+
+const stagePane = $('.ck-stage-pane') as HTMLElement;
+const light = $('[data-light]') as HTMLElement;
+const lightLabel = $('[data-light-label]') as HTMLElement;
+const logList = $('[data-log]') as HTMLElement;
+
+const stageOf = (name: Phase) => $(`[data-stage="${name}"]`) as HTMLElement;
+
+/* ---- the light ----------------------------------------------------------- */
+
+type LightState = 'idle' | 'ready' | 'recording' | 'captured' | 'matched' | 'amber' | 'refused';
+
+const LIGHT_LABEL: Record<LightState, string> = {
+  idle: 'Idle',
+  ready: 'Ready',
+  recording: 'Listening',
+  captured: 'Captured',
+  matched: 'Matched',
+  amber: 'Amber',
+  refused: 'Refused',
+};
+
+function setLight(state: LightState, detail?: string): void {
+  light.dataset.state = state;
+  lightLabel.textContent = detail ?? LIGHT_LABEL[state];
 }
 
-function showFeedback(el: HTMLElement, tone: 'warn' | 'ok', message: string) {
-  el.className =
-    tone === 'ok'
-      ? 'text-xs font-medium px-3 py-2 rounded-lg bg-teal-50 text-teal-800 border border-teal-200'
-      : 'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200';
-  el.textContent = message;
-  el.classList.remove('hidden');
+/* ---- the rail ------------------------------------------------------------ */
+
+function rail(key: string, value: string): void {
+  const cell = $(`[data-m="${key}"]`);
+  if (cell !== null) cell.textContent = value;
 }
+
+type LogTone = 'text' | 'green' | 'amber' | 'fail';
+
+/** Newest first, nine lines. Longer than that and it stops being glanceable. */
+function log(line: string, tone: LogTone = 'text'): void {
+  const item = document.createElement('li');
+  item.textContent = line;
+  item.dataset.tone = tone;
+  logList.prepend(item);
+  while (logList.children.length > 9) logList.lastElementChild?.remove();
+}
+
+/* ---- maths --------------------------------------------------------------- */
+
+const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 /**
- * Turns a capture into something scoreable, or explains why it is not.
+ * The one number this page is willing to show.
  *
- * Three outcomes, in the order the real server checks them (A-14.3): the sample was
- * void, the resolved text was wrong, or the script did not match the enrolled one.
- * Only after all three does a rhythm score mean anything.
+ * It is a property of *your* typing -- how repeatable it is -- and reveals nothing about
+ * how close any particular attempt came. The match score stays hidden here for exactly
+ * the reason it stays hidden in the product: it is the only signal an attacker could
+ * iterate against, and it tells an honest user nothing they can act on.
  */
-function readAttempt(
-  events: ReturnType<NonNullable<typeof activeCapture>['stop']>,
-):
-  | { message: string }
-  | { phantomMismatch: true }
-  | { phantomMismatch: false; features: FeatureVector } {
-  const script = eventsToScript(events);
-  if ('error' in script) {
-    return { message: SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.' };
+function consistencyOf(built: Profile): number {
+  const ranges = getFeatureRanges(built.len);
+  const ratios: number[] = [];
+  for (let i = ranges.dwell[0]; i < ranges.flight[1]; i += 1) {
+    const mu = built.means[i] ?? 0;
+    const sigma = built.stds[i] ?? 0;
+    if (mu > 0) ratios.push(sigma / mu);
   }
-  if (script.resolved !== targetPassphrase) {
-    return { message: 'That doesn’t resolve to the target passphrase. Type the exact phrase.' };
-  }
-  if (canonicalScript !== null && !scriptsEqual(canonicalScript, script.script)) {
-    return { phantomMismatch: true };
-  }
-
-  const features = extractFeatures(events, scriptLength(script.script));
-  if ('error' in features) {
-    return { message: SCRIPT_ERROR_COPY[features.error] ?? 'Please type once more.' };
-  }
-  return { phantomMismatch: false, features };
+  return Math.max(0, Math.min(100, Math.round(100 - 100 * mean(ratios))));
 }
+
+function summarise(vector: FeatureVector): { dwell: number; flight: number; total: number } {
+  const ranges = getFeatureRanges(vector.len);
+  const dwell = vector.values.slice(ranges.dwell[0], ranges.dwell[1]);
+  const flight = vector.values.slice(ranges.flight[0], ranges.flight[1]);
+  return {
+    dwell: Math.round(mean(dwell)),
+    flight: Math.round(mean(flight)),
+    total: Math.round(vector.values[ranges.globals[0]] ?? 0),
+  };
+}
+
+/* ---- live waveform -------------------------------------------------------- */
 
 /**
- * Handles submission of one enrollment sample.
+ * A mirror of the sample, drawn from listeners of its own.
+ *
+ * `startCapture` does not hand back events until it stops, and it should not -- a
+ * half-finished sample is not a sample. So the drawing keeps its own timings purely to
+ * paint with. Nothing measured here is ever scored; the vector always comes from core.
  */
-function handleEnrollSampleSubmit() {
-  if (!activeCapture) return;
+type LiveKey = { downT: number; upT: number | null };
 
-  const events = activeCapture.stop();
-  activeCapture = null;
+let liveKeys: LiveKey[] = [];
 
-  // A-14.1 decides what counted as a keystroke, including the phantoms.
-  const script = eventsToScript(events);
-  if ('error' in script) {
-    debugNote('enroll', 'rejected', `${script.error}: ${script.detail}`, describeEvents(events));
-    showFeedback(
-      enrollFeedback,
-      'warn',
-      `${SCRIPT_ERROR_COPY[script.error] ?? 'Please try again.'} (${script.detail})`,
-    );
-    prepareEnrollSample(true);
-    return;
-  }
+function paintWaveform(container: HTMLElement, keys: LiveKey[], envelope?: Profile | null): void {
+  const bars = $('[data-waveform-bars]', container);
+  if (bars === null) return;
+  bars.replaceChildren();
 
-  showScriptCounts(script.script, script.resolved);
+  const ranges = envelope == null ? null : getFeatureRanges(envelope.len);
 
-  // The resolved text is what a normal form would have received — phantoms and all
-  // the corrections have already been applied.
-  if (script.resolved !== targetPassphrase) {
-    debugNote(
-      'enroll',
-      'rejected',
-      `resolved ${JSON.stringify(script.resolved)} != ${JSON.stringify(targetPassphrase)}`,
-      describeEvents(events),
-    );
-    showFeedback(
-      enrollFeedback,
-      'warn',
-      'That doesn’t resolve to the target passphrase. Corrections are fine — the end result has to match.',
-    );
-    prepareEnrollSample(true);
-    return;
-  }
+  keys.forEach((key, i) => {
+    const dwell = (key.upT ?? key.downT) - key.downT;
+    const previous = keys[i - 1];
+    const flight = previous?.upT == null ? 0 : key.downT - previous.upT;
 
-  // A-14: enrollment tolerates nothing. The first sample fixes the script; the rest
-  // must reproduce it exactly, phantoms included, so the profile is built from one.
-  if (canonicalScript === null) {
-    canonicalScript = script.script;
-  } else if (!scriptsEqual(canonicalScript, script.script)) {
-    debugNote(
-      'enroll',
-      'rejected',
-      `script ${readableScript(script.script)} != enrolled ${readableScript(canonicalScript)}`,
-      describeEvents(events),
-    );
-    showFeedback(
-      enrollFeedback,
-      'warn',
-      'Same passphrase, different keystrokes. Every sample has to include the same Phantom Keys.',
-    );
-    prepareEnrollSample(true);
-    return;
-  }
+    const bar = document.createElement('span');
+    bar.style.height = `${Math.min(100, dwell / 2.4)}%`;
+    bar.style.marginLeft = `${Math.min(40, flight / 8)}px`;
 
-  const result = extractFeatures(events, scriptLength(script.script));
-
-  if ('error' in result) {
-    showFeedback(enrollFeedback, 'warn', SCRIPT_ERROR_COPY[result.error] ?? 'Length mismatch.');
-    prepareEnrollSample(true);
-    return;
-  }
-
-  debugNote(
-    'enroll',
-    'accepted',
-    `#${enrollmentSamples.length + 1}/8  ${readableScript(script.script)}  ${scriptLength(script.script)}k/${script.resolved.length}c`,
-  );
-  enrollmentSamples.push(result);
-  renderEnrollDots();
-
-  // Bloom animation
-  rhythmLight.className = 'rhythm-light-dot pass';
-
-  if (enrollmentSamples.length >= 8) {
-    userProfile = buildProfile(enrollmentSamples);
-    setTimeout(() => setState('built'), 400);
-  } else {
-    showFeedback(
-      enrollFeedback,
-      'ok',
-      `✓ Sample ${enrollmentSamples.length} recorded! Next sample...`,
-    );
-    // Restart immediately, keeping the tick on screen. Waiting 350 ms left a window
-    // where the field was live but nothing was listening, so anything typed in it was
-    // silently dropped and its keyup landed in the next sample.
-    prepareEnrollSample(true);
-  }
-}
-
-/**
- * Prepares the friend challenge input and capture.
- */
-function prepareChallengeFriend(keepFeedback = false) {
-  if (activeCapture) {
-    activeCapture.cancel();
-    activeCapture = null;
-  }
-
-  inputChallengeFriend.value = '';
-  friendKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
-  if (!keepFeedback) {
-    friendFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-    friendFeedback.textContent = '';
-  }
-  rhythmLightFriend.className = 'rhythm-light-dot listening';
-
-  try {
-    activeCapture = startCapture(inputChallengeFriend, rhythmLightFriend, {
-      onPulse: () => {
-        triggerPulse(rhythmLightFriend, friendMiniBars);
-        friendKeyCounter.textContent = `${inputChallengeFriend.value.length} / ${targetPassphrase.length} keys`;
-      },
-    });
-  } catch (err) {
-    console.error('Failed to start friend capture:', err);
-  }
-
-  setTimeout(() => inputChallengeFriend.focus(), 50);
-}
-
-/**
- * Evaluates friend challenge typing against enrolled profile.
- */
-function handleFriendSubmit() {
-  if (!activeCapture || !userProfile) return;
-
-  const events = activeCapture.stop();
-  activeCapture = null;
-
-  const attempt = readAttempt(events);
-  if ('message' in attempt) {
-    showFeedback(friendFeedback, 'warn', attempt.message);
-    prepareChallengeFriend(true);
-    return;
-  }
-
-  // With phantoms on, this is where a stranger stops — they typed the passphrase they
-  // were shown, and it is missing keystrokes they never saw.
-  if (attempt.phantomMismatch) {
-    showFeedback(
-      friendFeedback,
-      'warn',
-      'Right passphrase, wrong keystrokes. Their attempt is missing your Phantom Keys — on the real server this never even reaches the rhythm check.',
-    );
-    // A wrong script never reaches scoring, so it does not consume an attempt.
-    rhythmLightFriend.className = 'rhythm-light-dot fail';
-    prepareChallengeFriend(true);
-    return;
-  }
-
-  const s = score(userProfile, attempt.features);
-  friendAttempts.push(s);
-  const b = bandFor(s);
-  debugNote(
-    'friend',
-    b === 'fail' ? 'rejected' : 'accepted',
-    `attempt ${friendAttempts.length} scored ${s.toFixed(3)} → ${b}`,
-  );
-
-  rhythmLightFriend.className = `rhythm-light-dot ${b}`;
-  recordFriendBest();
-
-  // An attacker would not stop at one go, so neither does the demo.
-  if (friendAttempts.length >= FRIEND_ATTEMPTS) {
-    showFeedback(
-      friendFeedback,
-      'ok',
-      `That was attempt ${FRIEND_ATTEMPTS} of ${FRIEND_ATTEMPTS}. Handing the keyboard back.`,
-    );
-    setTimeout(() => setState('challenge_you'), 900);
-    return;
-  }
-
-  showFeedback(
-    friendFeedback,
-    b === 'pass' ? 'warn' : 'ok',
-    `Attempt ${friendAttempts.length}: ${s.toFixed(2)} — ${b}. ${FRIEND_ATTEMPTS - friendAttempts.length} ${FRIEND_ATTEMPTS - friendAttempts.length === 1 ? 'try' : 'tries'} left, or hand the keyboard back.`,
-  );
-  renderFriendAttempts();
-  prepareChallengeFriend(true);
-}
-
-/**
- * Prepares your challenge input and capture.
- */
-function prepareChallengeYou(keepFeedback = false) {
-  if (activeCapture) {
-    activeCapture.cancel();
-    activeCapture = null;
-  }
-
-  inputChallengeYou.value = '';
-  youKeyCounter.textContent = `0 / ${targetPassphrase.length} keys`;
-  if (!keepFeedback) {
-    youFeedback.className = 'text-xs font-medium px-3 py-2 rounded-lg hidden';
-    youFeedback.textContent = '';
-  }
-  rhythmLightYou.className = 'rhythm-light-dot listening';
-
-  try {
-    activeCapture = startCapture(inputChallengeYou, rhythmLightYou, {
-      onPulse: () => {
-        triggerPulse(rhythmLightYou, youMiniBars);
-        youKeyCounter.textContent = `${inputChallengeYou.value.length} / ${targetPassphrase.length} keys`;
-      },
-    });
-  } catch (err) {
-    console.error('Failed to start you capture:', err);
-  }
-
-  setTimeout(() => inputChallengeYou.focus(), 50);
-}
-
-/**
- * Evaluates your challenge typing against your profile.
- */
-function handleYouSubmit() {
-  if (!activeCapture || !userProfile) return;
-
-  const events = activeCapture.stop();
-  activeCapture = null;
-
-  const attempt = readAttempt(events);
-  if ('message' in attempt) {
-    showFeedback(youFeedback, 'warn', attempt.message);
-    prepareChallengeYou(true);
-    return;
-  }
-  if (attempt.phantomMismatch) {
-    showFeedback(
-      youFeedback,
-      'warn',
-      'That’s the passphrase, but not your script — the Phantom Keys were different. Try it again the way you enrolled it.',
-    );
-    prepareChallengeYou(true);
-    return;
-  }
-
-  const s = score(userProfile, attempt.features);
-  const b = bandFor(s);
-  youScoreResult = { score: s, band: b };
-  debugNote('you', b === 'fail' ? 'rejected' : 'accepted', `scored ${s.toFixed(3)} → ${b}`);
-
-  rhythmLightYou.className = `rhythm-light-dot ${b}`;
-  setTimeout(() => setState('results'), 500);
-}
-
-/**
- * Renders the side-by-side comparison in the results section.
- */
-/** The friend's best attempt is what matters: an attacker keeps whichever worked. */
-function recordFriendBest() {
-  if (friendAttempts.length === 0) {
-    friendScoreResult = null;
-    friendAttempts = [];
-    return;
-  }
-  const best = Math.max(...friendAttempts);
-  friendScoreResult = { score: best, band: bandFor(best) };
-}
-
-function renderFriendAttempts() {
-  friendAttemptCounter.textContent = `Attempt ${Math.min(friendAttempts.length + 1, FRIEND_ATTEMPTS)} of ${FRIEND_ATTEMPTS}`;
-  friendAttemptHistory.textContent = friendAttempts.length
-    ? friendAttempts.map((v, i) => `#${i + 1} ${v.toFixed(2)}`).join('   ')
-    : '';
-}
-
-/** Paints the segmented control and the sentence under it. */
-function renderStrictness() {
-  const { pass, grey } = rhythmBands(strictness);
-  const hint = `Passes at ${pass.toFixed(2)} and above · grey from ${grey.toFixed(2)} · below that it fails.`;
-  for (const el of [strictnessHintYou, strictnessHintResults]) el.textContent = hint;
-  for (const button of Array.from(document.querySelectorAll('.strictness-option'))) {
-    const value = (button as HTMLElement).dataset.strictness;
-    (button as HTMLElement).setAttribute('aria-pressed', String(value === strictness));
-  }
-}
-
-function renderResults() {
-  if (!friendScoreResult || !youScoreResult) return;
-
-  const { pass } = rhythmBands(strictness);
-
-  // Every attempt, so a single lucky try is visible rather than hidden behind a best.
-  friendAttemptList.innerHTML = '';
-  if (friendAttempts.length > 0) {
-    const heading = document.createElement('div');
-    heading.className = 'font-semibold text-slate-700';
-    heading.textContent = `Friend's attempts (best counts, as it would for an attacker):`;
-    friendAttemptList.appendChild(heading);
-    for (const [i, value] of friendAttempts.entries()) {
-      const row = document.createElement('div');
-      const b = bandFor(value);
-      row.className = b === 'pass' ? 'text-rose-700' : 'text-slate-600';
-      row.textContent = `  #${i + 1}  ${value.toFixed(2)}  ${b}`;
-      friendAttemptList.appendChild(row);
+    // Against a built envelope, a bar more than 2σ from the mean is drawn as a miss.
+    // This is a picture of the comparison, not the comparison: the verdict comes from
+    // `score()` over the whole vector.
+    if (envelope != null && ranges != null && i < envelope.len) {
+      const mu = envelope.means[ranges.dwell[0] + i] ?? 0;
+      const sigma = envelope.stds[ranges.dwell[0] + i] ?? 1;
+      if (Math.abs(dwell - mu) / sigma > 2) bar.dataset.outside = 'true';
     }
+    bars.append(bar);
+  });
+}
+
+/* ---- capture -------------------------------------------------------------- */
+
+let handle: ReturnType<typeof startCapture> | null = null;
+let detachLive: (() => void) | null = null;
+
+function armCapture(): void {
+  const stage = stageOf(phase);
+  const input = $<HTMLInputElement>('[data-type-input]', stage);
+  const waveform = $('[data-waveform]', stage);
+  if (input === null) return;
+
+  disarmCapture();
+  liveKeys = [];
+  if (waveform !== null) paintWaveform(waveform, liveKeys);
+
+  try {
+    handle = startCapture(input, light, {
+      onPulse: () => setLight('recording'),
+    });
+  } catch {
+    // The only throw is RhythmLightNotVisible, and it is a refusal rather than a fault.
+    setLight('idle', 'Light hidden');
+    return;
   }
+  setLight('ready');
 
-  const fScore = friendScoreResult.score;
-  const fBand = friendScoreResult.band;
-  friendScoreDisplay.textContent = fScore.toFixed(2);
-
-  // The badge, the sentence and the outcome line all come from the same band, so the
-  // card cannot say PASS and "neutralized" at once — which is exactly what it did.
-  const badge = (el: HTMLElement, text: string, tone: 'good' | 'warn' | 'bad') => {
-    el.textContent = text;
-    const palette = {
-      good: 'bg-teal-100 text-teal-800 border-teal-300',
-      warn: 'bg-amber-100 text-amber-800 border-amber-300',
-      bad: 'bg-rose-200/80 text-rose-800 border-rose-300',
-    }[tone];
-    el.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${palette}`;
+  const down = (event: KeyboardEvent) => {
+    if (event.key.length !== 1 && event.key !== 'Backspace' && event.key !== 'Escape') return;
+    liveKeys.push({ downT: performance.now(), upT: null });
+    updateKeyCount();
+    if (waveform !== null) paintWaveform(waveform, liveKeys, phase === 'intruder' ? profile : null);
   };
+  const up = () => {
+    for (let i = liveKeys.length - 1; i >= 0; i -= 1) {
+      const key = liveKeys[i];
+      if (key !== undefined && key.upT === null) {
+        key.upT = performance.now();
+        break;
+      }
+    }
+    if (waveform !== null) paintWaveform(waveform, liveKeys, phase === 'intruder' ? profile : null);
+  };
+  input.addEventListener('keydown', down);
+  input.addEventListener('keyup', up);
+  detachLive = () => {
+    input.removeEventListener('keydown', down);
+    input.removeEventListener('keyup', up);
+  };
+}
 
-  if (fBand === 'pass') {
-    // Do not dress this up. They got in, and the honest lesson is the lever above.
-    badge(friendBandBadge, 'PASS', 'bad');
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
-    friendExplanation.textContent = `They cleared ${pass.toFixed(2)} on this setting, so at Strictness "${strictness}" this attempt would have opened the vault. Close cadences do happen — try Strict above and watch the same attempt re-judged, or add a Phantom Key they never saw.`;
-    friendOutcome.textContent = 'Outcome: passphrase alone was enough — raise Strictness';
-    friendOutcome.className =
-      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
-  } else if (fBand === 'grey') {
-    badge(friendBandBadge, 'GREY', 'warn');
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
-    friendExplanation.textContent =
-      'Close, but not close enough to pass on its own. A real login would stop here and demand a second factor before releasing anything.';
-    friendOutcome.textContent = 'Outcome: step-up required — no keys released';
-    friendOutcome.className =
-      'mt-5 pt-4 border-t border-amber-200 text-[11px] font-mono font-semibold text-amber-800';
-  } else {
-    badge(friendBandBadge, 'FAIL', 'bad');
-    friendScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
-    friendExplanation.textContent =
-      'Their rhythm diverged from your baseline. The server refuses to release its share of the vault key, so the passphrase on its own bought nothing.';
-    friendOutcome.textContent = 'Outcome: stolen password neutralized';
-    friendOutcome.className =
-      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
-  }
+function disarmCapture(): void {
+  handle?.cancel();
+  handle = null;
+  detachLive?.();
+  detachLive = null;
+}
 
-  const yScore = youScoreResult.score;
-  const yBand = youScoreResult.band;
-  youScoreDisplay.textContent = yScore.toFixed(2);
-
-  if (yBand === 'pass') {
-    badge(youBandBadge, 'PASS', 'good');
-    youScoreDisplay.className = 'text-5xl font-extrabold text-teal-700 font-mono';
-    youExplanation.textContent =
-      'Your rhythm matched the profile you enrolled. The vault key is released with nothing extra to carry and nothing extra to type.';
-    youOutcome.textContent = 'Outcome: vault unlocked seamlessly';
-    youOutcome.className =
-      'mt-5 pt-4 border-t border-teal-200 text-[11px] font-mono font-semibold text-teal-800';
-  } else if (yBand === 'grey') {
-    badge(youBandBadge, 'GREY', 'warn');
-    youScoreDisplay.className = 'text-5xl font-extrabold text-amber-600 font-mono';
-    youExplanation.textContent =
-      'Your own rhythm read as slightly off today — a different chair, a different keyboard, a different hour. You are asked to confirm rather than turned away, and those samples then teach the profile.';
-    youOutcome.textContent = 'Outcome: step-up, then in';
-    youOutcome.className =
-      'mt-5 pt-4 border-t border-amber-200 text-[11px] font-mono font-semibold text-amber-800';
-  } else {
-    badge(youBandBadge, 'FAIL', 'bad');
-    youScoreDisplay.className = 'text-5xl font-extrabold text-rose-600 font-mono';
-    youExplanation.textContent = `That did not match your baseline at Strictness "${strictness}". Nobody is locked out by their own hands: a step-up factor gets you in, and Relaxed above re-judges this same attempt.`;
-    youOutcome.textContent = 'Outcome: step-up required';
-    youOutcome.className =
-      'mt-5 pt-4 border-t border-rose-200 text-[11px] font-mono font-semibold text-rose-800';
+function updateKeyCount(): void {
+  const target = canonicalScript === null ? scriptLength(phrase) : scriptLength(canonicalScript);
+  const keys = $('[data-hud-keys]');
+  if (keys !== null) keys.textContent = `${liveKeys.length} / ${target}`;
+  const progress = $('[data-type-progress]', stageOf(phase));
+  if (progress !== null) {
+    progress.style.width = `${Math.min(100, (liveKeys.length / Math.max(1, target)) * 100)}%`;
   }
 }
 
 /**
- * Stops a button from stealing focus when it is clicked.
+ * Ends the sample and turns it into a feature vector, or says why it could not.
  *
- * A-14.1 voids any sample whose field loses focus — that is how "the key did not move
- * focus" is enforced without a per-platform key list, and it must stay. But clicking a
- * submit button blurs the field before the click handler ever runs, so every
- * click-submitted sample was being discarded as `focus_lost`. Preventing the default
- * on mousedown stops the focus shift entirely, so the rule keeps its teeth and the
- * button still works — including via the keyboard, which never blurs anyway.
+ * Every refusal here is a real one that the product also makes: a sample whose script
+ * differs from the enrolled one is not a worse attempt, it is a different secret.
  */
-function keepFocusOnMouseDown(button: HTMLButtonElement) {
-  button.addEventListener('mousedown', (event) => event.preventDefault());
+function takeSample(): { vector: FeatureVector; events: KeyEvent[]; script: string } | string {
+  if (handle === null) return 'Click into the box and type the phrase first.';
+  const events = handle.stop();
+  handle = null;
+  detachLive?.();
+  detachLive = null;
+
+  const script = eventsToScript(events);
+  if ('error' in script) return 'That attempt could not be measured. Type it again.';
+  if (script.resolved !== phrase) return 'That is not the phrase. Type it exactly as shown.';
+
+  const tokens = scriptLength(script.script);
+  const vector = extractFeatures(events, tokens);
+  if ('error' in vector) return 'That attempt could not be measured. Type it again.';
+
+  return { vector, events, script: script.script };
 }
 
-// Event Listeners Setup
-function initEventListeners() {
-  for (const button of [btnSubmitEnrollSample, btnSubmitFriendChallenge, btnSubmitYouChallenge]) {
-    keepFocusOnMouseDown(button);
+/* ---- phases ---------------------------------------------------------------- */
+
+function show(next: Phase): void {
+  disarmCapture();
+  phase = next;
+  for (const name of ['calibrate', 'teach', 'forged', 'intruder', 'you', 'verdict'] as Phase[]) {
+    stageOf(name).hidden = name !== next;
   }
 
-  if (DEBUG) debugPanel.classList.remove('hidden');
+  const hudStage = $('[data-hud-stage]');
+  if (hudStage !== null) {
+    hudStage.textContent = {
+      calibrate: 'Calibrate',
+      teach: `Teach ${level}/8`,
+      forged: 'Forged',
+      intruder: 'Intruder',
+      you: 'Your turn',
+      verdict: 'Verdict',
+    }[next];
+  }
 
-  // Two setup choices, one selected at a time. The selected one is the only thing
-  // "Begin enrollment" reads, so there is never a question of which phrase is in play.
-  const shuffle = () => {
-    const chosen = SAMPLE_PHRASES[Math.floor(Math.random() * SAMPLE_PHRASES.length)];
-    randomPhraseDisplay.textContent = chosen ?? '';
+  for (const chip of $$('[data-phrase-chip]')) chip.textContent = phrase;
+
+  if (next === 'teach' || next === 'intruder' || next === 'you') {
+    const input = $<HTMLInputElement>('[data-type-input]', stageOf(next));
+    if (input !== null) {
+      input.value = '';
+      input.focus();
+    }
+    armCapture();
+  } else {
+    setLight('idle');
+  }
+  stagePane.scrollIntoView({ block: 'nearest' });
+}
+
+function renderStreak(): void {
+  const strip = $('[data-hud-streak]');
+  if (strip === null) return;
+  strip.replaceChildren();
+  for (let i = 0; i < SAMPLES_REQUIRED; i += 1) {
+    const cell = document.createElement('span');
+    // Accepted-but-reset reads as a dimmer green rather than as empty: the sample is
+    // still in the profile, it just did not extend the run.
+    cell.dataset.state = i < streak ? 'streak' : i < samples.length ? 'kept' : 'empty';
+    strip.append(cell);
+  }
+}
+
+function renderTeach(): void {
+  const kicker = $('[data-teach-kicker]');
+  const title = $('[data-teach-title]');
+  if (kicker !== null)
+    kicker.textContent = `Stage 1 · Teach · Level ${level} of ${SAMPLES_REQUIRED}`;
+  if (title !== null) {
+    title.textContent =
+      TEACH_TITLES[level] ?? (level >= 5 ? TEACH_TITLES[5] : TEACH_TITLES[2]) ?? '';
+  }
+  rail('enrolled', `${samples.length} / ${SAMPLES_REQUIRED}`);
+  renderStreak();
+}
+
+/* ---- calibrate ------------------------------------------------------------- */
+
+function randomPhrase(): string {
+  const picked: string[] = [];
+  while (picked.length < 4) {
+    const word = WORDS[Math.floor(Math.random() * WORDS.length)];
+    if (word !== undefined && !picked.includes(word)) picked.push(word);
+  }
+  return picked.join(' ');
+}
+
+function initCalibrate(): void {
+  const stage = stageOf('calibrate');
+  const randomOut = $('[data-random-phrase]', stage) as HTMLElement;
+  const ownInput = $<HTMLInputElement>('[data-own-phrase]', stage) as HTMLInputElement;
+  const error = $('[data-error]', stage) as HTMLElement;
+
+  randomOut.textContent = randomPhrase();
+
+  const setChoice = (own: boolean) => {
+    usingOwnPhrase = own;
+    for (const button of $$('[data-choice]', stage)) {
+      button.setAttribute(
+        'aria-pressed',
+        String(button.dataset.choice === (own ? 'own' : 'random')),
+      );
+    }
   };
-  const selectChoice = (choice: 'random' | 'own') => {
-    setupChoice = choice;
-    optionRandom.setAttribute('aria-pressed', String(choice === 'random'));
-    optionOwn.setAttribute('aria-pressed', String(choice === 'own'));
-    setupError.classList.add('hidden');
-    if (choice === 'own') inputPassphraseSetup.focus();
-  };
 
-  shuffle();
-  selectChoice('random');
-
-  optionRandom.addEventListener('click', () => selectChoice('random'));
-  optionOwn.addEventListener('click', () => selectChoice('own'));
-  // Typing in the field is itself a choice; nobody should have to click the card first.
-  inputPassphraseSetup.addEventListener('focus', () => selectChoice('own'));
-  inputPassphraseSetup.addEventListener('input', () => selectChoice('own'));
-
-  btnSamplePhrase.addEventListener('click', (event) => {
+  for (const button of $$('[data-choice]', stage)) {
+    button.addEventListener('click', (event) => {
+      // The shuffle sits inside the card; clicking it should not also re-select it.
+      if ((event.target as HTMLElement).hasAttribute('data-shuffle')) return;
+      setChoice(button.dataset.choice === 'own');
+      if (button.dataset.choice === 'own') ownInput.focus();
+    });
+  }
+  $('[data-shuffle]', stage)?.addEventListener('click', (event) => {
     event.stopPropagation();
-    shuffle();
-    selectChoice('random');
+    randomOut.textContent = randomPhrase();
+    setChoice(false);
   });
+  ownInput.addEventListener('focus', () => setChoice(true));
 
-  // Begin enrollment button
-  btnBeginEnroll.addEventListener('click', () => {
-    const phrase =
-      setupChoice === 'random'
-        ? (randomPhraseDisplay.textContent ?? '').trim()
-        : inputPassphraseSetup.value.trim();
-    if (phrase.length < 10) {
-      setupError.textContent =
-        setupChoice === 'own'
-          ? 'Your passphrase needs at least 10 characters for a readable rhythm.'
-          : 'Pick a phrase first.';
-      setupError.classList.remove('hidden');
+  $('[data-begin]', stage)?.addEventListener('click', () => {
+    const chosen = usingOwnPhrase ? ownInput.value.trim() : (randomOut.textContent ?? '');
+    if (chosen.length < MIN_PHRASE) {
+      error.hidden = false;
+      error.textContent = `That is ${chosen.length} characters. Use at least ${MIN_PHRASE}.`;
       return;
     }
-    setupError.classList.add('hidden');
-    targetPassphrase = phrase;
-    inputPassphraseSetup.value = phrase;
-    enrollmentSamples = [];
-    canonicalScript = null;
-    userProfile = null;
-    friendScoreResult = null;
-    friendAttempts = [];
-    youScoreResult = null;
-    setState('enrolling');
-  });
-
-  // Enroll input Enter key
-  inputEnroll.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleEnrollSampleSubmit();
-    }
-  });
-  btnSubmitEnrollSample.addEventListener('click', handleEnrollSampleSubmit);
-
-  // Profile built -> Challenge button
-  btnGotoChallenge.addEventListener('click', () => {
-    setState('challenge_friend');
-  });
-
-  // Friend input Enter key
-  inputChallengeFriend.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleFriendSubmit();
-    }
-  });
-  btnSubmitFriendChallenge.addEventListener('click', handleFriendSubmit);
-
-  // You input Enter key
-  inputChallengeYou.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleYouSubmit();
-    }
-  });
-  btnSubmitYouChallenge.addEventListener('click', handleYouSubmit);
-
-  // Retest action buttons
-  // A fresh friend starts a fresh set of attempts; the previous person's best is
-  // discarded rather than quietly carried forward as if it were theirs.
-  btnTestAnotherFriend.addEventListener('click', () => {
-    friendAttempts = [];
-    friendScoreResult = null;
-    friendAttempts = [];
-    setState('challenge_friend');
-  });
-
-  btnFriendGiveUp.addEventListener('click', () => {
-    recordFriendBest();
-    setState('challenge_you');
-  });
-
-  for (const button of Array.from(document.querySelectorAll('.strictness-option'))) {
-    button.addEventListener('click', () => {
-      const value = (button as HTMLElement).dataset.strictness;
-      if (value !== 'strict' && value !== 'medium' && value !== 'relaxed') return;
-      strictness = value;
-      // Re-judge what was already recorded; nobody has to type again.
-      recordFriendBest();
-      if (youScoreResult !== null) youScoreResult.band = bandFor(youScoreResult.score);
-      renderStrictness();
-      if (currentState === 'results') renderResults();
-    });
-  }
-  btnRetestYou.addEventListener('click', () => setState('challenge_you'));
-  btnNewPassphrase.addEventListener('click', () => setState('idle'));
-
-  // Global Reset button
-  btnReset.addEventListener('click', () => {
-    enrollmentSamples = [];
-    canonicalScript = null;
-    userProfile = null;
-    friendScoreResult = null;
-    friendAttempts = [];
-    youScoreResult = null;
-    setState('idle');
-  });
-
-  // Email form
-  emailForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    emailConfirmation.classList.remove('hidden');
-    emailForm.reset();
+    error.hidden = true;
+    phrase = chosen;
+    log(`phrase set · ${phrase.length} chars`, 'green');
+    rail('tokens', String(scriptLength(phrase)));
+    show('teach');
+    renderTeach();
   });
 }
 
-// Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-  initEventListeners();
-  setState('idle');
-});
+/* ---- teach ------------------------------------------------------------------ */
 
-// The appearance control lives beside the demo's own wiring.
-initTheme();
+function submitTeach(): void {
+  const stage = stageOf('teach');
+  const feedback = $('[data-feedback]', stage) as HTMLElement;
+  const taken = takeSample();
+
+  if (typeof taken === 'string') {
+    feedback.textContent = taken;
+    setLight('refused');
+    log('sample rejected', 'amber');
+    armCapture();
+    return;
+  }
+
+  // Sample one fixes the canonical script. Everything after it is measured against that,
+  // because a different key sequence is a different secret rather than a worse attempt.
+  if (canonicalScript === null) {
+    canonicalScript = taken.script;
+    rail('tokens', String(scriptLength(canonicalScript)));
+    const ranges = getFeatureRanges(scriptLength(canonicalScript));
+    rail('vector', String(ranges.totalLength));
+    rail('dwell', String(scriptLength(canonicalScript)));
+    rail('flight', String(Math.max(0, scriptLength(canonicalScript) - 1)));
+    rail('digraph', String(Math.max(0, scriptLength(canonicalScript) - 1)));
+  } else if (!scriptsEqual(canonicalScript, taken.script)) {
+    streak = 0;
+    resets += 1;
+    feedback.textContent =
+      'Different keystrokes that time — a Backspace or an Esc that was not there before. Kept, but the run resets.';
+    setLight('amber');
+    log('sample rejected · script mismatch', 'amber');
+    renderStreak();
+    armCapture();
+    return;
+  }
+
+  const phantom = scriptLength(taken.script) - phrase.length;
+  if (phantom <= 0) phantomEverySample = false;
+  const phantomOut = $('[data-phantom]', stage);
+  if (phantomOut !== null) phantomOut.textContent = String(Math.max(0, phantom));
+
+  samples.push(taken.vector);
+  streak += 1;
+  level = samples.length + 1;
+
+  const stats = summarise(taken.vector);
+  rail('total', `${stats.total} ms`);
+  rail('cur-dwell', `${stats.dwell} ms`);
+  rail('cur-flight', `${stats.flight} ms`);
+  rail('cur-phantom', String(Math.max(0, phantom)));
+  log(
+    `sample ${samples.length}/${SAMPLES_REQUIRED} accepted · n=${scriptLength(taken.script)}${phantom > 0 ? ` · ${phantom} phantom` : ''}`,
+    'green',
+  );
+  setLight('captured');
+  feedback.textContent = '';
+
+  if (samples.length >= SAMPLES_REQUIRED) {
+    forgeProfile();
+    return;
+  }
+
+  renderTeach();
+  const input = $<HTMLInputElement>('[data-type-input]', stage);
+  if (input !== null) input.value = '';
+  armCapture();
+}
+
+/* ---- forge ------------------------------------------------------------------- */
+
+function forgeProfile(): void {
+  profile = buildProfile(samples);
+  consistency = consistencyOf(profile);
+
+  const hudConsistency = $('[data-hud-consistency]');
+  if (hudConsistency !== null) hudConsistency.textContent = `${consistency}%`;
+
+  const ranges = getFeatureRanges(profile.len);
+  const sigma = mean(profile.stds.slice(ranges.dwell[0], ranges.flight[1]));
+  rail('sigma', `${Math.round(sigma)} ms`);
+  rail('enrolled', `${samples.length} / ${SAMPLES_REQUIRED}`);
+
+  const dwellMeans = profile.means.slice(ranges.dwell[0], ranges.dwell[1]);
+  const flightMeans = profile.means.slice(ranges.flight[0], ranges.flight[1]);
+  setText('[data-stat-dims]', String(ranges.totalLength));
+  setText('[data-stat-dwell]', `${Math.round(mean(dwellMeans))} ms`);
+  setText('[data-stat-flight]', `${Math.round(mean(flightMeans))} ms`);
+  setText('[data-stat-consistency]', `${consistency}%`);
+
+  paintEnvelope(profile);
+
+  /*
+    The samples are dropped here, and the page says so on screen.
+
+    It is one line of code and it is the whole data-minimisation argument: after this
+    point the only thing in memory is means and floored variances, which cannot be
+    replayed as typing.
+  */
+  samples = [];
+  log('profile forged · raw events destroyed', 'green');
+
+  if (consistency >= 90) unlock('metronome');
+  if (resets === 0) unlock('sweep');
+  if (phantomEverySample) unlock('phantom');
+
+  renderStreak();
+  show('forged');
+}
+
+function setText(sel: string, value: string): void {
+  const el = $(sel);
+  if (el !== null) el.textContent = value;
+}
+
+function paintEnvelope(built: Profile): void {
+  const chart = $('[data-envelope]');
+  if (chart === null) return;
+  chart.replaceChildren();
+
+  const ranges = getFeatureRanges(built.len);
+  const means = built.means.slice(ranges.dwell[0], ranges.dwell[1]);
+  const stds = built.stds.slice(ranges.dwell[0], ranges.dwell[1]);
+  const peak = Math.max(...means.map((m, i) => m + (stds[i] ?? 0)), 1);
+
+  means.forEach((mu, i) => {
+    const sigma = stds[i] ?? 0;
+    const column = document.createElement('span');
+    column.className = 'ck-envelope-col';
+    // The band is ±1σ drawn around the mean: the shape of "how repeatable is this key".
+    column.style.setProperty('--mu', `${(mu / peak) * 100}%`);
+    column.style.setProperty('--band', `${Math.max(2, ((2 * sigma) / peak) * 100)}%`);
+    chart.append(column);
+  });
+}
+
+/* ---- attempts ------------------------------------------------------------------ */
+
+function recordAttempt(vector: FeatureVector, script: string): Attempt {
+  const stats = summarise(vector);
+  return {
+    vector,
+    tokens: scriptLength(script),
+    totalMs: stats.total,
+    meanDwell: stats.dwell,
+    meanFlight: stats.flight,
+    scriptMatched: canonicalScript !== null && scriptsEqual(canonicalScript, script),
+  };
+}
+
+function submitIntruder(): void {
+  const stage = stageOf('intruder');
+  const feedback = $('[data-feedback]', stage) as HTMLElement;
+  const taken = takeSample();
+  if (typeof taken === 'string') {
+    feedback.textContent = taken;
+    armCapture();
+    return;
+  }
+
+  const attempt = recordAttempt(taken.vector, taken.script);
+  intruderAttempts.push(attempt);
+  intruderTriesUsed += 1;
+
+  const verdict = judge(attempt);
+  log(
+    `intruder attempt → ${verdict.toUpperCase()}`,
+    verdict === 'pass' ? 'green' : verdict === 'grey' ? 'amber' : 'fail',
+  );
+  setLight(verdict === 'pass' ? 'matched' : verdict === 'grey' ? 'amber' : 'refused');
+
+  const counter = $('[data-attempt]', stage);
+  if (counter !== null)
+    counter.textContent = String(Math.min(INTRUDER_ATTEMPTS, intruderTriesUsed + 1));
+
+  if (verdict === 'pass' || intruderTriesUsed >= INTRUDER_ATTEMPTS) {
+    show('you');
+    return;
+  }
+
+  feedback.textContent =
+    verdict === 'grey'
+      ? 'Amber. Looks a little different. Once more.'
+      : 'Refused. That did not match the rhythm.';
+  const input = $<HTMLInputElement>('[data-type-input]', stage);
+  if (input !== null) input.value = '';
+  armCapture();
+}
+
+function submitYou(): void {
+  const stage = stageOf('you');
+  const feedback = $('[data-feedback]', stage) as HTMLElement;
+  const taken = takeSample();
+  if (typeof taken === 'string') {
+    feedback.textContent = taken;
+    armCapture();
+    return;
+  }
+
+  yourAttempt = recordAttempt(taken.vector, taken.script);
+  const verdict = judge(yourAttempt);
+  log(
+    `you → ${verdict.toUpperCase()}`,
+    verdict === 'pass' ? 'green' : verdict === 'grey' ? 'amber' : 'fail',
+  );
+  setLight(verdict === 'pass' ? 'matched' : verdict === 'grey' ? 'amber' : 'refused');
+
+  if (verdict === 'pass' && yourFirstTry) unlock('homecoming');
+  yourFirstTry = false;
+
+  if (intruderAttempts.length > 0 && intruderAttempts.every((a) => judge(a) === 'fail')) {
+    unlock('gatekeeper');
+  }
+
+  renderVerdict();
+  show('verdict');
+}
+
+function judge(attempt: Attempt): 'pass' | 'grey' | 'fail' {
+  // A script mismatch is refused before scoring: the Phantom Keys were not reproduced,
+  // so this is a different secret and no amount of rhythm rescues it.
+  if (!attempt.scriptMatched || profile === null) return 'fail';
+  if (attempt.vector.len !== profile.len) return 'fail';
+  const bands = rhythmBands(strictness);
+  return band(score(profile, attempt.vector), bands.pass, bands.grey);
+}
+
+/* ---- verdict -------------------------------------------------------------------- */
+
+const SENTENCE = {
+  pass: {
+    headline: 'Rhythm matched.',
+    body: 'Vault key would be unwrapped. No extra step, no device.',
+  },
+  grey: {
+    headline: 'Looks a little different.',
+    body: 'One retype is asked for, then a passkey, TOTP or Backup Code. The vault is not at risk either way.',
+  },
+  fail: {
+    headline: "That didn't match the rhythm.",
+    body: 'Same characters, different dwell and flight. The server share is not released.',
+  },
+  mismatch: {
+    headline: "That didn't match the rhythm.",
+    body: 'Different number of keystrokes: the Phantom Keys were missing. The server share is not released.',
+  },
+} as const;
+
+function renderVerdictCard(which: 'intruder' | 'you', attempt: Attempt | null): void {
+  const card = $(`[data-verdict="${which}"]`);
+  if (card === null) return;
+  const bandOut = $('[data-band]', card) as HTMLElement;
+  const headline = $('[data-headline]', card) as HTMLElement;
+  const sentence = $('[data-sentence]', card) as HTMLElement;
+  const foot = $('[data-foot]', card) as HTMLElement;
+
+  if (attempt === null) {
+    bandOut.textContent = '—';
+    bandOut.dataset.band = 'none';
+    headline.textContent = 'No attempt recorded';
+    sentence.textContent = '';
+    foot.textContent = '';
+    return;
+  }
+
+  const verdict = judge(attempt);
+  const copy = verdict === 'fail' && !attempt.scriptMatched ? SENTENCE.mismatch : SENTENCE[verdict];
+  bandOut.textContent = verdict === 'pass' ? 'PASSED' : verdict === 'grey' ? 'AMBER' : 'REFUSED';
+  bandOut.dataset.band = verdict;
+  headline.textContent = copy.headline;
+  sentence.textContent = copy.body;
+  foot.textContent = `n=${attempt.tokens} · total ${attempt.totalMs} ms · mean dwell ${attempt.meanDwell} ms · mean flight ${attempt.meanFlight} ms`;
+}
+
+function renderVerdict(): void {
+  renderVerdictCard('intruder', intruderAttempts.at(-1) ?? null);
+  renderVerdictCard('you', yourAttempt);
+  if (yourAttempt !== null && strictness === 'strict' && judge(yourAttempt) === 'pass') {
+    unlock('strict');
+  }
+}
+
+/* ---- achievements ----------------------------------------------------------------- */
+
+function unlock(name: string): void {
+  if (unlocked.has(name)) return;
+  unlocked.add(name);
+  const chip = $(`[data-ach="${name}"]`);
+  if (chip !== null) chip.dataset.unlocked = 'true';
+  log(`achievement · ${name}`, 'green');
+}
+
+/* ---- wiring ------------------------------------------------------------------------ */
+
+function reset(): void {
+  disarmCapture();
+  phrase = '';
+  canonicalScript = null;
+  samples = [];
+  profile = null;
+  level = 1;
+  streak = 0;
+  resets = 0;
+  phantomEverySample = true;
+  consistency = null;
+  intruderAttempts = [];
+  intruderTriesUsed = 0;
+  yourAttempt = null;
+  yourFirstTry = true;
+  liveKeys = [];
+  logList.replaceChildren();
+  for (const key of [
+    'tokens',
+    'vector',
+    'dwell',
+    'flight',
+    'digraph',
+    'sigma',
+    'total',
+    'cur-dwell',
+    'cur-flight',
+    'cur-phantom',
+  ]) {
+    rail(key, '—');
+  }
+  rail('enrolled', `0 / ${SAMPLES_REQUIRED}`);
+  setText('[data-hud-consistency]', '—');
+  setText('[data-hud-keys]', '0 / 0');
+  renderStreak();
+  const randomOut = $('[data-random-phrase]');
+  if (randomOut !== null) randomOut.textContent = randomPhrase();
+  show('calibrate');
+  log('trial reset');
+}
+
+initCalibrate();
+renderStreak();
+rail('enrolled', `0 / ${SAMPLES_REQUIRED}`);
+
+$('[data-reset]')?.addEventListener('click', reset);
+
+$('[data-to-intruder]')?.addEventListener('click', () => {
+  intruderTriesUsed = 0;
+  show('intruder');
+});
+$('[data-give-up]')?.addEventListener('click', () => show('you'));
+$('[data-again-intruder]')?.addEventListener('click', () => {
+  intruderTriesUsed = 0;
+  const counter = $('[data-attempt]', stageOf('intruder'));
+  if (counter !== null) counter.textContent = '1';
+  show('intruder');
+});
+$('[data-again-you]')?.addEventListener('click', () => show('you'));
+
+for (const button of $$('[data-submit-sample]')) {
+  // `mousedown` would blur the field and void the sample the click is submitting.
+  button.addEventListener('mousedown', (event) => event.preventDefault());
+  button.addEventListener('click', () => {
+    if (phase === 'teach') submitTeach();
+    else if (phase === 'intruder') submitIntruder();
+    else if (phase === 'you') submitYou();
+  });
+}
+
+for (const input of $$<HTMLInputElement>('[data-type-input]')) {
+  input.addEventListener('focus', () => {
+    if (handle === null) armCapture();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if (phase === 'teach') submitTeach();
+    else if (phase === 'intruder') submitIntruder();
+    else if (phase === 'you') submitYou();
+  });
+}
+
+for (const button of $$('[data-strictness]')) {
+  button.addEventListener('click', () => {
+    strictness = button.dataset.strictness as Strictness;
+    for (const other of $$('[data-strictness]')) {
+      other.setAttribute('aria-pressed', String(other === button));
+    }
+    rail('strictness', strictness);
+    log(`strictness → ${strictness}`);
+    renderVerdict();
+  });
+}

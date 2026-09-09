@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — private beta, roadmap and how it's safe</title>
+    <meta
+      name="description"
+      content="Twenty-five seats in the CypherKey private beta, the milestone plan with its exit criteria, and an exact account of what the design guarantees and what it does not."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html">Demo</a>
+        <a href="/pricing.html">Pricing</a>
+        <a href="/beta.html" aria-current="page">Beta</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <a class="ck-btn ck-btn--primary ck-btn--sm" href="/demo.html">Try the trial</a>
+      </div>
+    </nav>
+
+    <main id="main">
+      <header class="ck-media ck-beta-hero">
+        <img src="/media/beta-hero.jpg" alt="" />
+        <div class="ck-scrim ck-scrim--across"></div>
+        <div class="ck-wrap ck-wrap--tall ck-beta-hero-inner">
+          <div class="ck-panel-dark ck-beta-panel">
+            <span class="ck-kicker ck-kicker--onmedia">Private beta · 25 seats · M2 · Dec 2026</span>
+            <h1 class="ck-beta-title">Be one of the first to unlock a vault with your hands.</h1>
+            <p class="ck-body">
+              Chrome extension, hosted sync, Recovery Kit and the Rhythm Light. Fourteen days of
+              daily use; we ask for a median unlock under 4 s and an amber rate under 10%.
+            </p>
+            <form class="ck-beta-form" data-beta-form>
+              <label class="ck-visually-hidden" for="beta-email">Your email address</label>
+              <input
+                id="beta-email"
+                name="email"
+                type="email"
+                required
+                autocomplete="email"
+                placeholder="you@example.com"
+                class="ck-input"
+              />
+              <button class="ck-btn ck-btn--primary" type="submit">Request a seat</button>
+            </form>
+            <p class="ck-beta-note" data-beta-note hidden></p>
+            <p class="ck-mono ck-beta-foot">
+              If you type with dictation or an on-screen keyboard, say so — the rhythm factor is
+              not for you yet, and a seat should not be spent finding that out.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <section class="ck-section" aria-label="Milestones">
+        <div class="ck-wrap ck-milestones">
+          <div class="ck-milestones-intro">
+            <span class="ck-kicker ck-kicker--green">Roadmap</span>
+            <h2 class="ck-h2">Every milestone has an exit criterion you can verify in ten minutes.</h2>
+            <p class="ck-body">
+              Dates assume roughly fifteen hours a week from one person. Nothing ships that fails
+              its own exit criterion.
+            </p>
+          </div>
+
+          <ol class="ck-milestone-list">
+            <li class="ck-milestone">
+              <span class="ck-milestone-id ck-is-done">M0</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">Live browser demo at cypherkey.io</h3>
+                <p class="ck-body">
+                  Clean repo, zero-knowledge docs, one-pager. Exit: a stranger fails and you pass,
+                  4 of 5 times, on a hotspot.
+                </p>
+                <span class="ck-mono">Sep 14 2026</span>
+              </div>
+              <span class="ck-status ck-is-done">Done</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id ck-is-done">M1</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">Zero-knowledge core and server</h3>
+                <p class="ck-body">
+                  Argon2id, HKDF, AES-GCM; Hono + Drizzle; Phantom Keys; docker compose self-host.
+                  Exit: full signup → enroll → login → vault integration test in CI on SQLite and
+                  Postgres.
+                </p>
+                <span class="ck-mono">Oct 20 2026</span>
+              </div>
+              <span class="ck-status ck-is-done">Done</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id ck-is-now">M2</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">Chrome MV3 extension and private beta</h3>
+                <p class="ck-body">
+                  Rhythm Light, Recovery Kit, domain autofill, hosted API. Exit: 25 users for 14
+                  days, zero data loss, median unlock under 4 s.
+                </p>
+                <span class="ck-mono">Dec 05 2026</span>
+              </div>
+              <span class="ck-status ck-is-now">In progress</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id">M3</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">Public launch</h3>
+                <p class="ck-body">
+                  HN / Product Hunt. Adaptive thresholds, passkey and TOTP step-up, Pause mode,
+                  external crypto review published.
+                </p>
+                <span class="ck-mono">Jan 20 2027</span>
+              </div>
+              <span class="ck-status">Scheduled</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id">M4</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">Revenue and reach</h3>
+                <p class="ck-body">
+                  Stripe billing, breach monitoring, native CLI with terminal raw-mode capture,
+                  emergency access. Exit: first 100 paying customers.
+                </p>
+                <span class="ck-mono">Mar 31 2027</span>
+              </div>
+              <span class="ck-status">Scheduled</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id">M5</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">SDK and Progressive Enrollment</h3>
+                <p class="ck-body">
+                  @cypherkey/sdk, service dashboard, Teams tier, rhythm-gated passkeys. Exit: three
+                  external services integrated.
+                </p>
+                <span class="ck-mono">Jun 30 2027</span>
+              </div>
+              <span class="ck-status">Scheduled</span>
+            </li>
+            <li class="ck-milestone">
+              <span class="ck-milestone-id">M6</span>
+              <div class="ck-milestone-body">
+                <h3 class="ck-h3">IdP and mobile</h3>
+                <p class="ck-body">
+                  OIDC provider mode, read-only mobile vault, SOC 2 readiness.
+                </p>
+                <span class="ck-mono">Sep 30 2027</span>
+              </div>
+              <span class="ck-status">Scheduled</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="Open source">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Open source</span>
+          <h2 class="ck-h2 ck-section-title">
+            The repository is public. Licences were fixed before it opened.
+          </h2>
+          <div class="ck-grid ck-grid--4">
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Client</span>
+              <h3 class="ck-h3">MIT</h3>
+              <p class="ck-body">
+                Everything that touches your keys. Read it, fork it, ship it inside something else.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Server</span>
+              <h3 class="ck-h3">AGPL-3.0</h3>
+              <p class="ck-body">
+                Run it for yourself freely. Run it for other people and your changes are theirs too.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Self-host</span>
+              <h3 class="ck-h3"><code class="ck-code">docker compose up</code></h3>
+              <p class="ck-body">
+                One command, SQLite by default, Postgres when you want it. No account with us at
+                all.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Disclosure</span>
+              <h3 class="ck-h3"><a href="mailto:security@cypherkey.io">security@cypherkey.io</a></h3>
+              <p class="ck-body">
+                Report anything you find. Coordinated disclosure, credited, and no legal threats.
+              </p>
+            </article>
+          </div>
+          <p class="ck-body ck-source-line">
+            <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">
+              github.com/IrietekCorp/cypherkey →
+            </a>
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" id="safe" aria-label="How it's safe">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">How it's safe</span>
+          <h2 class="ck-h2 ck-section-title">
+            Honest about the limits. Exact about the guarantees.
+          </h2>
+
+          <div class="ck-grid ck-grid--safe">
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">01</span>
+              <h3 class="ck-h3">Zero-knowledge server</h3>
+              <p class="ck-body">
+                Stores only Argon2id(authHash) and wrapped ciphertext. Never sees the master key,
+                wrap key or plaintext vault.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">02</span>
+              <h3 class="ck-h3">Frictionless second factor</h3>
+              <p class="ck-body">
+                A password leaked from a breach cannot unlock the vault without reproducing the
+                timing cadence of your hands.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">03</span>
+              <h3 class="ck-h3">Data minimization</h3>
+              <p class="ck-body">
+                Raw keystroke events and feature vectors are never stored or logged. Only means and
+                floored variances remain.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">04</span>
+              <h3 class="ck-h3">The Rhythm Light guarantee</h3>
+              <p class="ck-body">
+                No capture without a visible indicator. The code throws if the light is missing or
+                obscured.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">05</span>
+              <h3 class="ck-h3">No lockout by your body</h3>
+              <p class="ck-body">
+                Pass, amber retry, step-up via passkey / TOTP / Backup Code, and Pause mode.
+                Fatigue or injury never locks you out.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">06</span>
+              <h3 class="ck-h3">Replay-resistant signing</h3>
+              <p class="ck-body">
+                Each device holds an Ed25519 keypair and signs nonces, timestamps and payload
+                hashes on every request.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">07</span>
+              <h3 class="ck-h3">A way back in</h3>
+              <p class="ck-body">
+                A Recovery Kit at signup, shown once. Ten one-time Backup Codes for the smaller
+                case: a new keyboard, a broken wrist.
+              </p>
+            </article>
+            <article class="ck-glass ck-guarantee">
+              <span class="ck-guarantee-n">08</span>
+              <h3 class="ck-h3">No score, ever</h3>
+              <p class="ck-body">
+                You are told the band and a sentence, never a number. A live score is the one thing
+                an attacker could tune against.
+              </p>
+            </article>
+          </div>
+
+          <p class="ck-body ck-safe-close">
+            If someone watches you type in person and is very good, maybe. That is why a new device
+            always asks for a second confirmation. The attack this defeats is the real one: a
+            password leaked from a breach, used from somewhere else.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:security@cypherkey.io">SECURITY DISCLOSURE</a>
+        <span>MIT CLIENT · AGPL SERVER</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/beta.ts"></script>
+  </body>
+</html>

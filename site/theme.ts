@@ -1,67 +1,72 @@
 /**
- * The site's appearance control.
+ * The palette control in the nav.
  *
- * Same three states as the extension — light, dark, system — so the two products behave
- * the same way, and the same reasoning: `system` is a real answer, and a two-state toggle
- * makes a visitor with no opinion invent one.
+ * Two states, not three. The extension keeps a System option because it is a tool you
+ * live in and it should follow the desktop it lives on; a marketing page is read once,
+ * and a visitor who wants the other palette wants it now rather than wanting to explain
+ * a preference. The label shows the palette you would *get*, which is the only labelling
+ * of a toggle that never has to be read twice.
  *
- * The choice is a `localStorage` string. Nothing here is private; a marketing page that
- * remembers you prefer dark is not tracking you.
+ * `index.html` stamps the same value inline before first paint. This module re-stamps it
+ * a moment later and owns every change after that.
  */
-export type ThemeChoice = 'light' | 'dark' | 'system';
 
-const KEY = 'cypherkey.theme';
+export const THEME_KEY = 'ck-theme';
 
-function parse(value: unknown): ThemeChoice {
-  // No choice made falls to light, not to system: defaulting to the OS would show a dark
-  // page to anyone on a dark desktop, which is the look this moved away from.
-  return value === 'light' || value === 'dark' || value === 'system' ? value : 'light';
+export type Theme = 'dark' | 'light';
+
+/** Dark is the default. Anything unrecognised, including nothing, resolves to it. */
+export function parseTheme(value: unknown): Theme {
+  return value === 'light' ? 'light' : 'dark';
 }
 
-function stored(): ThemeChoice {
+export function storedTheme(store: Pick<Storage, 'getItem'> = localStorage): Theme {
   try {
-    return parse(localStorage.getItem(KEY));
+    return parseTheme(store.getItem(THEME_KEY));
   } catch {
-    // Private browsing, or storage blocked. Take the default and say nothing.
-    return 'light';
+    // Private browsing, or storage denied. Not a reason to render nothing.
+    return 'dark';
   }
 }
 
-function resolve(choice: ThemeChoice): 'light' | 'dark' {
-  if (choice !== 'system') return choice;
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches === true ? 'dark' : 'light';
+export function stampTheme(doc: Document, theme: Theme): void {
+  doc.documentElement.dataset.theme = theme;
 }
 
-function stamp(choice: ThemeChoice): void {
-  document.documentElement.dataset.theme = resolve(choice);
-  for (const button of document.querySelectorAll('[data-theme-choice]')) {
-    button.setAttribute(
-      'aria-pressed',
-      String(button.getAttribute('data-theme-choice') === choice),
-    );
-  }
-}
+/**
+ * Wires every toggle on the page.
+ *
+ * Every page carries one in its nav, and they are queried rather than passed in so a new
+ * page cannot forget to register its own.
+ */
+export function initTheme(doc: Document = document): void {
+  let theme = storedTheme();
+  const buttons = [...doc.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]')];
 
-/** Wires the control and keeps `system` in step with the OS. */
-export function initTheme(): void {
-  let choice = stored();
-  stamp(choice);
+  const apply = (next: Theme) => {
+    theme = next;
+    stampTheme(doc, next);
+    for (const button of buttons) {
+      // The label is the destination, not the current state.
+      button.textContent = next === 'dark' ? 'LIGHT' : 'DARK';
+      button.setAttribute(
+        'aria-label',
+        `Switch to the ${next === 'dark' ? 'light' : 'dark'} palette`,
+      );
+    }
+  };
 
-  for (const button of document.querySelectorAll('[data-theme-choice]')) {
+  apply(theme);
+
+  for (const button of buttons) {
     button.addEventListener('click', () => {
-      choice = parse(button.getAttribute('data-theme-choice'));
+      const next: Theme = theme === 'dark' ? 'light' : 'dark';
       try {
-        localStorage.setItem(KEY, choice);
+        localStorage.setItem(THEME_KEY, next);
       } catch {
-        // The choice still applies for this visit; it just will not be remembered.
+        // The choice still applies to this page; it just will not survive a reload.
       }
-      stamp(choice);
+      apply(next);
     });
   }
-
-  // Only `system` tracks the OS: an explicit choice that moved when the OS did would not
-  // be a choice.
-  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
-    if (choice === 'system') stamp(choice);
-  });
 }

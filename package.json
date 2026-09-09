@@ -23,7 +23,8 @@
     "dev:extension": "cd extension && wxt dev",
     "browser-e2e": "bun scripts/browser-e2e.ts",
     "build:extension:dev": "cd extension && wxt build",
-    "design-preview": "bun scripts/design-preview.ts"
+    "design-preview": "bun scripts/design-preview.ts",
+    "trial-e2e": "bun scripts/trial-e2e.ts"
   },
   "dependencies": {
     "@noble/curves": "^1.8.1",

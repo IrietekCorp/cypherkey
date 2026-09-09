@@ -169,6 +169,17 @@ jobs:
           CHROME_PATH: ${{ steps.chrome.outputs.path }}
         run: bun run browser-e2e
 
+      # The marketing demo runs on the real core/biometrics maths, so a change to the
+      # tokenizer or the bands breaks the product's central claim on a public page. This
+      # types eight consistent samples, then types badly, and asserts the stranger is
+      # refused and the owner is not.
+      - name: the Rhythm Trial plays through
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.path }}
+        run: |
+          bun run build:site
+          bun run trial-e2e
+
   docker:
     name: docker image builds and answers /healthz
     runs-on: ubuntu-latest

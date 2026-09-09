@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — pricing</title>
+    <meta
+      name="description"
+      content="Priced by how many sites you protect. Every tier is zero-knowledge, open source and self-hostable, and the rhythm factor is never paywalled."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html">Demo</a>
+        <a href="/pricing.html" aria-current="page">Pricing</a>
+        <a href="/beta.html">Beta</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <a class="ck-btn ck-btn--primary ck-btn--sm" href="/demo.html">Try the trial</a>
+      </div>
+    </nav>
+
+    <main id="main">
+      <header class="ck-media ck-page-hero">
+        <img src="/media/pricing-hero.jpg" alt="" />
+        <div class="ck-scrim ck-scrim--soft"></div>
+        <div class="ck-wrap ck-page-hero-inner">
+          <span class="ck-kicker ck-kicker--onmedia">Pricing · Billing ships at M4</span>
+          <h1 class="ck-page-hero-title">Priced by how many sites you protect. Nothing else.</h1>
+          <p class="ck-lede ck-lede--onmedia">
+            Every tier is zero-knowledge, open source and self-hostable. The rhythm factor is never
+            paywalled.
+          </p>
+        </div>
+      </header>
+
+      <section class="ck-section" aria-label="Plans">
+        <div class="ck-wrap ck-tiers">
+          <article class="ck-card ck-tier">
+            <h2 class="ck-h3">Free</h2>
+            <p class="ck-price"><span class="ck-price-figure">$0</span><span class="ck-price-period">forever</span></p>
+            <p class="ck-tier-limit">Under 10 sites</p>
+            <ul class="ck-tier-features">
+              <li>One vault, one device</li>
+              <li>Rhythm 2FA, Rhythm Light, Phantom Keys</li>
+              <li>Recovery Kit and Backup Codes</li>
+              <li>Browser extension</li>
+            </ul>
+            <a class="ck-btn ck-btn--ghost ck-tier-cta" href="/beta.html">Join the private beta</a>
+          </article>
+
+          <article class="ck-card ck-tier">
+            <h2 class="ck-h3">Starter</h2>
+            <p class="ck-price"><span class="ck-price-figure">$2.99</span><span class="ck-price-period">/ month</span></p>
+            <p class="ck-tier-limit">Under 100 sites</p>
+            <ul class="ck-tier-features">
+              <li>Everything in Free</li>
+              <li>Sync across all your devices</li>
+              <li>Encrypted offline cache</li>
+              <li>"Not your rhythm" email alerts</li>
+            </ul>
+            <a class="ck-btn ck-btn--ghost ck-tier-cta" href="/beta.html">Notify me at launch</a>
+          </article>
+
+          <article class="ck-card ck-tier ck-tier--featured">
+            <div class="ck-tier-head">
+              <h2 class="ck-h3">Pro</h2>
+              <span class="ck-tag">Most room</span>
+            </div>
+            <p class="ck-price"><span class="ck-price-figure">$4.99</span><span class="ck-price-period">/ month</span></p>
+            <p class="ck-tier-limit">Unlimited sites</p>
+            <ul class="ck-tier-features">
+              <li>Everything in Starter</li>
+              <li>Breach check (HIBP k-anonymity)</li>
+              <li>Emergency access for a trusted contact</li>
+              <li>Per-device rhythm profiles, Precision Mode</li>
+              <li>CLI unlock</li>
+            </ul>
+            <a class="ck-btn ck-btn--primary ck-tier-cta" href="/beta.html">Notify me at launch</a>
+          </article>
+
+          <article class="ck-card ck-tier">
+            <h2 class="ck-h3">Enterprise</h2>
+            <p class="ck-price"><span class="ck-price-figure">Talk</span><span class="ck-price-period">/ to sales</span></p>
+            <p class="ck-tier-limit">Groups, business, SDK</p>
+            <ul class="ck-tier-features">
+              <li>Shared collections and admin console</li>
+              <li>Audit log export, SSO roadmap</li>
+              <li>Self-host support and SLAs</li>
+              <li>@cypherkey/sdk with Progressive Enrollment</li>
+            </ul>
+            <a class="ck-btn ck-btn--ghost ck-tier-cta" href="mailto:sales@cypherkey.io">sales@cypherkey.io</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="What every tier includes">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Every tier</span>
+          <div class="ck-grid ck-grid--4">
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Zero-knowledge vault</h3>
+              <p class="ck-body">
+                The server stores ciphertext and an Argon2id hash. It cannot read an entry, and
+                neither can we.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Rhythm second factor</h3>
+              <p class="ck-body">
+                Never a paid upgrade. A password manager whose second factor is behind a paywall is
+                a password manager with one factor.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">A way back in</h3>
+              <p class="ck-body">
+                A printable Recovery Kit and one-time Backup Codes, on every tier, replaceable at
+                any time.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Open source</h3>
+              <p class="ck-body">
+                MIT client, AGPL server. Self-host the whole thing with
+                <code class="ck-code">docker compose up</code> and pay nothing.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="Enterprise">
+        <div class="ck-wrap ck-enterprise">
+          <div class="ck-enterprise-copy">
+            <span class="ck-kicker ck-kicker--green">Groups · Business · Enterprise</span>
+            <h2 class="ck-h2">
+              Shared collections, admin console, audit export, and the SDK for your own login form.
+            </h2>
+            <p class="ck-body">
+              Progressive Enrollment lets an application build a rhythm profile from the logins its
+              users are already performing, with no enrolment step of its own. It ships with M5.
+            </p>
+          </div>
+          <div class="ck-enterprise-actions">
+            <a class="ck-btn ck-btn--primary ck-mono-btn" href="mailto:sales@cypherkey.io">
+              sales@cypherkey.io <span class="ck-arrow" aria-hidden="true">→</span>
+            </a>
+            <p class="ck-mono">Tell us seat count and whether you self-host.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:security@cypherkey.io">SECURITY DISCLOSURE</a>
+        <span>MIT CLIENT · AGPL SERVER</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/page.ts"></script>
+  </body>
+</html>
