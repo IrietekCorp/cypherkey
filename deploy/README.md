@@ -1,7 +1,6 @@
 # deploy/ — the hosted stack (M2-16)
 
-Everything CypherKey runs on in production, as files rather than console state. The
-console work that had to happen once, by hand, is recorded in `gcp.md` at the repo root.
+Everything CypherKey runs on in production, as files rather than console state.
 
 | | |
 |---|---|
@@ -13,10 +12,40 @@ console work that had to happen once, by hand, is recorded in `gcp.md` at the re
 | Secrets | Secret Manager: `JWT_SECRET`, `PGPASSWORD`, `POSTGRES_ROOT_PASSWORD` |
 | DNS | Cloud DNS zone `cypherkey-io`, LB IP `<LB_IP>` |
 
+## Where the real values live
+
+This repository is public, so every `<ANGLE_BRACKETED>` name above is a placeholder. The
+values are **repository variables** — Settings → Secrets and variables → Actions →
+Variables — not secrets, so a failed deploy can still be diagnosed from the run log.
+
+| Variable | Shape |
+|---|---|
+| `GCP_PROJECT_ID` | `your-project` |
+| `GCP_SQL_CONNECTION` | `your-project:us-central1:your-instance` |
+| `GCP_WIF_PROVIDER` | `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>` |
+| `GCP_DEPLOY_SA` | `deployer@your-project.iam.gserviceaccount.com` |
+| `GCP_RUNTIME_SA` | `runtime@your-project.iam.gserviceaccount.com` |
+
+None of these is a secret on its own — a project id is not one, and a workload identity
+provider is inert without a matching attribute condition. Together they name the project
+to enumerate, the accounts to phish and the database to look for, and none of that is
+what anyone comes to this repository to read. `service.yaml` carries the same three as
+`__TOKEN__` placeholders, substituted at deploy time.
+
+The console work that had to happen once, by hand — project creation, IAM, the DNS
+cutover, the load balancer — was recorded step by step in `gcp.md`. That file is
+**deliberately not in this repository**: it is an account-specific operations log, and it
+is the one document here that is only about whose infrastructure this is.
+
+A fork inherits none of the variables. That is intended: the preflight step in
+`deploy.yml` fails immediately and says so, rather than a fork accidentally deploying
+anywhere or failing six steps deep inside gcloud.
+
 ## Files
 
 - **`service.yaml`** — the Cloud Run service. Source of truth; a console edit is reverted
-  by the next deploy. Only the image tag is substituted at deploy time.
+  by the next deploy. The image reference, the Cloud SQL connection name and the runtime
+  service account are substituted at deploy time.
 - **`../.github/workflows/deploy.yml`** — build → migrate → e2e → deploy → smoke test, on
   every push to `main`.
 

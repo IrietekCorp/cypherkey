@@ -19,7 +19,8 @@
 **As deployed (M2-16, 2026-09-07).** Project `<GCP_PROJECT_ID>` (number `<GCP_PROJECT_NUMBER>`),
 region `us-central1`. The service definition is `deploy/service.yaml` and the pipeline is
 `.github/workflows/deploy.yml`; both are the source of truth, and a console edit is
-reverted by the next deploy. One-time console setup is recorded in `gcp.md`. CI
+reverted by the next deploy. One-time console setup is recorded in an operations log
+kept outside this repository. CI
 authenticates through Workload Identity Federation restricted to this repository — there
 is no long-lived service-account key anywhere. DNS is Cloud DNS (zone `cypherkey-io`),
 not the registrar.

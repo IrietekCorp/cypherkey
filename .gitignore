@@ -18,3 +18,6 @@ extension/.wxt
 
 # Design preview output, regenerated on demand.
 design-preview.png
+
+# Account-specific operations log. Kept locally; see deploy/README.md.
+gcp.md

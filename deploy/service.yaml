@@ -2,7 +2,15 @@
 #
 # Applied by .github/workflows/deploy.yml with `gcloud run services replace`. This file
 # is the source of truth: a change made in the console is reverted by the next deploy.
-# The image tag is the one placeholder, substituted with the commit SHA at deploy time.
+#
+# `__IMAGE_REF__`, `__SQL_CONNECTION__` and `__RUNTIME_SA__` are substituted at deploy time from the
+# repository variables listed in deploy/README.md. They are placeholders rather than
+# literals because this repository is public and those three strings are what locate a
+# particular Google Cloud project: they say nothing about how the service is configured,
+# which is the part worth reading, and everything about whose it is.
+#
+# Nothing here is a secret. PGPASSWORD and JWT_SECRET arrive from Secret Manager by
+# reference and never appear in this file or in any other.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -24,24 +32,24 @@ spec:
   template:
     metadata:
       annotations:
-        # gcp.md: Argon2id at m=64 MiB on a cold start looks broken, and a login is the
+        # Argon2id at m=64 MiB on a cold start looks broken, and a login is the
         # first thing anyone does. Keep one instance warm.
         autoscaling.knative.dev/minScale: '1'
         autoscaling.knative.dev/maxScale: '10'
         # Mounts the Cloud SQL unix socket at /cloudsql/<connection name>. Postgres is
         # reached over the network and is never part of the image (docs/07).
-        run.googleapis.com/cloudsql-instances: <GCP_SQL_CONNECTION>
+        run.googleapis.com/cloudsql-instances: __SQL_CONNECTION__
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/startup-cpu-boost: 'true'
     spec:
-      serviceAccountName: <GCP_RUNTIME_SA>
+      serviceAccountName: __RUNTIME_SA__
       # Each in-flight Argon2id hash holds 64 MiB. Cloud Run's default of 80 concurrent
       # requests per instance is how the memory limit gets hit; 20 against 1 GiB leaves
       # headroom. Start here and watch.
       containerConcurrency: 20
       timeoutSeconds: 60
       containers:
-        - image: us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/cypherkey/server:IMAGE_TAG
+        - image: __IMAGE_REF__
           ports:
             - name: http1
               containerPort: 3000
@@ -59,7 +67,7 @@ spec:
             - name: DATABASE_URL
               value: postgres:///cypherkey
             - name: PGHOST
-              value: /cloudsql/<GCP_SQL_CONNECTION>
+              value: /cloudsql/__SQL_CONNECTION__
             - name: PGUSER
               value: cypherkey_app
             - name: PGPASSWORD
@@ -73,7 +81,7 @@ spec:
                   name: JWT_SECRET
                   key: latest
             # MAIL — OFF UNTIL THE SENDING DOMAIN IS VERIFIED. Restore by removing this
-            # comment and its closing marker, and see gcp.md 5.3 for the three things
+            # comment and its closing marker, and see README.md for the three things
             # that have to be true first: a Resend account, the DKIM and SPF records
             # published in the `cypherkey-io` zone, and the RESEND_API_KEY secret created
             # with secretAccessor granted to cypherkey-run on that secret alone.

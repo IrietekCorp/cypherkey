@@ -1,7 +1,8 @@
 # Where this is, and what to pick up next
 
 **Written 2026-09-08.** A snapshot for resuming, not a spec — the specs are `docs/`, the
-console record is `gcp.md`, and per-ticket truth is `docs/05-work-tickets.md`.
+console record is the local `gcp.md` operations log — untracked, because it is only
+about whose infrastructure this is — and per-ticket truth is `docs/05-work-tickets.md`.
 
 ## The one-line version
 
@@ -70,7 +71,7 @@ screens the restyle had not reached.
    `refs/heads/main`, which is deliberately loose while the repo is private.
 2. **Turn mail on, or leave it off.** M2-15's "not your rhythm" email is wired to the
    config now — it was not, and setting the secret alone would have done nothing (below).
-   Off is a supported state and costs nothing. On is four steps, in `gcp.md` 5.3, and the
+   Off is a supported state and costs nothing. On is six steps, in `deploy/README.md`, and the
    long pole is **verifying a sending domain**: `cypherkey.io` publishes no TXT records,
    so Resend will not send from it until DKIM and SPF are in the `cypherkey-io` zone.
    `deploy/service.yaml` carries the block, commented.

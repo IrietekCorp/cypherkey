@@ -7,7 +7,8 @@
  * a `sha256-` for exactly this body.
  *
  * The header is not in this repository. It is `customResponseHeaders` on the
- * `cypherkey-site-backend` backend bucket (see gcp.md §9.3), which means an edit to the
+ * `cypherkey-site-backend` backend bucket, configured outside this repository, which
+ * means an edit to the
  * script here is silent: the page still builds, still deploys, and the browser refuses
  * to run the script in production. The failure looks like nothing at all except a
  * console error and a flash of the wrong palette.

@@ -1013,7 +1013,7 @@ X-3 calls this a feature, not a notification: *"Someone typed your passphrase bu
 **Corrected 2026-09-08: none of it was reachable, and the plan to switch it on was wrong.**
 `createMailer`, `resendTransport` and the throttle were written and tested behind an
 injected `Transport`, and `createApp` took an optional `mailer` — but **nothing ever built
-one**, and `RESEND_API_KEY` was read by no line of code. `gcp.md` 5.3 described setting the
+one**, and `RESEND_API_KEY` was read by no line of code. The operations log described setting the
 secret as the whole job. It was not: creating it would have changed nothing, silently, and
 the first evidence would have been a beta user who was never told someone had typed their
 passphrase.
@@ -1042,8 +1042,8 @@ and built something out of it, which is exactly what it did not do.
 
 **Still a decision, and now genuinely one line of config.** `deploy/service.yaml` carries
 the `RESEND_API_KEY` and `MAIL_FROM` block commented out, because `cypherkey.io` publishes
-no TXT records and Resend will not send from an unverified domain. gcp.md 5.3 lists the
-four steps.
+no TXT records and Resend will not send from an unverified domain. `deploy/README.md`
+lists the steps.
 
 ---
 
@@ -1057,7 +1057,7 @@ Cloud Run plus Cloud SQL plus Secret Manager, with the status page. The image is
 
 **Acceptance:** a deployed instance passes the e2e against `DATABASE_URL`, and the size budgets still hold.
 
-**Blocked on console work, tracked in `gcp.md`** at the repo root — a step-by-step list with a status column the founder updates as they go. Five values unblock the rest of this ticket: project ID, project number, region, Cloud SQL connection name, and the workload identity provider resource name. Once those exist I can write `deploy/`, the Cloud Run service definition and the deploy workflow without further console access.
+**Blocked on console work, tracked in an operations log kept outside this repository** — a step-by-step list with a status column the founder updates as they go. Five values unblock the rest of this ticket: project ID, project number, region, Cloud SQL connection name, and the workload identity provider resource name. Once those exist I can write `deploy/`, the Cloud Run service definition and the deploy workflow without further console access.
 
 **Runtime settings the build already constrains**, recorded there so the service is not misconfigured on the first try: the image is distroless with no shell, so Cloud Run must probe `/healthz` rather than relying on a Docker `HEALTHCHECK`; minimum instances 1, because Argon2id at m=64 MiB on a cold start looks broken and a login is the first thing anyone does; at least 1 GiB of memory and concurrency around 20, because each in-flight hash holds 64 MiB and the default 80-per-instance concurrency is how the limit gets hit.
 
@@ -1066,7 +1066,7 @@ external HTTPS load balancer with Cloud Armor; `cypherkey.io` is a CDN-enabled b
 bucket over `gs://<GCP_SITE_BUCKET>`. The acceptance held: the e2e passes against Cloud
 SQL (on the sibling database `cypherkey_e2e`, same driver and socket, so no test accounts
 land in production) and the size budgets are green. The console steps and every trap found
-along the way are in `gcp.md`; the deploy-time notes are in `deploy/README.md`.
+along the way are in the operations log; the deploy-time notes are in `deploy/README.md`.
 
 Five failures worth remembering, because each one reported success:
 

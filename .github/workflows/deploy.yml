@@ -15,14 +15,30 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# Where this deploys to is repository configuration, not source.
+#
+# This repository is public. None of these values is a secret -- a Google Cloud project
+# id is not one, and the workload identity provider is useless without a matching
+# attribute condition -- but together they are a targeting package: they name the project
+# to enumerate, the service accounts to impersonate or phish, and the database instance
+# to look for. The workflow is worth reading; whose account it points at is not.
+#
+# They are **variables**, not secrets, so they stay readable in the run log where a
+# failed deploy can be diagnosed. Set them once under Settings -> Secrets and variables
+# -> Actions -> Variables. `deploy/README.md` lists them with an example value each.
+#
+# A fork gets none of them, which is the right outcome: a fork should not be able to
+# deploy anywhere, and the preflight below says so plainly instead of failing six steps
+# later inside gcloud.
 env:
-  PROJECT_ID: <GCP_PROJECT_ID>
   REGION: us-central1
   SERVICE: cypherkey-api
-  IMAGE: us-central1-docker.pkg.dev/<GCP_PROJECT_ID>/cypherkey/server
-  SQL_CONNECTION: <GCP_SQL_CONNECTION>
-  WIF_PROVIDER: <GCP_WIF_PROVIDER>
-  DEPLOY_SA: <GCP_DEPLOY_SA>
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  IMAGE: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/cypherkey/server
+  SQL_CONNECTION: ${{ vars.GCP_SQL_CONNECTION }}
+  WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+  DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+  RUNTIME_SA: ${{ vars.GCP_RUNTIME_SA }}
 
 jobs:
   deploy:
@@ -39,6 +55,22 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Fail here, not six steps in. A missing variable otherwise surfaces as gcloud
+      # refusing an empty --project, which reads like a permissions problem.
+      - name: check the deployment target is configured
+        run: |
+          missing=""
+          for v in PROJECT_ID SQL_CONNECTION WIF_PROVIDER DEPLOY_SA RUNTIME_SA; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "This workflow has no deployment target. Missing repository variables:"
+            for v in $missing; do echo "  GCP_$v"; done
+            echo
+            echo "See deploy/README.md. A fork will always land here, which is intended."
+            exit 1
+          fi
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -129,7 +161,10 @@ jobs:
 
       - name: deploy the service
         run: |
-          sed "s|:IMAGE_TAG|:${GITHUB_SHA}|" deploy/service.yaml > /tmp/service.yaml
+          sed -e "s|__IMAGE_REF__|${IMAGE}:${GITHUB_SHA}|" \
+              -e "s|__SQL_CONNECTION__|${SQL_CONNECTION}|" \
+              -e "s|__RUNTIME_SA__|${RUNTIME_SA}|" \
+              deploy/service.yaml > /tmp/service.yaml
           gcloud run services replace /tmp/service.yaml \
             --region="$REGION" --project="$PROJECT_ID"
 
