@@ -23,6 +23,38 @@ session scratchpad and is extracted when needed.
 
 ## What was done most recently
 
+**The redesign landed** — "eco, human, precise", replacing Nocturne. Dark is the default
+again (reversing the light-default call), type is Archivo and JetBrains Mono, green is the
+living signal and blue is measurement.
+
+- **The site is four pages**: landing with the hero video loop, the Rhythm Trial, pricing,
+  beta. Tailwind is gone; five pages cost 32 KB gzipped where two cost 30 KB.
+- **The Trial runs on the real `core/biometrics`** rather than a demo re-implementation,
+  and `bun run trial-e2e` plays it in a browser to prove the claim: eight consistent
+  samples, then a deliberately erratic stranger, and the stranger is refused while the
+  owner passes — at Strict too.
+- **The extension restyled from `tokens.css` alone**, because every component consumes the
+  tokens by name. The Rhythm Light is 28px now.
+- **Fonts are self-hosted on the site** — which also fixes a live bug: the site asked
+  Google for Inter, never got it (the `@import` was dropped at build and the CSP would
+  have refused it), and every visitor has been reading the system face.
+
+### Not done, and deliberately
+
+- **The extension's Unlock and Vault markup** still carries its previous copy and
+  structure. The palette, type, defaults and the Rhythm Light are the redesign's; the
+  four Unlock faces and the Vault's avatar and counts are not yet the handoff's exact
+  screens.
+- **`landing-origin`** is the one photograph the handoff did not include. That strip
+  carries a timing-trace motif in the meantime.
+- **The extension does not bundle Archivo or JetBrains Mono in full.** It cannot: both
+  measured 182 KB against a 150 KB eager budget, Archivo alone 151.5 KB. The wordmark is
+  real Archivo subset to nine characters; the UI keeps the platform face. Raising A-15 is
+  a decision, and the numbers are in `extension/src/design/typography.test.ts`.
+- **The site is built but not published.** The deployed CSP names the old inline theme
+  stamp by hash and would refuse the new one — see below.
+
+
 **M2-14 is finished — the options page reaches a session, and two live bugs came out from
 under it.**
 
@@ -95,7 +127,7 @@ screens the restyle had not reached.
 ## How to verify everything at once
 
 ```bash
-bun test                     # 1190 pass, 6 skip
+bun test                     # 1199 pass, 6 skip
 bun run typecheck
 bun run lint
 bun run build:extension
@@ -106,7 +138,16 @@ bun run design-preview       # writes design-preview.png — both palettes, thir
 VITE_CYPHERKEY_API=http://127.0.0.1:8791 bun run build:extension
 bun run browser-e2e          # 33 steps in real Chrome
 bun run build:extension      # put the production build back
+
+# the Rhythm Trial, against the built site
+bun run build:site
+bun run trial-e2e            # 12 steps; the intruder must be refused
 ```
+
+**Chrome, for both browser tests.** Branded Google Chrome cannot run them: it has ignored
+`--load-extension` in an automated session since 137, and 152 removed the switch that
+opted back out. Install one that can — `bunx @puppeteer/browsers install chrome@stable` —
+and point `CHROME_PATH` at it. CI does this per run.
 
 **Why that last dance matters.** The unit tests substitute exactly the things that break —
 an injected `fetch`, an in-process app, a controlled clock, SQLite for a pooled driver, a
@@ -122,11 +163,32 @@ nobody has opened.**
 
 ## Publishing the site
 
+**Update the CSP first.** Every page now carries the pre-paint theme stamp, and its body
+changed, so the deployed header's `sha256-` no longer matches. Publishing before the
+header is updated leaves every page loading on the wrong palette and swapping.
+
+Add the new hash *beside* the old one, publish, then drop the old one — a header carrying
+only the new hash breaks the currently-live pages until the upload finishes.
+
+```bash
+# the value site/csp.test.ts pins
+gcloud compute backend-buckets update cypherkey-site-backend --project=<GCP_PROJECT_ID> \
+  --custom-response-header="Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-ychm5l4PEdBVuXXy83Van+P7FYJk9ejW6Dlypqs9s5A='; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" \
+  # ...and every other header: --custom-response-header REPLACES the whole list
+```
+
+Fonts and media need no new directive: they are same-origin, so `default-src 'self'`
+already admits them. That is a reason to keep them same-origin.
+
 ```bash
 bun run build:site
-gcloud storage cp site/dist/assets/* gs://<GCP_SITE_BUCKET>/assets/ \
+gcloud storage cp -r site/dist/assets/* gs://<GCP_SITE_BUCKET>/assets/ \
   --project=<GCP_PROJECT_ID> --cache-control="public, max-age=31536000, immutable"
-gcloud storage cp site/dist/index.html site/dist/one-pager.html gs://<GCP_SITE_BUCKET>/ \
+# fonts/ and media/ are content-addressed by name rather than by hash, so they take a
+# shorter TTL than the hashed assets and a longer one than the HTML
+gcloud storage cp -r site/dist/fonts site/dist/media gs://<GCP_SITE_BUCKET>/ \
+  --project=<GCP_PROJECT_ID> --cache-control="public, max-age=86400"
+gcloud storage cp site/dist/*.html gs://<GCP_SITE_BUCKET>/ \
   --project=<GCP_PROJECT_ID> --cache-control="public, max-age=300, must-revalidate"
 gcloud storage rm gs://<GCP_SITE_BUCKET>/assets/<the previous hashed assets>
 gcloud compute url-maps invalidate-cdn-cache cypherkey-lb --path="/*" --project=<GCP_PROJECT_ID>
