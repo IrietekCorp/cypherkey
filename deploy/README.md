@@ -136,6 +136,63 @@ within the A-15 budget, and the new revision answers `/healthz`.
 rollout also proves the Cloud SQL socket works — a broken connection string fails the
 deploy instead of a user's first login.
 
+## Turning the X-3 failure email on
+
+The server sends nothing until both `RESEND_API_KEY` and `MAIL_FROM` are set, and refuses
+to start if only one of them is — half-configured mail is the state where an operator
+believes the notice is going out. Confirm which state a revision is in from its first log
+line: `cypherkey: mail is on, sending as …`, or `mail is off`.
+
+**Send from a subdomain, not the apex.** `send.cypherkey.io` keeps transactional mail's
+reputation separate from anything the apex ever does, and it means the apex SPF record
+stays free for something else later. Resend's own guidance says the same.
+
+Order matters: the secret has to exist before the revision that references it, or Cloud Run
+fails to start the container and the deploy rolls back.
+
+1. **In Resend** — create the account, add `send.cypherkey.io` as a domain, and copy the
+   DNS records it shows. They are per-account (the DKIM public key is unique), so they
+   cannot be written down here in advance. They are also not secret.
+2. **Publish them** in the `cypherkey-io` zone. Typically an MX for the bounce path, an SPF
+   `TXT` on the subdomain, and a DKIM `TXT` on `resend._domainkey.send.cypherkey.io`:
+
+   ```bash
+   gcloud dns record-sets create resend._domainkey.send.cypherkey.io. \
+     --zone=cypherkey-io --type=TXT --ttl=300 --project=<GCP_PROJECT_ID> \
+     --rrdatas='"<the DKIM value Resend shows>"'
+   ```
+
+   Then press Verify in Resend. Propagation is minutes, not hours, at TTL 300.
+
+3. **Create the secret without the key touching a file, a shell history or a transcript** —
+   the same way `JWT_SECRET` was created:
+
+   ```bash
+   printf '%s' '<paste the Resend API key>' \
+     | gcloud secrets create RESEND_API_KEY --data-file=- --project=<GCP_PROJECT_ID>
+   ```
+
+4. **Grant the runtime account access to that secret alone** (never project-wide):
+
+   ```bash
+   gcloud secrets add-iam-policy-binding RESEND_API_KEY \
+     --member=serviceAccount:<GCP_RUNTIME_SA> \
+     --role=roles/secretmanager.secretAccessor --project=<GCP_PROJECT_ID>
+   ```
+
+5. **Uncomment** the `RESEND_API_KEY` and `MAIL_FROM` block in `service.yaml`, set
+   `MAIL_FROM` to an address on the verified subdomain, and deploy.
+
+6. **Check the log line**, which is the whole point of it existing:
+
+   ```bash
+   gcloud run services logs read cypherkey-api --region=us-central1 \
+     --project=<GCP_PROJECT_ID> --limit=50 | grep 'cypherkey: mail'
+   ```
+
+To turn it off again, comment the block out and deploy. The secret can stay; nothing reads
+it.
+
 ## What is deliberately not automated
 
 - **The nameserver cutover.** Registrar-level, one-time, and it takes the domain down if
