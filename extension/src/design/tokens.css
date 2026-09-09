@@ -1,26 +1,34 @@
 /*
- * The wordmark face. Bundled: the MV3 policy admits no remote font, and a `@font-face`
- * pointing at Google would silently fail inside the extension while working in every
- * browser tab used to test it.
+ * Both faces, bundled in full.
  *
- * Subset to the nine characters of "CypherKey" -- C K e h p r y -- which is why it is
- * 2.4 KB rather than 35. It cannot render anything else, and it is not meant to.
+ * MV3 admits no remote font: a `@font-face` pointing at Google fails silently inside the
+ * extension while working in every browser tab used to test it. Both are variable, so one
+ * file each covers 400 through 800 with no per-weight request.
  *
- * **Why the UI is not also Archivo, when the site is.** A full latin Archivo is 29-35 KB
- * against a 150 KB eager popup already at 120 KB, and `scripts/size-check.ts` counts a
- * stylesheet's fonts on purpose -- a bundled face is read before the popup paints. Both
- * faces bundled measured 182 KB, 121% of the budget; Archivo alone measured 151.5 KB.
- * The UI therefore keeps the platform's own interface face, as it did with Inter, and
- * the wordmark carries the brand. Raising A-15 to bundle the real face is a decision
- * worth taking deliberately rather than by accident.
+ * These cost 62 KB of the eager popup budget, which `scripts/size-check.ts` counts on
+ * purpose -- a stylesheet's fonts are read before the popup paints. A-15's ceiling was
+ * raised from 150 KB to 230 KB to admit them, deliberately and once, rather than by
+ * subsetting the UI face: the vault renders whatever text a person saved, so the face
+ * that renders it is the one thing here that must never be subset.
+ *
+ * What the raise buys is that the extension and the site set type identically. What it
+ * costs is real but bounded: a bundled face is a local file read rather than a download,
+ * and `font-display: swap` means neither ever blocks the first paint of an unlock.
  */
 @font-face {
   font-family: "Archivo";
   font-style: normal;
-  font-weight: 800;
+  font-weight: 100 900;
   font-display: swap;
-  src: url("/fonts/archivo-wordmark.woff2") format("woff2");
-  unicode-range: U+43, U+4b, U+65, U+68, U+70, U+72, U+79;
+  src: url("/fonts/archivo-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("/fonts/jetbrains-mono-latin.woff2") format("woff2");
 }
 
 /*
@@ -103,13 +111,17 @@
   --ck-shadow-2: 0 14px 44px rgb(0 0 0 / 0.28);
 
   /*
-    The platform's interface face for everything a person reads, and the platform's mono
-    for everything the machine measured. That split is typography doing the same job the
-    colour does: a mono value is a reading, a set sentence is the product talking.
+    Archivo for everything a person reads, JetBrains Mono for everything the machine
+    measured. That split is typography doing the same job the colour does: a mono value
+    is a reading, a set sentence is the product talking.
+
+    The fallbacks are not decoration. `font-display: swap` means the first paint of a
+    cold popup is the fallback face, so it has to be a face that does not reflow the
+    layout when Archivo arrives a frame later.
   */
-  --ck-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --ck-font-wordmark: "Archivo", var(--ck-font);
-  --ck-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --ck-font: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --ck-font-wordmark: var(--ck-font);
+  --ck-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   color-scheme: dark;
 }

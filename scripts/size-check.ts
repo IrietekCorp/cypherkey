@@ -58,8 +58,8 @@ export const BUDGETS: Budget[] = [
   },
   {
     name: 'extension popup (eager, gzipped)',
-    budgetBytes: 150 * KB,
-    note: 'what every popup open pays: the entry chunk plus its STATIC import closure. This is the unlock-latency number, and it is the one that matters — a dynamic import costs nothing until its screen is reached',
+    budgetBytes: 230 * KB,
+    note: 'what every popup open pays: the entry chunk plus its STATIC import closure, the stylesheets and the faces they bundle. This is the unlock-latency number, and it is the one that matters — a dynamic import costs nothing until its screen is reached. Raised from 150 KB on 2026-09-09 to admit Archivo and JetBrains Mono; 62 KB of the figure below is those two files',
   },
   {
     name: 'extension package (total)',

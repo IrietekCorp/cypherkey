@@ -809,34 +809,6 @@ h3 {
   min-height: 70vh;
   align-items: center;
 }
-.ck-origin-ground {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(120% 90% at 82% 20%, rgba(63, 220, 180, 0.12), transparent 60%),
-    radial-gradient(90% 80% at 10% 90%, rgba(99, 197, 242, 0.1), transparent 60%),
-    linear-gradient(90deg, #101922 0%, #16232f 60%, #1b2b3a 100%);
-}
-/*
- * The photograph for this strip is the one asset the handoff left open.
- *
- * Rather than a dead right-hand third waiting for art, the space carries a timing trace:
- * vertical hairlines fading in from the right, at the same spacing as the hero's
- * scanlines. It is the product's own motif, it is honest about being decoration, and
- * dropping a photograph in later means deleting this rule.
- */
-.ck-origin-ground::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0 10px,
-    rgba(99, 197, 242, 0.11) 10px 12px
-  );
-  -webkit-mask-image: linear-gradient(90deg, transparent 38%, #000 88%);
-  mask-image: linear-gradient(90deg, transparent 38%, #000 88%);
-}
-
 .ck-origin-inner {
   position: relative;
   width: 100%;

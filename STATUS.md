@@ -38,6 +38,10 @@ living signal and blue is measurement.
 - **Fonts are self-hosted on the site** — which also fixes a live bug: the site asked
   Google for Inter, never got it (the `@import` was dropped at build and the CSP would
   have refused it), and every visitor has been reading the system face.
+- **A-15's eager popup budget went 150 KB → 230 KB**, once and deliberately, so the
+  extension carries the real Archivo and JetBrains Mono rather than a nine-character
+  wordmark subset. 62 KB of the 182.2 KB figure is those two files. Subsetting the UI face
+  was not an option: the vault renders whatever text a person saved.
 
 ### Not done, and deliberately
 
@@ -45,12 +49,6 @@ living signal and blue is measurement.
   structure. The palette, type, defaults and the Rhythm Light are the redesign's; the
   four Unlock faces and the Vault's avatar and counts are not yet the handoff's exact
   screens.
-- **`landing-origin`** is the one photograph the handoff did not include. That strip
-  carries a timing-trace motif in the meantime.
-- **The extension does not bundle Archivo or JetBrains Mono in full.** It cannot: both
-  measured 182 KB against a 150 KB eager budget, Archivo alone 151.5 KB. The wordmark is
-  real Archivo subset to nine characters; the UI keeps the platform face. Raising A-15 is
-  a decision, and the numbers are in `extension/src/design/typography.test.ts`.
 - **The site is built but not published.** The deployed CSP names the old inline theme
   stamp by hash and would refuse the new one — see below.
 
