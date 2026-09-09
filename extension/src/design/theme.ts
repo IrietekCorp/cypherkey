@@ -1,10 +1,11 @@
 /**
  * Which palette the document wears, and who decides.
  *
- * The style guide makes dark the default. **This deviates: light is the default here**,
- * on the founder's call after seeing the dark ground in use — it read as heavier than a
- * password manager wants to be, and the product is opened in daylight far more often
- * than it is admired on a dark desktop. The dark palette is unchanged and one tap away.
+ * **Dark is the default.** It was light for two days, on the founder's call after seeing
+ * Nocturne applied; the 2026-09-09 redesign reverses that deliberately. The new palette
+ * is built dark-first and the light set is derived from it, so arriving on light would be
+ * arriving on the derived one. Light is one tap away and is a complete palette, not a
+ * filter.
  *
  * Three states, not two. `system` follows the OS and is what someone who has expressed no
  * opinion gets; `light` and `dark` are opinions, and an opinion outranks the OS until it
@@ -28,12 +29,12 @@ type Doc = { documentElement: { dataset: Record<string, string | undefined> } };
 /**
  * What the OS asks for.
  *
- * Defaults to light when nothing says otherwise, which matters more than it looks: a
- * context with no `matchMedia` — a test, an options page preview — should land on the
- * product's default rather than on whichever branch happens to be first.
+ * A context with no `matchMedia` — a test, an options page preview — lands on the
+ * product's own default rather than on whichever branch happens to be written first.
+ * That default is dark, so only an OS that explicitly asks for light gets it.
  */
 export function systemTheme(win: Win): Theme {
-  return win.matchMedia?.('(prefers-color-scheme: dark)').matches === true ? 'dark' : 'light';
+  return win.matchMedia?.('(prefers-color-scheme: light)').matches === true ? 'light' : 'dark';
 }
 
 /** The palette a choice resolves to right now. */
@@ -44,13 +45,14 @@ export function resolveTheme(choice: ThemeChoice, win: Win): Theme {
 /** Reads a stored choice, treating anything unrecognised as no choice at all. */
 export function parseChoice(value: unknown): ThemeChoice {
   /*
-    Unrecognised means "no choice made", and that falls to light rather than to system.
+    Unrecognised means "no choice made", and that falls to dark rather than to system.
 
-    Defaulting to `system` would hand anyone on a dark OS a dark product, which is the
-    look the founder asked to move away from. Light is the product's default and `system`
-    is one of the three things a user can ask for -- a default, not an absence.
+    Defaulting to `system` would make the product's appearance depend on a setting the
+    user never made here, and would hand a light-mode desktop the derived palette rather
+    than the designed one. Dark is the product's default; `system` is one of the three
+    things a user can ask for -- a default, not an absence.
   */
-  return value === 'light' || value === 'dark' || value === 'system' ? value : 'light';
+  return value === 'light' || value === 'dark' || value === 'system' ? value : 'dark';
 }
 
 /** Stamps the palette on the root. The only place the attribute is written. */
@@ -64,7 +66,7 @@ export function stampTheme(doc: Doc, theme: Theme): void {
  * Returns an unsubscribe. Calling it again with a new choice is how the control works:
  * the caller owns the choice, this owns the document.
  */
-export function applyTheme(doc: Doc, win: Win, choice: ThemeChoice = 'light'): () => void {
+export function applyTheme(doc: Doc, win: Win, choice: ThemeChoice = 'dark'): () => void {
   const set = () => stampTheme(doc, resolveTheme(choice, win));
   set();
 

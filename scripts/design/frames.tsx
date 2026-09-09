@@ -266,12 +266,12 @@ if (host !== null) {
     const row = document.createElement('section');
     row.dataset.theme = theme;
     row.style.cssText = 'display:flex;gap:24px;flex-wrap:wrap;padding:24px;border-radius:12px';
-    row.style.background = theme === 'light' ? '#dfe3f2' : '#0b0d16';
+    row.style.background = theme === 'light' ? '#dde4ec' : '#0d1620';
 
     const heading = document.createElement('h2');
-    heading.textContent = theme === 'light' ? 'Light — the default' : 'Dark';
-    heading.style.cssText = `width:100%;margin:0;font:500 13px ui-sans-serif,system-ui;color:${
-      theme === 'light' ? '#595d6c' : '#9397ab'
+    heading.textContent = theme === 'light' ? 'Light' : 'Dark — the default';
+    heading.style.cssText = `width:100%;margin:0;font:600 13px ui-sans-serif,system-ui;color:${
+      theme === 'light' ? '#4f6577' : '#9fb2c4'
     }`;
     row.append(heading);
 
@@ -282,7 +282,7 @@ if (host !== null) {
       const caption = document.createElement('figcaption');
       caption.textContent = label;
       caption.style.cssText = `font:500 12px ui-sans-serif,system-ui;color:${
-        theme === 'light' ? '#595d6c' : '#9397ab'
+        theme === 'light' ? '#4f6577' : '#9fb2c4'
       }`;
 
       // The popup's real size, unless the screen has one of its own. The height is
@@ -292,7 +292,7 @@ if (host !== null) {
       box.style.cssText = 'overflow:hidden;border-radius:8px;background:var(--ck-bg)';
       box.style.width = `${width}px`;
       box.style.height = `${height}px`;
-      box.style.border = `1px solid ${theme === 'light' ? '#cfd3e5' : '#3f424d'}`;
+      box.style.border = `1px solid ${theme === 'light' ? '#c6d0da' : '#2b3b4b'}`;
 
       figure.append(caption, box);
       row.append(figure);

@@ -80,7 +80,7 @@ export function App() {
    * ask for, not the absence of an answer -- defaulting to it would hand anyone on a dark
    * OS a dark product, which is the look this moved away from.
    */
-  const [theme, setTheme] = useState<ThemeChoice>('light');
+  const [theme, setTheme] = useState<ThemeChoice>('dark');
   const [editing, setEditing] = useState<{ kind: VaultItem['kind']; item?: VaultItem } | null>(
     null,
   );

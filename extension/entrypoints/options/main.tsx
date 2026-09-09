@@ -11,13 +11,13 @@ import '../popup/style.css';
   The palette, before the first paint, exactly as the popup does it.
 
   This is a second document with its own root element, so it needs its own stamp — the
-  popup's runs in a window this one cannot see. Light first, corrected from storage a
+  popup's runs in a window this one cannot see. Dark first, corrected from storage a
   moment later; the choice is shared, so the two surfaces never disagree for long.
 */
 const stamp = (choice: Parameters<typeof resolveTheme>[0]) =>
   stampTheme(document, resolveTheme(choice, window));
 
-stamp('light');
+stamp('dark');
 void (async () => {
   const chrome = (
     globalThis as {

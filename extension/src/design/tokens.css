@@ -3,99 +3,92 @@
  * pointing at Google would silently fail inside the extension while working in every
  * browser tab used to test it.
  *
- * Subset to the seven glyphs of "CypherKey" -- C K e h p r y -- which is why it is 3 KB
- * rather than 30. It cannot render anything else, and it is not meant to.
+ * Subset to the nine characters of "CypherKey" -- C K e h p r y -- which is why it is
+ * 2.4 KB rather than 35. It cannot render anything else, and it is not meant to.
+ *
+ * **Why the UI is not also Archivo, when the site is.** A full latin Archivo is 29-35 KB
+ * against a 150 KB eager popup already at 120 KB, and `scripts/size-check.ts` counts a
+ * stylesheet's fonts on purpose -- a bundled face is read before the popup paints. Both
+ * faces bundled measured 182 KB, 121% of the budget; Archivo alone measured 151.5 KB.
+ * The UI therefore keeps the platform's own interface face, as it did with Inter, and
+ * the wordmark carries the brand. Raising A-15 to bundle the real face is a decision
+ * worth taking deliberately rather than by accident.
  */
 @font-face {
-  font-family: "Inter";
+  font-family: "Archivo";
   font-style: normal;
-  font-weight: 500;
+  font-weight: 800;
   font-display: swap;
-  src: url("/fonts/inter-wordmark.woff2") format("woff2");
+  src: url("/fonts/archivo-wordmark.woff2") format("woff2");
   unicode-range: U+43, U+4b, U+65, U+68, U+70, U+72, U+79;
 }
 
 /*
- * Nocturne, as the CypherKey style guide fixes it.
+ * The redesign palette: "eco, human, precise".
  *
- * Rebuilt from `docs/CypherKey Style Guide (handoff).dc.html` rather than bound to the
- * system's own stylesheet, which is not in this repository -- the boards link to
- * `_ds/nocturne-cf337738-.../styles.css` and that file was never handed over. The guide
- * is therefore the source of truth here: if a value below disagrees with it, the guide
- * wins and this file is wrong.
+ * Two rules carry the identity, and they are the same two the site follows.
  *
- * Dark is the default and light is the same tokens remapped, so no markup changes
- * between themes. Nothing outside this file may hard-code a colour, radius or step.
- */
-
-/*
- * Nocturne, as the CypherKey style guide fixes it.
+ *   Green is the *living* signal -- the Rhythm Light, a pass band, the primary action.
+ *   Blue is *maths* -- timings, counts, vectors. Never both on one element.
  *
- * Rebuilt from `docs/CypherKey Style Guide (handoff).dc.html` rather than bound to the
- * system's own stylesheet, which is not in this repository -- the boards link to
- * `_ds/nocturne-cf337738-.../styles.css` and that file was never handed over. The guide
- * is therefore the source of truth here: if a value below disagrees with it, the guide
- * wins and this file is wrong.
+ *   Dark is the default. It was light for two days, on the founder's call after seeing
+ *   Nocturne applied; the 2026-09-09 redesign reverses that deliberately, because this
+ *   palette is built dark-first and the light set is derived from it.
  *
- * **One deviation, on purpose.** The guide makes dark the default; here light is, on the
- * founder's call after using it -- the dark ground read as heavier than a password
- * manager wants to be, and this is opened in daylight far more often than it is admired
- * on a dark desktop. Both palettes are the guide's, unchanged. Only which one arrives
- * first has moved, and `design/theme.ts` lets the user say otherwise.
- *
- * Nothing outside this file may hard-code a colour, radius or step.
+ * The token *names* are unchanged from Nocturne on purpose. Every component already
+ * consumes them, so the whole extension restyles from this file and no screen has to be
+ * touched to follow. Nothing outside this file may hard-code a colour, radius or step.
  */
 
 :root {
-  /* -- light: the default ground and surface ----------------------------- */
-  --ck-bg: #eceef8;
-  --ck-surface: #f7f8fd;
-  --ck-text: #232532;
+  /* -- dark: the default ground and surface ------------------------------ */
+  --ck-bg: #141f2b;
+  --ck-surface: #1c2c3c;
+  --ck-text: #e6eef5;
 
   /* -- accent ramp -------------------------------------------------------
-     The accent is a line, a mark or a glow. It is never a flood fill, and the
-     teal #0D9488 is retired from the product entirely. */
-  --ck-accent: #5d5294;
-  --ck-accent-300: #4b4179; /* body text and links on the accent */
-  --ck-accent-400: #6d61a8; /* active marks */
-  --ck-accent-700: #d2cefd; /* tint borders */
-  --ck-accent-900: #e7e5fe; /* tint fills */
+     The accent is the living signal: mint green. It fills a primary action and
+     nothing else; everywhere else it is a line, a mark or a ring. */
+  --ck-accent: #3fdcb4;
+  --ck-accent-300: #3fdcb4; /* body text and links on the accent */
+  --ck-accent-400: #63c5f2; /* active marks read as measurement, so blue */
+  --ck-accent-700: #0f5a48; /* tint borders */
+  --ck-accent-900: #062a24; /* ink on an accent fill */
 
-  /* -- neutrals. On a light surface muted text takes the DARKER steps: the
-     most common defect in review was a dark-ground grey carried onto light. */
-  --ck-border: #cfd3e5;
-  --ck-inset: #e4e7f4;
-  --ck-muted: #595d6c;
+  /* -- neutrals ----------------------------------------------------------- */
+  --ck-border: rgb(214 228 240 / 0.14);
+  --ck-inset: #182636;
+  --ck-muted: #9fb2c4;
 
-  /* -- bands, kept off the accent ---------------------------------------- */
-  --ck-pass: #047857;
-  --ck-pass-text: #065f46;
-  --ck-amber: #b45309;
-  --ck-amber-text: #92400e;
-  --ck-fail: #be123c;
-  --ck-fail-text: #9f1239;
+  /* -- bands. Pass shares the accent because a pass *is* the living signal. */
+  --ck-pass: #3fdcb4;
+  --ck-pass-text: #3fdcb4;
+  --ck-amber: #f0b45a;
+  --ck-amber-text: #f0b45a;
+  --ck-fail: #ff6b7a;
+  --ck-fail-text: #ff6b7a;
 
-  /* -- the Rhythm Light, per state (guide §06) ---------------------------- */
-  --ck-light-idle-bar: #8b90a3;
-  --ck-light-idle-ring: #cfd3e5;
-  --ck-light-idle-mid: #e4e7f4;
-  --ck-light-ready-bar: #6d61a8;
-  --ck-light-ready-ring: #b9b2f0;
-  --ck-light-ready-mid: #e7e5fe;
-  --ck-light-recording-bar: #5d5294;
-  --ck-light-captured-bar: #6d61a8;
-  --ck-light-matched-check: #ffffff;
-  --ck-light-matched-ring: #6ee7b7;
-  --ck-light-amber-ring: #e0b070;
-  --ck-light-fail-bar: #be123c;
-  --ck-light-fail-ring: #f0a8b8;
-  --ck-light-fail-mid: #fde7ec;
+  /* -- the Rhythm Light, per state ---------------------------------------- */
+  --ck-light-idle-bar: #9fb2c4;
+  --ck-light-idle-ring: #9fb2c4;
+  --ck-light-idle-mid: transparent;
+  --ck-light-ready-bar: #3fdcb4;
+  --ck-light-ready-ring: #3fdcb4;
+  --ck-light-ready-mid: transparent;
+  --ck-light-recording-bar: #3fdcb4;
+  --ck-light-captured-bar: #63c5f2;
+  --ck-light-matched-check: #062a24;
+  --ck-light-matched-ring: #3fdcb4;
+  --ck-light-amber-ring: #f0b45a;
+  --ck-light-fail-bar: #ff6b7a;
+  --ck-light-fail-ring: #ff6b7a;
+  --ck-light-fail-mid: rgb(255 107 122 / 0.08);
 
-  /* -- radii. Cards are 10 in the popup, 14 on the board. ----------------- */
+  /* -- radii. The popup frame is 16; cards inside it are 12. -------------- */
   --ck-r-sm: 4px;
   --ck-r-md: 8px;
-  --ck-r-card: 10px;
-  --ck-r-lg: 14px;
+  --ck-r-card: 12px;
+  --ck-r-lg: 16px;
 
   /* -- spacing: a 0.70x scale, dense on purpose --------------------------- */
   --ck-s1: 2.8px;
@@ -106,80 +99,74 @@
   --ck-s6: 22.4px;
 
   /* -- elevation. Use these, never a hand-rolled shadow. ------------------ */
-  --ck-shadow-1: 0 1px 2px rgb(35 37 50 / 0.08);
-  --ck-shadow-2: 0 4px 12px rgb(35 37 50 / 0.12);
+  --ck-shadow-1: 0 1px 2px rgb(0 0 0 / 0.28);
+  --ck-shadow-2: 0 14px 44px rgb(0 0 0 / 0.28);
 
   /*
-    Two faces, and only one of them is bundled.
-
-    Inter is reserved for the wordmark. The UI runs on the platform's own interface face,
-    chosen to sit beside Inter rather than against it: SF Pro on macOS, Segoe UI on
-    Windows, the system grotesque elsewhere. All are neutral grotesques of the same family
-    of shapes, so the wordmark reads as of a piece with the text without the extension
-    carrying a typeface for every screen.
-
-    The reason is the budget, and it is not marginal. Inter across the whole UI is a
-    30-40 KB latin subset against a 150 KB eager popup already at 77%; subset to the seven
-    letters of the wordmark it is 3 KB. The guide's "Inter throughout" therefore applies to
-    cypherkey.io, which has no such limit.
+    The platform's interface face for everything a person reads, and the platform's mono
+    for everything the machine measured. That split is typography doing the same job the
+    colour does: a mono value is a reading, a set sentence is the product talking.
   */
   --ck-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --ck-font-wordmark: "Inter", var(--ck-font);
+  --ck-font-wordmark: "Archivo", var(--ck-font);
+  --ck-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 /*
- * Dark: the same tokens remapped, so no markup changes between themes.
+ * Light: the same tokens remapped, so no markup changes between themes.
  *
  * Stamped by `design/theme.ts` rather than resolved in a media query -- a query would
  * mean a second copy of this whole block, and two copies of a palette drift.
+ *
+ * Green and blue both darken hard here. Mint on white cannot carry body text at 4.5:1,
+ * and a palette legible in only one ground is not two palettes.
  *
  * Not `:root[data-theme]`: custom properties inherit, so any container may carry the
  * attribute and theme its own subtree. At runtime that container is always the document
  * element; the design preview uses it to put both palettes on one page, which is the only
  * way a contrast failure in one of them is visible.
  */
-[data-theme="dark"] {
-  --ck-bg: #161826;
-  --ck-surface: #232532;
-  --ck-text: #e9e9ed;
+[data-theme="light"] {
+  --ck-bg: #eef2f6;
+  --ck-surface: #f7f9fb;
+  --ck-text: #10202c;
 
-  --ck-accent: #9184d9;
-  --ck-accent-300: #d2cefd;
-  --ck-accent-400: #b5abfc;
-  --ck-accent-700: #5d5294;
-  --ck-accent-900: #2b2741;
+  --ck-accent: #0d8f6e;
+  --ck-accent-300: #0b6f56;
+  --ck-accent-400: #0f6f9e;
+  --ck-accent-700: #bff0e0;
+  --ck-accent-900: #f2f7f5;
 
-  /* Muted copy stops at neutral-500. Never 600 or 700 for anything a user reads. */
-  --ck-border: #3f424d;
-  --ck-inset: #292b31;
-  --ck-muted: #9397ab;
+  --ck-border: rgb(16 32 44 / 0.16);
+  --ck-inset: #e3e9f0;
+  --ck-muted: #4f6577;
 
-  --ck-pass: #34d399;
-  --ck-pass-text: #6ee7b7;
-  --ck-amber: #fbbf24;
-  --ck-amber-text: #fcd34d;
-  --ck-fail: #e5484d;
-  --ck-fail-text: #fca5a5;
+  --ck-pass: #0d8f6e;
+  --ck-pass-text: #0b6f56;
+  --ck-amber: #a2620c;
+  --ck-amber-text: #8a5208;
+  --ck-fail: #c0263a;
+  --ck-fail-text: #a01e30;
 
-  --ck-light-idle-bar: #595d6c;
-  --ck-light-idle-ring: #3f424d;
-  --ck-light-idle-mid: #292b31;
-  --ck-light-ready-bar: #b5abfc;
-  --ck-light-ready-ring: #5d5294;
-  --ck-light-ready-mid: #2b2741;
-  --ck-light-recording-bar: #d2cefd;
-  --ck-light-captured-bar: #b5abfc;
-  --ck-light-matched-check: #07281d;
-  --ck-light-matched-ring: #1e6b52;
-  --ck-light-amber-ring: #8a6516;
-  --ck-light-fail-bar: #f87171;
-  --ck-light-fail-ring: #7a2b2e;
-  --ck-light-fail-mid: #5c2124;
+  --ck-light-idle-bar: #4f6577;
+  --ck-light-idle-ring: #4f6577;
+  --ck-light-idle-mid: transparent;
+  --ck-light-ready-bar: #0d8f6e;
+  --ck-light-ready-ring: #0d8f6e;
+  --ck-light-ready-mid: transparent;
+  --ck-light-recording-bar: #0d8f6e;
+  --ck-light-captured-bar: #0f6f9e;
+  --ck-light-matched-check: #f2f7f5;
+  --ck-light-matched-ring: #0d8f6e;
+  --ck-light-amber-ring: #a2620c;
+  --ck-light-fail-bar: #c0263a;
+  --ck-light-fail-ring: #c0263a;
+  --ck-light-fail-mid: rgb(192 38 58 / 0.08);
 
-  --ck-shadow-1: 0 1px 2px rgb(0 0 0 / 0.28);
-  --ck-shadow-2: 0 4px 12px rgb(0 0 0 / 0.34);
+  --ck-shadow-1: 0 1px 2px rgb(20 31 43 / 0.1);
+  --ck-shadow-2: 0 14px 40px rgb(20 31 43 / 0.16);
 
-  color-scheme: dark;
+  color-scheme: light;
 }

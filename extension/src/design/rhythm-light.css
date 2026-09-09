@@ -1,10 +1,15 @@
 /*
  * The Rhythm Light — form A, Concentric.
  *
- * The wordmark and the light are the same object: four bars inside two rings, with a
- * third ring leaving the mark on every keystroke. Geometry is fixed by the style guide
- * §06 and is not a matter of taste — bars 2px wide with a 2.5px gap at heights
- * 8/16/6/12, outer ring 44px, mid ring inset 9px, pulse ring 2px.
+ * The wordmark and the light are the same object: four keys inside a ring, with a second
+ * ring leaving the mark on every keystroke. Geometry is fixed by the design system and is
+ * not a matter of taste — keys 2px wide with a 2px gap at rest heights 8/14/10/12, ring
+ * 28px with a 2px stroke, pulse ring 2px.
+ *
+ * The 2026-09-09 redesign took it from 44px to 28px and dropped the inset mid ring. The
+ * mid ring was doing two jobs — marking a state *and* dividing the mark — and at 28px
+ * there is no room for the second. State now reads as ring colour plus, where a state is
+ * terminal, a fill.
  *
  * X-1: this is the consent signal, and capture refuses to start when it is not visible.
  * It may be restyled or moved. It may not be made quiet.
@@ -39,31 +44,31 @@
 
   .ck-light {
     position: relative;
-    width: 44px;
-    height: 44px;
+    width: 28px;
+    height: 28px;
     flex: none;
     display: grid;
     place-items: center;
     border-radius: 50%;
-    border: 1px solid var(--ring, var(--ck-light-idle-ring));
+    border: 2px solid var(--ring, var(--ck-light-idle-ring));
     transition: border-color 160ms ease, box-shadow 160ms ease;
   }
 
-  /* The mid ring, inset 9px from the outer. */
+  /* The fill, for the states that have finished: matched is solid, refused is a wash. */
   .ck-light::before {
     content: "";
     position: absolute;
-    inset: 9px;
+    inset: 0;
     border-radius: 50%;
-    background: var(--mid, var(--ck-light-idle-mid));
+    background: var(--mid, transparent);
   }
 
   .ck-light-bars {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 2.5px;
-    height: 16px;
+    gap: 2px;
+    height: 14px;
   }
 
   .ck-light-bars i {
@@ -78,10 +83,10 @@
     height: 8px;
   }
   .ck-light-bars i:nth-child(2) {
-    height: 16px;
+    height: 14px;
   }
   .ck-light-bars i:nth-child(3) {
-    height: 6px;
+    height: 10px;
   }
   .ck-light-bars i:nth-child(4) {
     height: 12px;
@@ -145,7 +150,7 @@
   .ck-light[data-state="matched"] {
     --bar: var(--ck-light-matched-check);
     --ring: var(--ck-light-matched-ring);
-    --mid: color-mix(in srgb, var(--ck-pass) 22%, transparent);
+    --mid: var(--ck-pass);
   }
   .ck-light[data-state="amber"] {
     --bar: var(--ck-amber);
@@ -162,8 +167,8 @@
   /* Matched shows a check rather than bars: the mark has finished its job. */
   .ck-light-check {
     position: relative;
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
     background: var(--ck-pass);
     color: var(--ck-light-matched-check);
