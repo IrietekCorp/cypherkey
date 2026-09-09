@@ -137,13 +137,29 @@ async function main(): Promise<void> {
     await salt.json();
     ok('the API is mounted, and /auth/salt returns JSON');
 
+    const binary = chromePath();
     browser = await puppeteer.launch({
-      executablePath: chromePath(),
+      executablePath: binary,
       // Extensions need a real browser: the headless shell cannot load them.
       headless: Bun.env.BROWSER_E2E_HEADED !== '1',
       args: [
         `--disable-extensions-except=${EXTENSION_DIR}`,
         `--load-extension=${EXTENSION_DIR}`,
+        /*
+          Chrome 137 stopped honouring `--load-extension` in an automated session.
+
+          It is a real hardening measure -- the switch was being used to sideload
+          extensions onto people -- and it is enforced in branded Google Chrome and not
+          in Chromium, which is exactly the split that made this pass on a developer's
+          Arch box and fail on CI. Nothing errors: the flag is accepted and ignored, the
+          browser starts with no extension, and the first symptom is
+          `net::ERR_BLOCKED_BY_CLIENT` from a `chrome-extension://` URL that has nothing
+          behind it.
+
+          Naming the feature turns it back on for this process only. An unknown feature
+          name is ignored, so this stays harmless on the versions that never had it.
+        */
+        '--disable-features=DisableLoadExtensionCommandLineSwitch',
         '--no-sandbox',
         '--no-first-run',
       ],
@@ -159,7 +175,9 @@ async function main(): Promise<void> {
       the worker anyway.
     */
     const extensionId = DEV_EXTENSION_ID;
-    ok(`the extension loaded with a pinned id (${extensionId})`);
+    // The version is printed because the last two failures here were both "a newer
+    // Chrome changed the rules", and neither run said which Chrome it was.
+    ok(`${(await browser.version()).replace('/', ' ')} launched from ${binary}`);
 
     const consoleErrors: string[] = [];
     /**
@@ -180,7 +198,35 @@ async function main(): Promise<void> {
 
     const page = watch(await browser.newPage());
 
-    await page.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
+    /*
+      The first navigation is also the proof that the extension is installed.
+
+      The step above pins the id; it does not load anything, and for a while it claimed
+      "the extension loaded" on the strength of a constant. When Chrome silently declined
+      to load it, that line still passed and the run failed one step later on an error
+      that names no cause. This is where "is it actually there?" is answered, so it is
+      where the explanation belongs.
+    */
+    try {
+      await page.goto(`chrome-extension://${extensionId}/popup.html`, { waitUntil: 'load' });
+    } catch (err) {
+      const reason = String(err);
+      if (!reason.includes('ERR_BLOCKED_BY_CLIENT')) throw err;
+      throw new Error(
+        [
+          `Chrome did not load the extension from ${EXTENSION_DIR}.`,
+          'A chrome-extension:// URL with nothing behind it is refused by the browser,',
+          'which is what ERR_BLOCKED_BY_CLIENT means here.',
+          '',
+          'Most likely: this Chrome ignores --load-extension in an automated session',
+          '(branded Chrome 137 and later). The launch already passes',
+          '--disable-features=DisableLoadExtensionCommandLineSwitch to opt back out; if',
+          'that has stopped working, the switch has probably been removed entirely.',
+          '',
+          `This run used: ${await browser?.version()}`,
+        ].join('\n'),
+      );
+    }
     await page.waitForSelector('[data-testid="consent"]', { timeout: 30_000 });
     ok('the popup rendered the onboarding screen');
 
