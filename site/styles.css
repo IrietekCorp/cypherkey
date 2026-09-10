@@ -986,18 +986,20 @@ h3 {
   color: var(--muted);
   flex: 1;
 }
-/* A square, not a tick. A tick says "verified"; these are contents, not claims. */
+/* A square, not a tick. A tick says "verified"; these are contents, not claims.
+   Positioned rather than a grid column, for the reason in `.ck-checklist`: these items
+   happen to be plain text today and would break the moment one was not. */
 .ck-tier-features li {
-  display: grid;
-  grid-template-columns: 6px 1fr;
-  gap: 10px;
-  align-items: start;
+  position: relative;
+  padding-left: 16px;
 }
 .ck-tier-features li::before {
   content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
   width: 6px;
   height: 6px;
-  margin-top: 7px;
   background: var(--green);
 }
 
@@ -1897,5 +1899,284 @@ h3 {
   }
   .ck-stage-pane {
     padding: 20px;
+  }
+}
+
+/* ---- prose, tables and code -------------------------------------------- */
+
+/* A reading column. Anything longer than this is a wall rather than a paragraph. */
+.ck-prose {
+  max-width: 68ch;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ck-prose .ck-h2 {
+  margin-bottom: 4px;
+}
+
+.ck-note {
+  font-size: 14px;
+  margin-top: 24px;
+  max-width: 74ch;
+}
+
+/* Wide content scrolls inside itself; the page never scrolls sideways. */
+.ck-table-wrap {
+  margin-top: 24px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.ck-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.ck-table th,
+.ck-table td {
+  text-align: left;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.ck-table thead th {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  background: var(--bg2);
+}
+.ck-table tbody th {
+  font-weight: 600;
+  color: var(--text);
+}
+.ck-table tr:last-child th,
+.ck-table tr:last-child td {
+  border-bottom: 0;
+}
+/* Colour carries the verdict, and the word carries it too: a table that means anything
+   only in colour means nothing to a reader who cannot see it. */
+.ck-cell-ok {
+  color: var(--green);
+}
+.ck-cell-warn {
+  color: var(--amber);
+}
+.ck-cell-bad {
+  color: var(--fail);
+}
+
+.ck-code-block {
+  margin: 24px 0 0;
+  padding: 20px;
+  overflow-x: auto;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.ck-code-block--math {
+  font-size: 14px;
+  line-height: 1.9;
+}
+.ck-code-block .ck-c {
+  color: var(--muted);
+}
+.ck-code-block .ck-k {
+  color: var(--blue);
+}
+.ck-code-block .ck-s {
+  color: var(--text);
+}
+.ck-code-block .ck-n {
+  color: var(--blue);
+}
+.ck-code-block .ck-ok {
+  color: var(--green);
+}
+.ck-code-block .ck-no {
+  color: var(--fail);
+}
+
+.ck-grid--3 {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  margin-top: 24px;
+}
+
+/* ---- the deck ----------------------------------------------------------- */
+
+.ck-deck-head {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: calc(var(--nav-h) + 60px) 28px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.ck-deck-title {
+  font-size: clamp(36px, 5.2vw, 68px);
+  max-width: 18ch;
+}
+
+.ck-factstrip {
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.ck-factstrip > div {
+  background: var(--bg);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ck-factstrip dt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ck-factstrip dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ck-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+.ck-split-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ck-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+/*
+ * The marker is positioned, not a grid column.
+ *
+ * It was `grid-template-columns: 6px 1fr`, which works only while the item contains
+ * nothing but text. A `<b>` is an element and becomes its own grid item, so the text
+ * *after* it became a second item and was placed in the next cell — the 6px marker
+ * column — and wrapped one word per line. Absolute positioning makes the item's contents
+ * irrelevant to the layout, which is what a list marker should be.
+ */
+.ck-checklist li {
+  position: relative;
+  padding-left: 18px;
+}
+.ck-checklist li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  background: var(--green);
+}
+.ck-checklist b {
+  color: var(--text);
+}
+
+.ck-metric {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ck-metric-figure {
+  font-family: var(--mono);
+  font-size: 40px;
+  letter-spacing: -0.02em;
+  color: var(--blue);
+}
+.ck-metric-label {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+@media (max-width: 860px) {
+  .ck-split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .ck-deck-head {
+    padding-top: calc(var(--nav-h) + 32px);
+  }
+}
+
+/*
+ * The deck is handed over as a PDF as often as it is scrolled.
+ *
+ * Print gets the light palette whatever the screen is wearing, because nobody wants a
+ * dark ground on paper, and sections are kept off page breaks so a card is never split
+ * across two sheets.
+ */
+@media print {
+  :root {
+    --bg: #ffffff;
+    --bg2: #f4f6f8;
+    --surface: #ffffff;
+    --glass: #ffffff;
+    --line: rgb(16 32 44 / 0.2);
+    --line2: rgb(16 32 44 / 0.35);
+    --text: #10202c;
+    --muted: #35485a;
+    --green: #0b6f56;
+    --blue: #0f6f9e;
+  }
+  .no-print,
+  .ck-skip,
+  .ck-footer {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .ck-deck-head {
+    padding-top: 0;
+  }
+  .ck-section {
+    break-inside: avoid;
+    background: #fff !important;
+  }
+  .ck-card,
+  .ck-glass {
+    break-inside: avoid;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .ck-wrap {
+    padding: 20px 0;
+  }
+  a {
+    color: var(--text);
   }
 }

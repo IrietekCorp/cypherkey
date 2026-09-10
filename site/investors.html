@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — investor overview</title>
+    <meta
+      name="description"
+      content="CypherKey turns credential entry into a passive second factor by measuring typing cadence in the client, making a leaked password useless to an imposter, an infostealer or an autonomous agent."
+    />
+    <meta name="robots" content="noindex" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav no-print">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html">Demo</a>
+        <a href="/technology.html">Technology</a>
+        <a href="/pricing.html">Pricing</a>
+        <a href="/beta.html">Beta</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <button class="ck-btn ck-btn--primary ck-btn--sm" type="button" data-print>Print / PDF</button>
+      </div>
+    </nav>
+
+    <main id="main" class="ck-deck">
+      <header class="ck-deck-head">
+        <span class="ck-kicker ck-kicker--green">Investor overview · Pre-seed / Seed</span>
+        <h1 class="ck-h1 ck-deck-title">
+          A stolen password is useless if it cannot be <span class="ck-said">typed</span> correctly.
+        </h1>
+        <p class="ck-lede">
+          CypherKey turns ordinary credential entry into a second, passive biometric check by
+          measuring neuromuscular typing cadence in the client — no dongle, no app, no extra step.
+        </p>
+        <dl class="ck-factstrip">
+          <div><dt>Sector</dt><dd>Identity &amp; access · Behavioral biometrics</dd></div>
+          <div><dt>Stage</dt><dd>Pre-seed / Seed</dd></div>
+          <div><dt>Status</dt><dd>M2 · private beta, Dec 2026</dd></div>
+          <div><dt>Licence</dt><dd>MIT client · AGPL server</dd></div>
+        </dl>
+      </header>
+
+      <section class="ck-section" aria-label="The problem">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">The problem</span>
+          <h2 class="ck-h2 ck-section-title">Attackers do not break in. They log in.</h2>
+          <div class="ck-grid ck-grid--4">
+            <article class="ck-card ck-feature">
+              <h3 class="ck-h3">MFA is failing on friction</h3>
+              <p class="ck-body">
+                SMS is SIM-swappable, push is fatigued into approval, codes are relayed by
+                reverse-proxy phishing kits in real time. Every one of them adds a step the user
+                resents.
+              </p>
+            </article>
+            <article class="ck-card ck-feature">
+              <h3 class="ck-h3">Passkeys solve the wrong half</h3>
+              <p class="ck-body">
+                They defeat phishing, and they are excellent. They do not tell you whether the
+                person at the keyboard is the person the key was issued to, and they require a
+                device to be registered, carried and replaced.
+              </p>
+            </article>
+            <article class="ck-card ck-feature">
+              <h3 class="ck-h3">Agents change the arithmetic</h3>
+              <p class="ck-body">
+                Autonomous software now navigates interfaces, fills forms and stuffs credentials at
+                machine speed. A static secret can no longer demonstrate that a human is present.
+              </p>
+            </article>
+            <article class="ck-card ck-feature">
+              <h3 class="ck-h3">Credentials leak continuously</h3>
+              <p class="ck-body">
+                Infostealers harvest them by the billion. The valuable question stopped being what
+                the secret is, and became who or what is entering it.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="The solution">
+        <div class="ck-wrap ck-split">
+          <div class="ck-split-copy">
+            <span class="ck-kicker ck-kicker--green">The solution</span>
+            <h2 class="ck-h2">A second factor the user never performs.</h2>
+            <p class="ck-body">
+              The client measures dwell and flight timings from the passphrase the user was going to
+              type anyway, and folds them into the key derivation. A login succeeds only when the
+              credential is right <em>and</em> the cadence matches the enrolled baseline. Nothing is
+              added to the flow, because the factor is the flow.
+            </p>
+            <p class="ck-body">
+              <a href="/technology.html">The engine, the maths and the threat model in full →</a>
+            </p>
+          </div>
+          <ul class="ck-checklist">
+            <li><b>Zero added steps.</b> No hardware, no authenticator app, no second prompt.</li>
+            <li><b>Leaked credentials neutralised.</b> The dump does not contain a cadence.</li>
+            <li><b>Bot-resistant by construction.</b> Synthetic input has no neuromuscular variance.</li>
+            <li><b>Zero-knowledge.</b> The server holds ciphertext and an Argon2id hash; it cannot read a vault.</li>
+            <li><b>Never a lockout.</b> A bad day is an amber retype, then a Backup Code. The body is not a gate.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="Market">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Market</span>
+          <h2 class="ck-h2 ck-section-title">A commodity category with an unsolved layer above it.</h2>
+          <div class="ck-grid ck-grid--3">
+            <article class="ck-glass ck-metric">
+              <span class="ck-metric-figure">$3.79B</span>
+              <span class="ck-metric-label">Enterprise password management today</span>
+            </article>
+            <article class="ck-glass ck-metric">
+              <span class="ck-metric-figure">$10.6B</span>
+              <span class="ck-metric-label">Projected within the decade</span>
+            </article>
+            <article class="ck-glass ck-metric">
+              <span class="ck-metric-figure">13.8%</span>
+              <span class="ck-metric-label">CAGR, with behavioral biometrics growing faster</span>
+            </article>
+          </div>
+          <p class="ck-body ck-note">
+            Figures are the company's own market estimates from published industry reporting, and
+            are stated here as estimates rather than as diligence. Behavioral biometrics is the
+            faster-moving segment because AI-driven impersonation is what is creating the demand.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="Business model">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Business model</span>
+          <h2 class="ck-h2 ck-section-title">Three routes to the same engine.</h2>
+          <div class="ck-grid ck-grid--3">
+            <article class="ck-card ck-feature">
+              <span class="ck-kicker">B2B · per seat</span>
+              <h3 class="ck-h3">Enterprise and PAM</h3>
+              <p class="ck-body">
+                Per-seat licensing for engineering teams, privileged access and regulated finance
+                and healthcare, where continuous zero-trust validation is already a requirement.
+                SCIM provisioning, audit export, SSO.
+              </p>
+            </article>
+            <article class="ck-card ck-feature">
+              <span class="ck-kicker">B2C · freemium</span>
+              <h3 class="ck-h3">The vault itself</h3>
+              <p class="ck-body">
+                Free for a single device under ten sites. Paid tiers add sync, encrypted offline
+                cache, breach checking and anomaly alerts. Pricing is published and shipped at M4.
+              </p>
+            </article>
+            <article class="ck-card ck-feature">
+              <span class="ck-kicker">Developer · SDK</span>
+              <h3 class="ck-h3">The factor as a service</h3>
+              <p class="ck-body">
+                An embeddable SDK letting any product add cadence verification to its own login,
+                with Progressive Enrollment building a profile from the logins users already
+                perform. M5.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="Why now">
+        <div class="ck-wrap ck-split">
+          <div class="ck-split-copy">
+            <span class="ck-kicker ck-kicker--green">Why this founder, why now</span>
+            <h2 class="ck-h2">Built once in 2007, shelved for the right reason, and now unshelved for a better one.</h2>
+            <p class="ck-body">
+              The first version was a telemetry script inside a custom MVC framework, written to
+              tell humans from scrapers. It turned out to tell people apart instead — demonstrated
+              by writing a password on a whiteboard and watching a room full of engineers fail to
+              log in with it.
+            </p>
+            <p class="ck-body">
+              It was shelved because smartphones flattened the signal it depended on. It is back
+              because the threat moved: physical keyboards remain where credentials are entered at
+              work, and automated credential abuse is now the dominant intrusion path.
+            </p>
+            <p class="ck-body"><a href="/technology.html">The full account →</a></p>
+          </div>
+          <ul class="ck-checklist">
+            <li><b>Working product, not a deck.</b> Zero-knowledge core, server and Chrome extension, all public.</li>
+            <li><b>Verifiable claims.</b> The browser demo runs the shipped scoring code with no network calls.</li>
+            <li><b>Exit criteria, not milestones.</b> Each stage states what must be true to pass it.</li>
+            <li><b>Solo, AI-assisted.</b> M0 and M1 shipped; M2 is in private beta.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="Contact">
+        <div class="ck-wrap ck-invite">
+          <h2 class="ck-invite-title">Try it before you take a meeting.</h2>
+          <div class="ck-invite-actions">
+            <a class="ck-btn ck-btn--primary" href="/demo.html">Enter the Rhythm Trial →</a>
+            <a class="ck-invite-alt" href="mailto:hello@cypherkey.io"
+              >hello@cypherkey.io · Shawn J. Stewart, Irietek Corporation</a
+            >
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="/technology.html">TECHNOLOGY</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:hello@cypherkey.io">CONTACT</a>
+      </div>
+    </footer>
+
+    <script type="module" src="/investors.ts"></script>
+    <script type="module" src="/analytics.ts"></script>
+  </body>
+</html>

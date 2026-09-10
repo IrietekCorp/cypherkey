@@ -1,263 +1,29 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CypherKey — Executive One-Pager</title>
-  <!-- Without this the browser asks for /favicon.ico, which does not exist: a 404 on
-       every load of the one page most likely to be opened in front of someone. -->
-  <link
-    rel="icon"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
-  />
-  <style>
-    @page {
-      size: letter portrait;
-      margin: 0.5in;
-    }
-    @media print {
-      body {
-        font-size: 9.5pt;
-        line-height: 1.35;
-        color: #111827;
-        background: #ffffff;
-      }
-      .no-print {
-        display: none !important;
-      }
-      .page {
-        box-shadow: none !important;
-        border: none !important;
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #f3f4f6;
-      color: #1f2937;
-      padding: 24px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .toolbar {
-      width: 100%;
-      max-width: 800px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-    .btn {
-      background: #5d5294;
-      color: #fff;
-      padding: 8px 16px;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 600;
-      border: none;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .btn:hover {
-      background: #453d70;
-    }
-    .page {
-      width: 100%;
-      max-width: 800px;
-      background: #ffffff;
-      padding: 40px 48px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-      border-radius: 8px;
-      line-height: 1.42;
-    }
-    header {
-      border-bottom: 2px solid #5d5294;
-      padding-bottom: 12px;
-      margin-bottom: 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-    }
-    .logo-group h1 {
-      font-size: 26pt;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      color: #0f172a;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .dot {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      background: #5d5294;
-      border-radius: 50%;
-      box-shadow: 0 0 10px #14b8a6;
-    }
-    .tagline {
-      font-size: 11pt;
-      color: #4b5563;
-      font-weight: 500;
-      margin-top: 2px;
-    }
-    .links {
-      font-size: 9pt;
-      color: #64748b;
-      text-align: right;
-    }
-    .links a {
-      color: #5d5294;
-      text-decoration: none;
-      font-weight: 600;
-    }
-    .section-title {
-      font-size: 10.5pt;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      font-weight: 700;
-      color: #453d70;
-      margin-top: 14px;
-      margin-bottom: 4px;
-      border-bottom: 1px solid #e5e7eb;
-      padding-bottom: 2px;
-    }
-    p, li {
-      font-size: 9.5pt;
-      color: #374151;
-      margin-bottom: 6px;
-    }
-    ul {
-      margin-left: 18px;
-      margin-bottom: 8px;
-    }
-    li {
-      margin-bottom: 3px;
-    }
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-top: 4px;
-    }
-    .card {
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 10px 12px;
-    }
-    .card h4 {
-      font-size: 9.5pt;
-      font-weight: 700;
-      color: #1e293b;
-      margin-bottom: 4px;
-    }
-    .highlight {
-      font-weight: 600;
-      color: #0f172a;
-    }
-    footer {
-      margin-top: 20px;
-      padding-top: 10px;
-      border-top: 1px solid #e5e7eb;
-      font-size: 8.5pt;
-      color: #64748b;
-      display: flex;
-      justify-content: space-between;
-    }
-  </style>
-</head>
-<body>
-  <div class="toolbar no-print">
-    <a href="/" class="btn" style="background:#4b5563;">&larr; Back to Site</a>
-    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
-  </div>
-
-  <div class="page">
-    <header>
-      <div class="logo-group">
-        <h1>CypherKey <span class="dot"></span></h1>
-        <div class="tagline">The open-source password manager where your password only works when <em>you</em> type it.</div>
-      </div>
-      <div class="links">
-        <div><a href="https://cypherkey.io">cypherkey.io</a></div>
-        <div>github.com/IrietekCorp/cypherkey</div>
-        <div>hello@cypherkey.io</div>
-      </div>
-    </header>
-
-    <div class="section-title">The Problem</div>
-    <p>
-      The average person juggles <strong>~120 passwords</strong>, and over 68% reuse passwords across services. Credential abuse continues to appear in <strong>~39% of all breaches</strong>. Every existing solution introduces friction: authenticator apps, SMS codes, hardware dongles, and fragmented passkeys that do not sync cleanly across ecosystems.
-    </p>
-
-    <div class="section-title">The Solution</div>
-    <p>
-      A <strong>zero-knowledge vault</strong> coupled with an unforgeable, zero-step <strong>behavioral second factor</strong> derived from the sub-millisecond cadence of typing your passphrase (dwell time, flight time, digraph rhythms).
-    </p>
-    <ul>
-      <li><span class="highlight">Zero Extra Steps:</span> No phone to grab, no authenticator app to open, no SMS code to wait for. Just type.</li>
-      <li><span class="highlight">Works with Existing Passwords:</span> Protects the passwords guarding your tools, servers, and services today.</li>
-      <li><span class="highlight">Open Source & Zero Knowledge:</span> MIT client and AGPL-3.0 server. Self-host with one command: <code>docker compose up</code>.</li>
-    </ul>
-
-    <div class="grid-2">
-      <div class="card">
-        <h4>Why It's Different</h4>
-        <ul style="margin-left:14px; margin-bottom:0;">
-          <li><strong>The Rhythm Light:</strong> Visible indicator pulses on typing; capture code throws if light is hidden.</li>
-          <li><strong>Data Minimization:</strong> Raw keystrokes and vectors are never saved; only irreversible statistical profiles.</li>
-          <li><strong>Degradation Ladder:</strong> Pass, grey-band retry, passkey/TOTP step-up, and Pause mode prevent lockout.</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h4>Why Now</h4>
-        <ul style="margin-left:14px; margin-bottom:0;">
-          <li>Behavioral biometrics is proven in enterprise banking/DMVs, but sold closed and expensive.</li>
-          <li>Passkeys cover ~48 of the top 100 websites; passwords protect the other 52 and legacy infra.</li>
-          <li>CypherKey bridges the gap: stores passkeys and defends passwords.</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="section-title">Business & Traction Roadmap</div>
-    <div class="grid-2">
-      <div>
-        <p><strong>Pricing:</strong> Free (2 devices, unlimited items, self-host) &bull; Pro ($30/yr, unlimited sync, breach alerts) &bull; Teams ($4/user/mo) &bull; Progressive Enrollment SDK for services.</p>
-      </div>
-      <div>
-        <p><strong>Milestones:</strong> M0 Browser Demo (Sept 2026) &bull; M1 ZK Core & Server (Oct) &bull; M2 Chrome Extension Beta (Dec) &bull; M3 Public Launch (Jan 2027: 5K stars target).</p>
-      </div>
-    </div>
-
-    <div class="section-title">The Creator</div>
-    <p>
-      <strong>Shawn J. Stewart</strong> &mdash; President, Irietek Corporation; technical executive and venture builder with 25+ years scaling global engineering organizations. Previously Apartment List, Gusto, LinkedIn, Ultimate Software and Fidelity Investments. Built the first typing-dynamics authentication system at CBSSports.com in 2010 ("KeyStroke Captcha") &mdash; CypherKey is that idea with a sixteen-year head start, built at Irietek with modern AI tooling.<br/>
-      <a href="https://piscopour.com">piscopour.com</a> &bull; <a href="https://www.linkedin.com/in/irietek">linkedin.com/in/irietek</a> &bull; <a href="https://github.com/irietek">github.com/irietek</a>
-    </p>
-
-    <div class="section-title">What Would Help</div>
-    <p>
-      <strong>Investors:</strong> introductions in cybersecurity and developer tools, and candid feedback on the model.<br/>
-      <strong>Engineers and designers:</strong> the codebase is open &mdash; cryptography review, extension work and design contributions are all welcome.<br/>
-      <strong>Prospective users:</strong> a seat in the private beta, and an honest verdict on whether the browser demo convinces you.
-    </p>
-
-    <footer>
-      <span>CypherKey &copy; 2026</span>
-      <span>September 2026</span>
-      <span>cypherkey.io</span>
-    </footer>
-  </div>
-  <script type="module" src="/analytics.ts"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — investor overview has moved</title>
+    <!--
+      This URL was the executive one-pager, and it has been sent to people. Rather than
+      404 on a link somebody still holds, it points at the page that replaced it: the
+      investor overview, which prints to the same thing.
+    -->
+    <meta http-equiv="refresh" content="0; url=/investors.html" />
+    <link rel="canonical" href="https://cypherkey.io/investors.html" />
+    <meta name="robots" content="noindex" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main id="main" class="ck-wrap ck-wrap--tall">
+      <h1 class="ck-h2">The one-pager is now the investor overview.</h1>
+      <p class="ck-body" style="margin-top: 16px">
+        <a href="/investors.html">Continue to cypherkey.io/investors →</a>
+      </p>
+    </main>
+  </body>
 </html>

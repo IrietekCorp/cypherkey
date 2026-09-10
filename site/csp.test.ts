@@ -24,7 +24,18 @@ import { describe, expect, test } from 'bun:test';
 /** Must match the `sha256-` in the backend bucket's Content-Security-Policy. */
 const PINNED = 'sha256-ychm5l4PEdBVuXXy83Van+P7FYJk9ejW6Dlypqs9s5A=';
 
-const PAGES = ['index.html', 'demo.html', 'pricing.html', 'beta.html'] as const;
+/** Every page that carries the pre-paint theme stamp. */
+const PAGES = [
+  'index.html',
+  'demo.html',
+  'pricing.html',
+  'beta.html',
+  'technology.html',
+  'investors.html',
+] as const;
+
+/** Where analytics belongs. Not the trial — see the test for why. */
+const MEASURED = ['index.html', 'pricing.html', 'beta.html', 'technology.html', 'investors.html'];
 
 async function inlineScripts(page: string): Promise<string[]> {
   const html = await Bun.file(`${import.meta.dir}/${page}`).text();
@@ -70,13 +81,16 @@ describe('what the pages ask the browser to fetch', () => {
    * blocked it anyway. Self-hosting is the fix, and this is what keeps it that way.
    */
   test('no page reaches for a third-party origin', async () => {
-    for (const page of [...PAGES, 'one-pager.html']) {
+    for (const page of [...PAGES, 'one-pager.html'] as string[]) {
       const html = await Bun.file(`${import.meta.dir}/${page}`).text();
       // Only tags that *fetch*. An `<a href>` is somewhere a person may choose to go,
       // which the CSP has no opinion about; a `<script src>` is a request the page makes.
       const remote = [
         ...html.matchAll(/<(?:script|link|img|source)\b[^>]*\b(?:src|href)="(https?:\/\/[^"]+)"/g),
-      ].map((m) => m[1] as string);
+      ]
+        .map((m) => m[1] as string)
+        // Our own origin spelled absolutely — a canonical link — is not third-party.
+        .filter((url) => !url.startsWith('https://cypherkey.io'));
       expect(remote).toEqual([]);
     }
   });
@@ -98,10 +112,22 @@ describe('what the pages ask the browser to fetch', () => {
   });
 
   test('every other page does load it', async () => {
-    for (const page of ['index.html', 'pricing.html', 'beta.html', 'one-pager.html']) {
+    for (const page of MEASURED) {
       const html = await Bun.file(`${import.meta.dir}/${page}`).text();
       expect(html).toContain('/analytics.ts');
     }
+  });
+
+  /**
+   * `/one-pager.html` was the executive one-pager and has been sent to people. It is a
+   * redirect now rather than a deletion, because a link somebody still holds should land
+   * on what replaced it instead of a 404.
+   */
+  test('the retired one-pager redirects and carries nothing else', async () => {
+    const html = await Bun.file(`${import.meta.dir}/one-pager.html`).text();
+    expect(html).toContain('url=/investors.html');
+    expect(await inlineScripts('one-pager.html')).toHaveLength(0);
+    expect(html).not.toContain('/analytics.ts');
   });
 
   /**
@@ -112,9 +138,7 @@ describe('what the pages ask the browser to fetch', () => {
   test('analytics is a module, not a second inline script', async () => {
     const module = await Bun.file(`${import.meta.dir}/analytics.ts`).text();
     expect(module).toContain('googletagmanager.com/gtag/js');
-    for (const page of ['index.html', 'pricing.html', 'beta.html', 'one-pager.html']) {
-      expect(await inlineScripts(page)).toHaveLength(page === 'one-pager.html' ? 0 : 1);
-    }
+    for (const page of MEASURED) expect(await inlineScripts(page)).toHaveLength(1);
   });
 
   test('the stylesheet loads its own fonts', async () => {

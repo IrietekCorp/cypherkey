@@ -24,6 +24,8 @@ export default defineConfig({
         demo: resolve(import.meta.dirname, 'demo.html'),
         pricing: resolve(import.meta.dirname, 'pricing.html'),
         beta: resolve(import.meta.dirname, 'beta.html'),
+        technology: resolve(import.meta.dirname, 'technology.html'),
+        investors: resolve(import.meta.dirname, 'investors.html'),
         onePager: resolve(import.meta.dirname, 'one-pager.html'),
       },
       output: {

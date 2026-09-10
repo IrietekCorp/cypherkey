@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey — how it works</title>
+    <meta
+      name="description"
+      content="The keystroke telemetry engine behind CypherKey: dwell and flight timings, a 3n+5 feature vector, a zero-knowledge vault, and an honest account of what it does and does not defend against."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html">Demo</a>
+        <a href="/technology.html" aria-current="page">Technology</a>
+        <a href="/pricing.html">Pricing</a>
+        <a href="/beta.html">Beta</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <a class="ck-btn ck-btn--primary ck-btn--sm" href="/demo.html">Try the trial</a>
+      </div>
+    </nav>
+
+    <main id="main">
+      <header class="ck-media ck-page-hero">
+        <img src="/media/origin.jpg" alt="" />
+        <div class="ck-scrim ck-scrim--soft"></div>
+        <div class="ck-wrap ck-page-hero-inner">
+          <span class="ck-kicker ck-kicker--onmedia">Technology · Keystroke telemetry</span>
+          <h1 class="ck-page-hero-title">Passwords can be stolen. Your rhythm cannot.</h1>
+          <p class="ck-lede ck-lede--onmedia">
+            A credential vault that verifies <em>how</em> you type, not only <em>what</em> you type.
+            Everything below is what the code does — the repository is public if you would rather
+            read that.
+          </p>
+        </div>
+      </header>
+
+      <!-- Origin, told properly. It is the technical story, so it belongs here. -->
+      <section class="ck-section" aria-label="Origin">
+        <div class="ck-wrap ck-prose">
+          <span class="ck-kicker ck-kicker--green">2007 → 2026</span>
+          <h2 class="ck-h2">It was written to tell a human from a bot.</h2>
+          <p class="ck-body">
+            Between 2007 and 2008, building a custom MVC framework called <b>Fishtea</b> at a large
+            digital media company, I added a small telemetry script to its admin login:
+            <b>Keystroke Captcha</b>. Visual CAPTCHAs were annoying people and scrapers were getting
+            good. The idea was to listen to DOM key events — <code class="ck-code">keydown</code> and
+            <code class="ck-code">keyup</code>, through YUI's
+            <code class="ck-code">YAHOO.util.Event</code> — and decide whether a form was being
+            filled in by a person or a machine.
+          </p>
+          <p class="ck-body">
+            It measured two things: <b>flight</b>, the gap between one key and the next, and
+            <b>dwell</b>, how long a key stays down. Both worked for telling people from scripts. But
+            the timings kept doing something else, which is the part that mattered: they separated
+            one <em>person</em> from another. Everyone has an involuntary neuromuscular cadence, and
+            it is about as distinctive as handwriting.
+          </p>
+          <p class="ck-body">
+            So I forked it into a biometric salt for the login itself, and demonstrated it the only
+            way that is convincing. I wrote my password on the whiteboard in plain text and invited
+            the room to log in as me. One engineer after another typed the exact characters and was
+            refused. I sat down, typed the same string, and was let in on the first attempt.
+          </p>
+          <p class="ck-body">
+            Then smartphones arrived. Soft keyboards, touch targets and autocorrect flattened the
+            timings the whole thing depended on, and the prototype went in a drawer for sixteen
+            years.
+          </p>
+          <p class="ck-body">
+            What brought it back is that the attack changed. Credentials leak by the billion and
+            attackers no longer break in — they log in, with valid details, increasingly through
+            automation that fills a form faster and more evenly than any hand can. The useful
+            question stopped being <em>what secret was entered</em> and became <em>who or what
+            entered it</em>. That is a question a keyboard can still answer.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="The engine">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">The engine</span>
+          <h2 class="ck-h2 ck-section-title">Two measurements, taken from typing you were doing anyway.</h2>
+
+          <div class="ck-grid ck-grid--4">
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Dwell · n values</span>
+              <h3 class="ck-h3">How long a key is held</h3>
+              <p class="ck-body">
+                From <code class="ck-code">keydown</code> to <code class="ck-code">keyup</code> on
+                the same key. Weighted 1.0.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Flight · n−1 values</span>
+              <h3 class="ck-h3">The gap to the next key</h3>
+              <p class="ck-body">
+                Release of key <i>k</i> to press of <i>k+1</i>. The most personal of the three, so
+                it is weighted 1.5.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Digraph · n−1 values</span>
+              <h3 class="ck-h3">Press to press</h3>
+              <p class="ck-body">
+                Down of <i>k</i> to down of <i>k+1</i>. Captures pairs your hands have learned as
+                one motion. Weighted 1.0.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <span class="ck-kicker">Globals · 7 values</span>
+              <h3 class="ck-h3">The shape of the whole</h3>
+              <p class="ck-body">
+                Total time, and the mean and spread of each of the three. Weighted 0.5 — context,
+                not evidence.
+              </p>
+            </article>
+          </div>
+
+          <p class="ck-body ck-note">
+            A credential of <i>n</i> keystrokes therefore produces a vector of exactly
+            <b>3n + 5</b> numbers. Timings come from
+            <code class="ck-code">performance.now()</code>, which browsers deliberately coarsen to
+            roughly a tenth of a millisecond to blunt timing attacks — more than enough resolution
+            here, and worth stating plainly rather than claiming microseconds we do not get.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="What crosses the network">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">On the wire</span>
+          <h2 class="ck-h2 ck-section-title">The server never learns your passphrase, and never answers with a score.</h2>
+
+          <pre class="ck-code-block"><code><span class="ck-c">// The browser derives everything first. Argon2id at m=64 MiB, then HKDF.</span>
+POST /auth/login
+<span class="ck-c">x-ck-device, x-ck-nonce, x-ck-timestamp, x-ck-signature: Ed25519 over the body</span>
+{
+  <span class="ck-k">"username"</span>:      <span class="ck-s">"engineer@domain.com"</span>,
+  <span class="ck-k">"authHash"</span>:      <span class="ck-s">"qN7v…"</span>,   <span class="ck-c">// a derived key, never the passphrase</span>
+  <span class="ck-k">"featureVector"</span>: [<span class="ck-n">74</span>, <span class="ck-n">91</span>, <span class="ck-n">62</span>, … ]  <span class="ck-c">// 3n+5 timings, scored then dropped</span>
+}
+
+<span class="ck-c">// A band and a sentence. No number, ever — see below.</span>
+<span class="ck-ok">200</span> { <span class="ck-k">"band"</span>: <span class="ck-s">"pass"</span>, <span class="ck-k">"keyVersion"</span>: <span class="ck-n">4</span> }
+<span class="ck-ok">200</span> { <span class="ck-k">"band"</span>: <span class="ck-s">"grey"</span>, <span class="ck-k">"stepUp"</span>: [<span class="ck-s">"backup_code"</span>] }
+<span class="ck-no">401</span> { <span class="ck-k">"band"</span>: <span class="ck-s">"fail"</span>, <span class="ck-k">"error"</span>: <span class="ck-s">"rhythm_mismatch"</span> }</code></pre>
+
+          <div class="ck-grid ck-grid--4">
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">The vector is scored, not stored</h3>
+              <p class="ck-body">
+                It is compared against your profile and discarded in the same request. What persists
+                is per-feature means and standard deviations, floored at 8 ms — and a mean cannot be
+                replayed as typing.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">No score, ever</h3>
+              <p class="ck-body">
+                You are told a band and a sentence. A live number is the one signal an attacker can
+                iterate against — type, read 0.31, adjust, read 0.38 — and it gives an honest user
+                nothing they can act on.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Every request is signed</h3>
+              <p class="ck-body">
+                Each device holds an Ed25519 keypair and signs a nonce, a timestamp and a hash of
+                the body. A captured request cannot be replayed from anywhere else.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Phantom Keys</h3>
+              <p class="ck-body">
+                A Backspace or an Escape that leaves no character behind is still a keystroke, and
+                still part of the secret. Two people typing the same visible text can be typing
+                different scripts.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="The maths">
+        <div class="ck-wrap ck-prose">
+          <span class="ck-kicker ck-kicker--green">The maths</span>
+          <h2 class="ck-h2">Bounded similarity, not distance.</h2>
+          <p class="ck-body">
+            Enrolment takes eight samples and reduces them to a mean <i>μ</i> and a standard
+            deviation <i>σ</i> per feature, with <i>σ</i> floored at 8 ms so a feature you happen to
+            be very consistent on cannot become a hair trigger. A later attempt is scored feature by
+            feature:
+          </p>
+
+          <pre class="ck-code-block ck-code-block--math"><code>z<sub>k</sub> = |x<sub>k</sub> − μ<sub>k</sub>| / σ<sub>k</sub>
+
+        Σ w<sub>k</sub> · 1 / (1 + (z<sub>k</sub> / 2)²)
+score = ────────────────────────────────
+                  Σ w<sub>k</sub></code></pre>
+
+          <p class="ck-body">
+            The choice worth explaining is why each feature is passed through
+            <span class="ck-code">1/(1 + (z/2)²)</span> rather than summed as a squared distance. A
+            Euclidean distance is unbounded, so one freak value — a sneeze, a doorbell, a key that
+            stuck — dominates every other feature and refuses a legitimate person. This saturates:
+            a wildly wrong feature contributes almost nothing, and the verdict rests on the
+            <em>pattern</em> rather than on its worst moment.
+          </p>
+          <p class="ck-body">
+            The score falls into one of three bands, and the thresholds are yours to set. Relaxed
+            passes at 0.55, Medium at 0.62, Strict at 0.70. Between the pass and grey thresholds you
+            are asked to type once more; below the grey threshold the attempt is refused and the
+            server share of your vault key is not released.
+          </p>
+          <p class="ck-body">
+            <a href="/demo.html">The Rhythm Trial runs this exact code in your browser →</a> — same
+            tokenizer, same vector, same weights, same bands, and no network requests at all.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="What it defends against">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Threat model</span>
+          <h2 class="ck-h2 ck-section-title">Where it helps, and where it does not.</h2>
+
+          <div class="ck-table-wrap">
+            <table class="ck-table">
+              <thead>
+                <tr>
+                  <th scope="col">Threat</th>
+                  <th scope="col">Password vault</th>
+                  <th scope="col">Hardware key</th>
+                  <th scope="col">CypherKey</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Credential database leak</th>
+                  <td class="ck-cell-bad">Vulnerable</td>
+                  <td class="ck-cell-ok">Protected</td>
+                  <td class="ck-cell-ok">Protected — the cadence is not in the dump</td>
+                </tr>
+                <tr>
+                  <th scope="row">Credential stuffing by a bot</th>
+                  <td class="ck-cell-bad">Vulnerable</td>
+                  <td class="ck-cell-ok">Protected</td>
+                  <td class="ck-cell-ok">Protected — synthetic timing does not match a person</td>
+                </tr>
+                <tr>
+                  <th scope="row">Reverse-proxy phishing</th>
+                  <td class="ck-cell-bad">Vulnerable</td>
+                  <td class="ck-cell-ok">Protected</td>
+                  <td class="ck-cell-warn">Partial — the vector is bound to the device signature</td>
+                </tr>
+                <tr>
+                  <th scope="row">Keylogger that records timing</th>
+                  <td class="ck-cell-bad">Compromised</td>
+                  <td class="ck-cell-ok">Protected</td>
+                  <td class="ck-cell-warn">Partial — a replayed cadence can pass</td>
+                </tr>
+                <tr>
+                  <th scope="row">Someone watching you type</th>
+                  <td class="ck-cell-bad">Compromised</td>
+                  <td class="ck-cell-ok">Protected</td>
+                  <td class="ck-cell-warn">Partial — a good mimic on a new device meets a step-up</td>
+                </tr>
+                <tr>
+                  <th scope="row">Losing the hardware</th>
+                  <td class="ck-cell-ok">n/a</td>
+                  <td class="ck-cell-bad">Locked out until replaced</td>
+                  <td class="ck-cell-ok">Nothing to lose</td>
+                </tr>
+                <tr>
+                  <th scope="row">Enrolment friction</th>
+                  <td class="ck-cell-ok">None</td>
+                  <td class="ck-cell-warn">Register every device</td>
+                  <td class="ck-cell-warn">Eight samples, once</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="ck-body ck-note">
+            <b>The two "partial" rows are the honest ones.</b> A keylogger that captures inter-key
+            timing as well as characters has captured the factor, and anyone claiming otherwise is
+            selling something. What rhythm defends against is the attack that actually happens at
+            scale: a credential leaked from someone else's breach, replayed from somewhere else by
+            someone — or something — that has never watched you type. A new device always meets a
+            second confirmation, which is what bounds the rest.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="Privacy">
+        <div class="ck-wrap ck-invite">
+          <h2 class="ck-invite-title">Read the code instead of the claims.</h2>
+          <div class="ck-invite-actions">
+            <a
+              class="ck-btn ck-btn--primary"
+              href="https://github.com/IrietekCorp/cypherkey"
+              rel="noopener noreferrer"
+              target="_blank"
+              >Browse the repository →</a
+            >
+            <a class="ck-invite-alt" href="/beta.html#safe">Or the eight guarantees, stated exactly</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="/investors.html">INVESTORS</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:security@cypherkey.io">SECURITY DISCLOSURE</a>
+        <span>MIT CLIENT · AGPL SERVER</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/page.ts"></script>
+    <script type="module" src="/analytics.ts"></script>
+  </body>
+</html>
