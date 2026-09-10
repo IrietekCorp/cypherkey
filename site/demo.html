@@ -90,14 +90,41 @@
               made.
             </p>
 
-            <div class="ck-choice-grid">
-              <button class="ck-choice" type="button" data-choice="random" aria-pressed="true">
-                <span class="ck-choice-head">Random four-word phrase</span>
+            <!--
+              A radio group, not two buttons.
+
+              These were `<button>`s, and the second one had the text field nested inside
+              it. A button may not contain interactive content, so the field was
+              unreachable by Tab: focus stopped on the button, which had no focus
+              handler, and the green selection never moved. Clicking worked only because
+              the handler sat on the button.
+
+              Real radios fix the whole class of it at once — one tab stop, arrow keys
+              between the options, and a selection the browser tracks rather than a
+              `aria-pressed` we maintain. They are visually hidden rather than
+              `display: none`, because a hidden control that cannot be focused is the bug
+              again in a different costume.
+            -->
+            <div class="ck-choice-grid" role="radiogroup" aria-label="Which phrase to teach">
+              <div class="ck-choice" data-choice="random" data-selected="true">
+                <label class="ck-choice-label">
+                  <input
+                    class="ck-choice-radio"
+                    type="radio"
+                    name="ck-phrase-source"
+                    value="random"
+                    checked
+                  />
+                  <span class="ck-choice-head">Random four-word phrase</span>
+                </label>
                 <span class="ck-choice-phrase ck-said" data-random-phrase></span>
-                <span class="ck-choice-shuffle" data-shuffle>Shuffle ↻</span>
-              </button>
-              <button class="ck-choice" type="button" data-choice="own" aria-pressed="false">
-                <span class="ck-choice-head">Or type your own</span>
+                <button class="ck-choice-shuffle" type="button" data-shuffle>Shuffle ↻</button>
+              </div>
+              <div class="ck-choice" data-choice="own" data-selected="false">
+                <label class="ck-choice-label">
+                  <input class="ck-choice-radio" type="radio" name="ck-phrase-source" value="own" />
+                  <span class="ck-choice-head">Or type your own</span>
+                </label>
                 <input
                   class="ck-input ck-choice-input"
                   type="text"
@@ -106,7 +133,7 @@
                   aria-label="Your own phrase"
                 />
                 <span class="ck-choice-hint">≥ 10 characters</span>
-              </button>
+              </div>
             </div>
 
             <div class="ck-explainer">

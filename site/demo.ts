@@ -413,29 +413,44 @@ function initCalibrate(): void {
 
   randomOut.textContent = randomPhrase();
 
+  /**
+   * One place decides which card is chosen, and the radio is the source of truth.
+   *
+   * Everything that can select a card — the radio itself, a click anywhere on it,
+   * focusing the text field, shuffling — routes through here, so the border, the radio
+   * and `usingOwnPhrase` cannot disagree. They did: focus moved without the border
+   * following it.
+   */
   const setChoice = (own: boolean) => {
     usingOwnPhrase = own;
-    for (const button of $$('[data-choice]', stage)) {
-      button.setAttribute(
-        'aria-pressed',
-        String(button.dataset.choice === (own ? 'own' : 'random')),
-      );
+    for (const card of $$('[data-choice]', stage)) {
+      const chosen = card.dataset.choice === (own ? 'own' : 'random');
+      card.dataset.selected = String(chosen);
+      const radio = $<HTMLInputElement>('.ck-choice-radio', card);
+      if (radio !== null) radio.checked = chosen;
     }
   };
 
-  for (const button of $$('[data-choice]', stage)) {
-    button.addEventListener('click', (event) => {
-      // The shuffle sits inside the card; clicking it should not also re-select it.
-      if ((event.target as HTMLElement).hasAttribute('data-shuffle')) return;
-      setChoice(button.dataset.choice === 'own');
-      if (button.dataset.choice === 'own') ownInput.focus();
+  for (const radio of $$<HTMLInputElement>('.ck-choice-radio', stage)) {
+    radio.addEventListener('change', () => setChoice(radio.value === 'own'));
+  }
+
+  for (const card of $$('[data-choice]', stage)) {
+    card.addEventListener('click', (event) => {
+      // Shuffle picks a new phrase; it should not also be a way to change the answer to
+      // "which card", beyond selecting the one it lives in.
+      if ((event.target as HTMLElement).closest('[data-shuffle]') !== null) return;
+      setChoice(card.dataset.choice === 'own');
+      if (card.dataset.choice === 'own') ownInput.focus();
     });
   }
-  $('[data-shuffle]', stage)?.addEventListener('click', (event) => {
-    event.stopPropagation();
+
+  $('[data-shuffle]', stage)?.addEventListener('click', () => {
     randomOut.textContent = randomPhrase();
     setChoice(false);
   });
+
+  // Reaching the field by any route is a choice of that card. This is the tab case.
   ownInput.addEventListener('focus', () => setChoice(true));
 
   $('[data-begin]', stage)?.addEventListener('click', () => {

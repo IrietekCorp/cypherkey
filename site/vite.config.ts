@@ -26,6 +26,17 @@ export default defineConfig({
         beta: resolve(import.meta.dirname, 'beta.html'),
         onePager: resolve(import.meta.dirname, 'one-pager.html'),
       },
+      output: {
+        /*
+          Analytics stays its own chunk rather than being folded into a page's bundle.
+
+          Two pages import nothing else, so Rollup would happily inline it into each of
+          them — and then `demo.html`, which must not have it, is one careless import
+          away from getting it through a shared chunk. A named entry makes its absence
+          from the trial checkable rather than incidental.
+        */
+        manualChunks: (id: string) => (id.includes('analytics.ts') ? 'analytics' : undefined),
+      },
     },
   },
 });

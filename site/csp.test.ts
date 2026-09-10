@@ -81,6 +81,42 @@ describe('what the pages ask the browser to fetch', () => {
     }
   });
 
+  /**
+   * The trial says, in its own rail, that it has made zero network requests, and the
+   * argument the page makes is that nothing about your typing leaves the browser. A
+   * beacon there would make that false in the one place a sceptical visitor is most
+   * likely to open devtools and check.
+   */
+  test('the Rhythm Trial loads no analytics', async () => {
+    const html = await Bun.file(`${import.meta.dir}/demo.html`).text();
+    expect(html).not.toContain('analytics');
+    expect(html).not.toContain('googletagmanager');
+
+    // Not through a shared chunk either: `demo.ts` must not reach it transitively.
+    const demo = await Bun.file(`${import.meta.dir}/demo.ts`).text();
+    expect(demo).not.toContain('analytics');
+  });
+
+  test('every other page does load it', async () => {
+    for (const page of ['index.html', 'pricing.html', 'beta.html', 'one-pager.html']) {
+      const html = await Bun.file(`${import.meta.dir}/${page}`).text();
+      expect(html).toContain('/analytics.ts');
+    }
+  });
+
+  /**
+   * The snippet Google hands out is inline, and an inline script needs its own hash in a
+   * header nobody edits by accident. Loading the same code from our own origin costs
+   * nothing and keeps the "exactly one inline script" rule above true.
+   */
+  test('analytics is a module, not a second inline script', async () => {
+    const module = await Bun.file(`${import.meta.dir}/analytics.ts`).text();
+    expect(module).toContain('googletagmanager.com/gtag/js');
+    for (const page of ['index.html', 'pricing.html', 'beta.html', 'one-pager.html']) {
+      expect(await inlineScripts(page)).toHaveLength(page === 'one-pager.html' ? 0 : 1);
+    }
+  });
+
   test('the stylesheet loads its own fonts', async () => {
     const css = await Bun.file(`${import.meta.dir}/styles.css`).text();
     expect(css).toContain('/fonts/archivo-latin.woff2');

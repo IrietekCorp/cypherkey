@@ -1492,8 +1492,36 @@ h3 {
   font: inherit;
   cursor: pointer;
 }
-.ck-choice[aria-pressed="true"] {
+.ck-choice[data-selected="true"] {
   border-color: var(--green);
+}
+/*
+ * Hidden from sight, not from the keyboard.
+ *
+ * `display: none` or `visibility: hidden` would take the radio out of the tab order and
+ * put the page back where it was — focus moving with nothing following it. Clipping keeps
+ * it focusable, so the ring below is what a keyboard user sees instead of the dot.
+ */
+.ck-choice-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.ck-choice-label {
+  display: block;
+  cursor: pointer;
+}
+/* `focus-within` catches the text field as well as the radio, so the card is outlined
+   whichever way the keyboard arrived in it. */
+.ck-choice:focus-within {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 .ck-choice-head {
   font-weight: 600;
@@ -1513,6 +1541,10 @@ h3 {
 }
 .ck-choice-shuffle {
   cursor: pointer;
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 0;
 }
 .ck-choice-shuffle:hover {
   color: var(--green);
