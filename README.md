@@ -1,6 +1,6 @@
 # CypherKey
 
-> **CypherKey is the open-source password manager where your password only works when *you* type it.**
+> **CypherKey is the open-source password manager where your password always works when *you* type it.**
 > 
 > *A zero-knowledge vault with a built-in behavioral second factor — no phone, no code, no dongle. Just type.*
 

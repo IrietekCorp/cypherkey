@@ -42,7 +42,7 @@ Open cypherkey.io. "This runs entirely in the browser — nothing leaves the lap
 
 ## One-pager text
 
-**CypherKey** — the open-source password manager where your password only works when you type it.
+**CypherKey** — the open-source password manager where your password always works when you type it.
 
 **Problem.** People juggle ~120 passwords, most reused. Credential abuse appears in ~39% of breaches. Every fix adds friction: codes, apps, dongles, passkeys that don't sync across ecosystems.
 

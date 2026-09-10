@@ -69,7 +69,7 @@ Because the server holds only ciphertext and scoring is a few hundred float ops,
 |---|---|---|
 | −14 | Private beta users asked to prepare comments; a Bitwarden/KeePass community post asking for crypto critique (this is both review and pre-marketing) | Crypto design doc |
 | −7 | Blog post: "I built a keystroke captcha at CBS Sports in 2010. Here's what it became." | Long-form, personal |
-| 0 (Tue, 8–9am PT) | **Show HN: CypherKey – open-source password manager where your password only works when you type it** | Landing page + demo + repo. Founder present in comments all day, answering every crypto question honestly |
+| 0 (Tue, 8–9am PT) | **Show HN: CypherKey – open-source password manager where your password always works when you type it** | Landing page + demo + repo. Founder present in comments all day, answering every crypto question honestly |
 | 0 | r/privacy, r/selfhosted, r/Bitwarden ("I built an alternative"), r/MechanicalKeyboards (Precision Mode angle) | Tailored posts, not cross-posts |
 | 0 | LinkedIn: the origin story, 60-second demo video, ask for reshares from your own network | Target 10K likes |
 | +1 | Product Hunt | Reuse assets |

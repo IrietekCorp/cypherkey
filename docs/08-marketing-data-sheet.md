@@ -66,7 +66,7 @@ Every figure below was checked against a source on September 3, 2026. Re-verify 
 
 ## Ready-to-use lines
 
-- "Your password only works when *you* type it."
+- "Your password *always* works when *you* type it."
 - "120 passwords. One rhythm."
 - "The dark-web email doesn't have to be scary anymore."
 - "No phone. No code. No dongle. Just type."
