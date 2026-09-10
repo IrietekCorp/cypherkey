@@ -1,0 +1,11 @@
+# cypherkey.io
+#
+# Everything is crawlable except the investor overview, which carries its own
+# `noindex` and is a link we hand to people rather than something to be found.
+
+User-agent: *
+Allow: /
+Disallow: /investors.html
+Disallow: /one-pager.html
+
+Sitemap: https://cypherkey.io/sitemap.xml

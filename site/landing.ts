@@ -22,7 +22,20 @@ const WAVE_MS = 420;
  * is not listening to anybody -- so the numbers drift within the range a real dwell and
  * flight occupy, and the one number that is a promise rather than a sample, `stored 0 B`,
  * is static markup that no script can move.
+ *
+ * They are also deliberately blurred. A marketing panel that prints a millisecond figure
+ * is teaching a reader the resolution the product works at, and that is a detail worth
+ * nothing to a visitor and something to somebody building a forgery. `blur()` quantises
+ * to a coarse bucket and the `≈` in the markup says so, so the panel reads as the
+ * approximation it always was rather than as an instrument.
  */
+
+/** Rounds to a 10 ms bucket after a small jitter: a shape, never a measurement. */
+function blur(low: number, span: number): string {
+  const jittered = low + Math.random() * span;
+  return `≈${Math.round(jittered / 10) * 10}`;
+}
+
 function startHeroWave(): void {
   const wave = document.querySelector<HTMLElement>('[data-hero-wave]');
   const dwell = document.querySelector<HTMLElement>('[data-hero-dwell]');
@@ -49,8 +62,8 @@ function startHeroWave(): void {
     heights.push(20 + Math.random() * 56);
     heights.shift();
     for (const [k, bar] of bars.entries()) bar.style.height = `${heights[k]}%`;
-    if (dwell !== null) dwell.textContent = String(70 + Math.round(Math.random() * 40));
-    if (flight !== null) flight.textContent = String(95 + Math.round(Math.random() * 60));
+    if (dwell !== null) dwell.textContent = blur(70, 40);
+    if (flight !== null) flight.textContent = blur(95, 60);
   }, WAVE_MS);
 }
 

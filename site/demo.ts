@@ -1,7 +1,12 @@
 import { startCapture } from '../core/biometrics/capture';
 import { extractFeatures, getFeatureRanges } from '../core/biometrics/features';
 import { type Profile, band, buildProfile, score } from '../core/biometrics/score';
-import { eventsToScript, scriptLength, scriptsEqual } from '../core/biometrics/script';
+import {
+  eventsToScript,
+  readableToken,
+  scriptLength,
+  scriptsEqual,
+} from '../core/biometrics/script';
 import type { FeatureVector, KeyEvent } from '../core/biometrics/types';
 import { type Strictness, rhythmBands } from '../core/crypto/phantom';
 import { initTheme } from './theme';
@@ -120,13 +125,21 @@ function rail(key: string, value: string): void {
   if (cell !== null) cell.textContent = value;
 }
 
-type LogTone = 'text' | 'green' | 'amber' | 'fail';
+type LogTone = 'text' | 'green' | 'amber' | 'fail' | 'train';
 
-/** Newest first, nine lines. Longer than that and it stops being glanceable. */
-function log(line: string, tone: LogTone = 'text'): void {
+/**
+ * Newest first, nine lines. Longer than that and it stops being glanceable.
+ *
+ * `slot` is the enrolment sample number, 1..8, and it picks the hue. Teaching used to be
+ * eight identical green lines under eight identical green cells, which reads as one event
+ * repeated rather than eight distinct samples accumulating into a profile. Amber and red
+ * keep their meanings and are never in the training ramp.
+ */
+function log(line: string, tone: LogTone = 'text', slot?: number): void {
   const item = document.createElement('li');
   item.textContent = line;
   item.dataset.tone = tone;
+  if (slot !== undefined) item.dataset.slot = String(slot);
   logList.prepend(item);
   while (logList.children.length > 9) logList.lastElementChild?.remove();
 }
@@ -152,6 +165,53 @@ function consistencyOf(built: Profile): number {
     if (mu > 0) ratios.push(sigma / mu);
   }
   return Math.max(0, Math.min(100, Math.round(100 - 100 * mean(ratios))));
+}
+
+/**
+ * A millisecond figure, coarsened before it is shown to anybody.
+ *
+ * The rail reads out of *your* typing, and printing it to the millisecond publishes the
+ * resolution the product works at alongside a worked example of one person's timings.
+ * That is the raw material of a forgery and it is worth nothing to the visitor, who is
+ * here for a verdict rather than a stopwatch.
+ *
+ * So the display is quantised to a 10 ms bucket and prefixed `≈`, which is the honest
+ * label for what it now is. **Scoring never sees this.** `score()` runs on the vector
+ * core produced; this function exists on the way to `textContent` and nowhere else.
+ */
+function blurMs(ms: number): string {
+  return `≈${Math.round(ms / 10) * 10} ms`;
+}
+
+/**
+ * Says what actually differed between the enrolled script and this sample.
+ *
+ * This message used to read "a Backspace that was not there before, or one that was",
+ * which guesses — and guesses wrong. A **lone modifier tap** is a token too (A-14.1), it
+ * leaves no character behind, and the resolved text is identical either way, so the
+ * sample sails past the "is this the phrase" check and fails the script comparison for a
+ * reason the visitor cannot see and would never think of. Naming Backspace when the real
+ * difference was a stray Shift tap sends someone hunting for the wrong thing.
+ *
+ * Diagnostics of this kind belong in the trial and nowhere else (AGENTS.md): the phrase
+ * is a throwaway the visitor invented, there is no account, nothing is stored and nothing
+ * is sent. **Never build the equivalent in the extension.**
+ */
+function describeScriptDelta(canonical: string, got: string): string {
+  const a = [...canonical];
+  const b = [...got];
+  const limit = Math.min(a.length, b.length);
+
+  let i = 0;
+  while (i < limit && a[i] === b[i]) i += 1;
+
+  // The resolved text already matched, so whatever differs here is a Phantom Key.
+  if (b.length > a.length) return `an extra ${readableToken(b[i] ?? '')} at keystroke ${i + 1}`;
+  if (b.length < a.length) return `no ${readableToken(a[i] ?? '')} at keystroke ${i + 1}`;
+  if (i < limit) {
+    return `${readableToken(a[i] ?? '')} became ${readableToken(b[i] ?? '')} at keystroke ${i + 1}`;
+  }
+  return 'a different key sequence';
 }
 
 function summarise(vector: FeatureVector): { dwell: number; flight: number; total: number } {
@@ -377,6 +437,8 @@ function renderStreak(): void {
     // Accepted-but-reset reads as a dimmer green rather than as empty: the sample is
     // still in the profile, it just did not extend the run.
     cell.dataset.state = i < streak ? 'streak' : i < samples.length ? 'kept' : 'empty';
+    // Each slot carries its own hue, so eight samples read as eight things.
+    cell.dataset.slot = String(i + 1);
     strip.append(cell);
   }
 }
@@ -497,10 +559,16 @@ function submitTeach(): void {
   } else if (!scriptsEqual(canonicalScript, taken.script)) {
     streak = 0;
     resets += 1;
-    feedback.textContent =
-      'Different keystrokes that time — a Backspace that was not there before, or one that was. Kept, but the run resets.';
+    const delta = describeScriptDelta(canonicalScript, taken.script);
+    feedback.textContent = `Different keystrokes that time — ${delta}. Kept, but the run resets.`;
+    // The phantom readout is about the sample just described, so it moves with it rather
+    // than sitting on the previous sample's count and contradicting the sentence above.
+    const phantomOut = $('[data-phantom]', stage);
+    if (phantomOut !== null) {
+      phantomOut.textContent = String(Math.max(0, scriptLength(taken.script) - phrase.length));
+    }
     setLight('amber');
-    log('sample rejected · script mismatch', 'amber');
+    log(`sample rejected · ${delta}`, 'amber');
     renderStreak();
     resetSample('refused');
     return;
@@ -516,13 +584,14 @@ function submitTeach(): void {
   level = samples.length + 1;
 
   const stats = summarise(taken.vector);
-  rail('total', `${stats.total} ms`);
-  rail('cur-dwell', `${stats.dwell} ms`);
-  rail('cur-flight', `${stats.flight} ms`);
+  rail('total', blurMs(stats.total));
+  rail('cur-dwell', blurMs(stats.dwell));
+  rail('cur-flight', blurMs(stats.flight));
   rail('cur-phantom', String(Math.max(0, phantom)));
   log(
     `sample ${samples.length}/${SAMPLES_REQUIRED} accepted · n=${scriptLength(taken.script)}${phantom > 0 ? ` · ${phantom} phantom` : ''}`,
-    'green',
+    'train',
+    samples.length,
   );
   setLight('captured');
   feedback.textContent = '';
@@ -547,14 +616,14 @@ function forgeProfile(): void {
 
   const ranges = getFeatureRanges(profile.len);
   const sigma = mean(profile.stds.slice(ranges.dwell[0], ranges.flight[1]));
-  rail('sigma', `${Math.round(sigma)} ms`);
+  rail('sigma', blurMs(sigma));
   rail('enrolled', `${samples.length} / ${SAMPLES_REQUIRED}`);
 
   const dwellMeans = profile.means.slice(ranges.dwell[0], ranges.dwell[1]);
   const flightMeans = profile.means.slice(ranges.flight[0], ranges.flight[1]);
   setText('[data-stat-dims]', String(ranges.totalLength));
-  setText('[data-stat-dwell]', `${Math.round(mean(dwellMeans))} ms`);
-  setText('[data-stat-flight]', `${Math.round(mean(flightMeans))} ms`);
+  setText('[data-stat-dwell]', blurMs(mean(dwellMeans)));
+  setText('[data-stat-flight]', blurMs(mean(flightMeans)));
   setText('[data-stat-consistency]', `${consistency}%`);
 
   paintEnvelope(profile);
@@ -736,7 +805,7 @@ function renderVerdictCard(which: 'intruder' | 'you', attempt: Attempt | null): 
   bandOut.dataset.band = verdict;
   headline.textContent = copy.headline;
   sentence.textContent = copy.body;
-  foot.textContent = `n=${attempt.tokens} · total ${attempt.totalMs} ms · mean dwell ${attempt.meanDwell} ms · mean flight ${attempt.meanFlight} ms`;
+  foot.textContent = `n=${attempt.tokens} · total ${blurMs(attempt.totalMs)} · mean dwell ${blurMs(attempt.meanDwell)} · mean flight ${blurMs(attempt.meanFlight)}`;
 }
 
 function renderVerdict(): void {

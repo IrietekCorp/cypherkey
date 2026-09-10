@@ -14,7 +14,7 @@ the beta itself.
 | | Where | State |
 |---|---|---|
 | API | `https://api.cypherkey.io` | Cloud Run + Cloud SQL behind an HTTPS LB with Cloud Armor. `/healthz` → `{"ok":true,"db":"postgres"}` |
-| Site | `https://cypherkey.io` | Cloud Storage + Cloud CDN. Five pages — landing, the Rhythm Trial, pricing, beta, the one-pager. Dark by default, Light/Dark in the nav. Published 2026-09-09 |
+| Site | `https://cypherkey.io` | Cloud Storage + Cloud CDN. Eight pages — landing, the Rhythm Trial, technology, compare, pricing, beta, founder, and the investor overview (`noindex`); `one-pager.html` redirects to the last. Dark by default, Light/Dark in the nav. Published 2026-09-09; compare and founder not yet uploaded |
 | Extension | not published | Loads unpacked from `extension/.output/chrome-mv3`; onboarding, enrolment, unlock, the vault and the settings page all work end to end in real Chrome |
 
 GCP project is **`<GCP_PROJECT_ID>`** (project number `<GCP_PROJECT_NUMBER>`, `us-central1`).

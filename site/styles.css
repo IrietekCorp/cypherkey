@@ -68,6 +68,23 @@
   --amber: #f0b45a;
   --fail: #ff6b7a;
 
+  /*
+    The training ramp: the eight enrolment slots in the Rhythm Trial.
+
+    It walks green (the living signal) to violet by way of blue (measurement), so a filled
+    strip reads as eight distinct samples accumulating rather than one green event
+    happening eight times. Amber and red are deliberately not on it -- they mean "retype"
+    and "refused", and a training colour that borrowed either would be saying so.
+  */
+  --train-1: #3fdcb4;
+  --train-2: #4fd7c6;
+  --train-3: #57cfd9;
+  --train-4: #5fc6ea;
+  --train-5: #6fb6f0;
+  --train-6: #85a6f2;
+  --train-7: #9b98ee;
+  --train-8: #b28ce8;
+
   --r: 12px;
   --rs: 8px;
   /* The fixed nav's height: 14px padding twice plus a 35px row. Everything that has to
@@ -104,6 +121,16 @@
   --blue-deep: #d3ecf8;
   --amber: #a2620c;
   --fail: #c0263a;
+
+  /* The same walk, darkened: these sit on #f7f9fb and have to stay legible against it. */
+  --train-1: #0d8f6e;
+  --train-2: #0b8a80;
+  --train-3: #0a8290;
+  --train-4: #0f6f9e;
+  --train-5: #1c60a6;
+  --train-6: #3a51a8;
+  --train-7: #5344a4;
+  --train-8: #6a3b97;
 
   color-scheme: light;
 }
@@ -883,6 +910,17 @@ h3 {
   }
 }
 
+/*
+  The nav bar is a fixed 63px row and must never wrap, so the two secondary destinations
+  go first. Both stay reachable: Compare from pricing, Founder from the origin panel and
+  from every footer.
+*/
+@media (max-width: 900px) {
+  .ck-nav-links a.ck-nav-opt {
+    display: none;
+  }
+}
+
 /* The nav is the one place a link list can honestly be dropped on a phone. */
 @media (max-width: 560px) {
   .ck-nav-links a:not(.ck-btn) {
@@ -1348,13 +1386,53 @@ h3 {
   height: 14px;
   border: 1px solid var(--line2);
 }
+/*
+  Each slot resolves `--train` to its own step on the ramp, and the two filled states are
+  the same hue at two weights: a sample that extended the run, and one that is in the
+  profile but did not. `--green` is the fallback so a cell with no slot still paints.
+*/
+.ck-streak span[data-slot="1"],
+.ck-log li[data-slot="1"] {
+  --train: var(--train-1);
+}
+.ck-streak span[data-slot="2"],
+.ck-log li[data-slot="2"] {
+  --train: var(--train-2);
+}
+.ck-streak span[data-slot="3"],
+.ck-log li[data-slot="3"] {
+  --train: var(--train-3);
+}
+.ck-streak span[data-slot="4"],
+.ck-log li[data-slot="4"] {
+  --train: var(--train-4);
+}
+.ck-streak span[data-slot="5"],
+.ck-log li[data-slot="5"] {
+  --train: var(--train-5);
+}
+.ck-streak span[data-slot="6"],
+.ck-log li[data-slot="6"] {
+  --train: var(--train-6);
+}
+.ck-streak span[data-slot="7"],
+.ck-log li[data-slot="7"] {
+  --train: var(--train-7);
+}
+.ck-streak span[data-slot="8"],
+.ck-log li[data-slot="8"] {
+  --train: var(--train-8);
+}
+
 .ck-streak span[data-state="streak"] {
-  background: var(--green);
-  border-color: var(--green);
+  background: var(--train, var(--green));
+  border-color: var(--train, var(--green));
 }
 .ck-streak span[data-state="kept"] {
-  background: var(--green-deep);
-  border-color: var(--green-deep);
+  background: var(--train, var(--green));
+  border-color: var(--train, var(--green));
+  /* Still in the profile, just not extending the run. */
+  opacity: 0.4;
 }
 
 .ck-trial-layout {
@@ -1849,6 +1927,9 @@ h3 {
 }
 .ck-log li[data-tone="fail"] {
   color: var(--fail);
+}
+.ck-log li[data-tone="train"] {
+  color: var(--train, var(--green));
 }
 
 /* ---- achievements --------------------------------------------------------------- */

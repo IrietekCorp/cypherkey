@@ -32,10 +32,20 @@ const PAGES = [
   'beta.html',
   'technology.html',
   'investors.html',
+  'compare.html',
+  'founder.html',
 ] as const;
 
 /** Where analytics belongs. Not the trial — see the test for why. */
-const MEASURED = ['index.html', 'pricing.html', 'beta.html', 'technology.html', 'investors.html'];
+const MEASURED = [
+  'index.html',
+  'pricing.html',
+  'beta.html',
+  'technology.html',
+  'investors.html',
+  'compare.html',
+  'founder.html',
+];
 
 async function inlineScripts(page: string): Promise<string[]> {
   const html = await Bun.file(`${import.meta.dir}/${page}`).text();

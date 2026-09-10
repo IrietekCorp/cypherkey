@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CypherKey vs 1Password, LastPass and Proton Pass</title>
+    <meta
+      name="description"
+      content="An open-source password manager compared with 1Password, LastPass and Proton Pass: what each server holds, which parts are open source, which can be self-hosted, and what a stolen master password actually gets an attacker."
+    />
+    <link rel="canonical" href="https://cypherkey.io/compare.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="CypherKey" />
+    <meta property="og:url" content="https://cypherkey.io/compare.html" />
+    <meta property="og:title" content="CypherKey vs 1Password, LastPass and Proton Pass" />
+    <meta
+      property="og:description"
+      content="What each server holds, which parts are open source, which can be self-hosted, and what a stolen master password actually gets an attacker."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="author" content="Shawn J. Stewart" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
+    />
+    <script>
+      (function () {
+        try {
+          document.documentElement.dataset.theme =
+            localStorage.getItem("ck-theme") === "light" ? "light" : "dark";
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="ck-skip" href="#main">Skip to content</a>
+
+    <nav class="ck-nav">
+      <a class="ck-wordmark" href="/" aria-label="CypherKey home">
+        <span class="ck-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        CypherKey
+      </a>
+      <div class="ck-nav-links">
+        <a href="/demo.html">Demo</a>
+        <a href="/technology.html">Technology</a>
+        <a class="ck-nav-opt" href="/compare.html" aria-current="page">Compare</a>
+        <a href="/pricing.html">Pricing</a>
+        <a href="/beta.html">Beta</a>
+        <a class="ck-nav-opt" href="/founder.html">Founder</a>
+        <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
+        <a class="ck-btn ck-btn--primary ck-btn--sm" href="/demo.html">Try the trial</a>
+      </div>
+    </nav>
+
+    <main id="main" class="ck-deck">
+      <header class="ck-deck-head">
+        <span class="ck-kicker ck-kicker--green">Comparison · Verified September 2026</span>
+        <h1 class="ck-h1 ck-deck-title">
+          CypherKey vs 1Password, LastPass and Proton Pass.
+        </h1>
+        <p class="ck-lede">
+          All four are zero-knowledge vaults, and on that they broadly agree. They diverge on three
+          things: how much of the system you can read, whether you can run it yourself, and what a
+          stolen master password gets somebody who has one.
+        </p>
+      </header>
+
+      <section class="ck-section" aria-label="Feature comparison">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Side by side</span>
+          <h2 class="ck-h2 ck-section-title">
+            The differences that survive reading the documentation.
+          </h2>
+
+          <div class="ck-table-wrap">
+            <table class="ck-table">
+              <thead>
+                <tr>
+                  <th scope="col">&nbsp;</th>
+                  <th scope="col">CypherKey</th>
+                  <th scope="col">1Password</th>
+                  <th scope="col">LastPass</th>
+                  <th scope="col">Proton Pass</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Zero-knowledge vault</th>
+                  <td class="ck-cell-ok">Yes</td>
+                  <td class="ck-cell-ok">Yes</td>
+                  <td class="ck-cell-ok">Yes</td>
+                  <td class="ck-cell-ok">Yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Second factor needing no phone, code or dongle</th>
+                  <td class="ck-cell-ok">Yes — your typing rhythm, on every unlock</td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                </tr>
+                <tr>
+                  <th scope="row">Client source published</th>
+                  <td class="ck-cell-ok">Yes — MIT</td>
+                  <td class="ck-cell-bad">No — proprietary</td>
+                  <td class="ck-cell-bad">No — proprietary</td>
+                  <td class="ck-cell-ok">Yes — GPLv3</td>
+                </tr>
+                <tr>
+                  <th scope="row">Server source published</th>
+                  <td class="ck-cell-ok">Yes — AGPL-3.0</td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                </tr>
+                <tr>
+                  <th scope="row">Self-host the whole stack</th>
+                  <td class="ck-cell-ok">Yes — <code class="ck-code">docker compose up</code></td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                  <td class="ck-cell-bad">No</td>
+                </tr>
+                <tr>
+                  <th scope="row">A stolen master password, on its own</th>
+                  <td class="ck-cell-ok">Refused — the rhythm does not match, so the server share is never released</td>
+                  <td class="ck-cell-warn">Also needs the account's Secret Key</td>
+                  <td class="ck-cell-warn">Opens the vault unless a second factor is enrolled</td>
+                  <td class="ck-cell-warn">Opens the vault unless a second factor is enrolled</td>
+                </tr>
+                <tr>
+                  <th scope="row">Publicly disclosed compromise of stored vault data</th>
+                  <td>None — pre-launch, and audit is scheduled for M3</td>
+                  <td>None disclosed</td>
+                  <td class="ck-cell-bad">Yes — backups exfiltrated, disclosed December 2022</td>
+                  <td>None disclosed</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="ck-body ck-note">
+            Compiled from each vendor's own security documentation and public disclosures, and
+            accurate as of September 2026. Products change; if something here has gone stale, tell
+            us at <a href="mailto:hello@cypherkey.io">hello@cypherkey.io</a> and it gets corrected.
+            Where a competitor is strong, the table says so — 1Password's Secret Key genuinely
+            defeats a password-only attack, and Proton Pass genuinely publishes its clients.
+          </p>
+        </div>
+      </section>
+
+      <section class="ck-section ck-section--surface" aria-label="What is actually different">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">The one real difference</span>
+          <h2 class="ck-h2 ck-section-title">
+            Every other manager protects a secret. This one checks who is typing it.
+          </h2>
+
+          <div class="ck-grid ck-grid--3">
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">The factor you cannot leave at home</h3>
+              <p class="ck-body">
+                TOTP needs a phone. A passkey needs the device it lives on. A hardware key needs to
+                be in your pocket and charged. Your hands are already on the keyboard, which is why
+                the rhythm factor is on every unlock rather than the ones you remembered to arm.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">Credential stuffing stops being a threat model</h3>
+              <p class="ck-body">
+                Roughly 39% of breaches start with a stolen credential. A leaked password works from
+                anywhere for anyone — unless the login also has to be typed the way its owner types
+                it. That is the whole product in one sentence.
+              </p>
+            </article>
+            <article class="ck-glass ck-feature">
+              <h3 class="ck-h3">You can read all of it</h3>
+              <p class="ck-body">
+                MIT client, AGPL server, and the demo runs the same scoring code the extension
+                unlocks with. Nobody has to take the zero-knowledge claim on trust: the vault
+                format, the KDF parameters and the scoring maths are on
+                <a href="/technology.html">the technology page</a> and in the repository.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="ck-section" aria-label="Switching">
+        <div class="ck-wrap">
+          <span class="ck-kicker ck-kicker--green">Switching</span>
+          <h2 class="ck-h2 ck-section-title">Bring the vault you already have.</h2>
+          <p class="ck-body">
+            CypherKey imports Bitwarden JSON and Chrome CSV today, which between them cover the
+            export formats 1Password, LastPass and Proton Pass all offer. Import happens entirely
+            in the browser: the file is parsed, encrypted and only then does anything reach the
+            server. Nothing in your old vault crosses the network in plaintext, including on the
+            way in.
+          </p>
+          <div class="ck-invite-actions">
+            <a class="ck-btn ck-btn--primary" href="/demo.html">Try the Rhythm Trial →</a>
+            <a class="ck-invite-alt" href="/beta.html">Or join the private beta</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="ck-footer">
+      <span>
+        CYPHERKEY © 2026 · BUILT BY
+        <a href="/founder.html" rel="author">SHAWN J. STEWART</a>
+        AT IRIETEK CORPORATION
+      </span>
+      <div class="ck-footer-links">
+        <a href="/pricing.html">PRICING</a>
+        <a href="/investors.html">INVESTORS</a>
+        <a href="https://github.com/IrietekCorp/cypherkey" rel="noopener noreferrer" target="_blank">SOURCE</a>
+        <a href="mailto:security@cypherkey.io">SECURITY DISCLOSURE</a>
+        <span>MIT CLIENT · AGPL SERVER</span>
+      </div>
+    </footer>
+
+    <script type="module" src="/page.ts"></script>
+    <script type="module" src="/analytics.ts"></script>
+  </body>
+</html>

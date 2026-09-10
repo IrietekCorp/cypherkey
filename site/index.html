@@ -3,11 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CypherKey — your password always works when you type it</title>
+    <title>CypherKey — open-source password manager with typing-rhythm 2FA</title>
     <meta
       name="description"
-      content="A zero-knowledge password manager with a second factor you already carry: the rhythm of your hands. No phone, no code, no dongle."
+      content="CypherKey is an open-source, zero-knowledge password manager with a second factor you already carry: the rhythm of your hands. A self-hostable alternative to 1Password, LastPass and Proton Pass — no phone, no code, no dongle."
     />
+    <link rel="canonical" href="https://cypherkey.io/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CypherKey" />
+    <meta property="og:url" content="https://cypherkey.io/" />
+    <meta
+      property="og:title"
+      content="CypherKey — open-source password manager with typing-rhythm 2FA"
+    />
+    <meta
+      property="og:description"
+      content="A zero-knowledge vault with a behavioral second factor. Open source, self-hostable, and it works with the passwords you already have."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="author" content="Shawn J. Stewart" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='none' stroke='%233fdcb4' stroke-width='9'/></svg>"
@@ -36,6 +50,59 @@
     </script>
     <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
+
+    <!--
+      Structured data. Not an inline *script* as far as the CSP is concerned: browsers do
+      not execute `application/ld+json`, so `script-src` never applies to it and it needs
+      no hash. `site/csp.test.ts` counts bare script elements only, and `site/seo.test.ts`
+      parses these blocks to keep them valid.
+
+      Do not write the bare opening tag in a comment on this page. That test matches it as
+      text, and the page then reports two inline scripts where it has one.
+
+      No `aggregateRating` and no `offers` here. Both are the fields search engines police
+      hardest, and neither has a true value to put in yet.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://cypherkey.io/#app",
+            "name": "CypherKey",
+            "applicationCategory": "SecurityApplication",
+            "applicationSubCategory": "Password Manager",
+            "operatingSystem": "Chrome, Firefox",
+            "url": "https://cypherkey.io/",
+            "description": "An open-source, zero-knowledge password manager with a behavioral second factor: your typing rhythm.",
+            "license": "https://opensource.org/licenses/MIT",
+            "author": { "@id": "https://cypherkey.io/founder.html#shawn" },
+            "publisher": { "@id": "https://cypherkey.io/#irietek" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://cypherkey.io/#irietek",
+            "name": "Irietek Corporation",
+            "url": "https://cypherkey.io/",
+            "founder": { "@id": "https://cypherkey.io/founder.html#shawn" }
+          },
+          {
+            "@type": "Person",
+            "@id": "https://cypherkey.io/founder.html#shawn",
+            "name": "Shawn J. Stewart",
+            "alternateName": "Shawn Stewart",
+            "jobTitle": "President, Irietek Corporation",
+            "url": "https://cypherkey.io/founder.html",
+            "sameAs": [
+              "https://www.linkedin.com/in/irietek",
+              "https://github.com/irietek",
+              "https://piscopour.com"
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <a class="ck-skip" href="#main">Skip to content</a>
@@ -48,8 +115,10 @@
       <div class="ck-nav-links">
         <a href="/demo.html">Demo</a>
         <a href="/technology.html">Technology</a>
+        <a class="ck-nav-opt" href="/compare.html">Compare</a>
         <a href="/pricing.html">Pricing</a>
         <a href="/beta.html">Beta</a>
+        <a class="ck-nav-opt" href="/founder.html">Founder</a>
         <button class="ck-theme-toggle" type="button" data-theme-toggle>LIGHT</button>
         <a class="ck-btn ck-btn--primary ck-btn--sm" href="/demo.html">Try the trial</a>
       </div>
@@ -110,8 +179,8 @@
             </div>
             <div class="ck-wave" data-hero-wave aria-hidden="true"></div>
             <div class="ck-hero-stat-foot">
-              <span>dwell <b data-hero-dwell>84</b> ms</span>
-              <span>flight <b data-hero-flight>121</b> ms</span>
+              <span>dwell <b data-hero-dwell>≈80</b> ms</span>
+              <span>flight <b data-hero-flight>≈120</b> ms</span>
               <span>stored <b class="ck-said">0 B</b></span>
             </div>
           </aside>
@@ -137,7 +206,10 @@
                   Every login already carries dwell (how long a key is held) and flight (the gap to
                   the next key). CypherKey reads timing that is being produced anyway.
                 </p>
-                <span class="ck-slide-foot">Timing captured via performance.now() · sub-millisecond</span>
+                <span class="ck-slide-foot">
+                  Timing captured with the most precise, transparent instrumentation the browser
+                  allows — and never kept
+                </span>
               </article>
               <article class="ck-card ck-slide">
                 <span class="ck-kicker">02 · What is at risk</span>
@@ -156,7 +228,7 @@
                   code to copy, no key to lose or charge. It works with the passwords you already
                   have.
                 </p>
-                <span class="ck-slide-foot">Feature vector 3n+5 · flight weighted 1.5×</span>
+                <span class="ck-slide-foot">Dwell, flight and transition — weighted, then discarded</span>
               </article>
               <article class="ck-card ck-slide">
                 <span class="ck-kicker">04 · Easy and safe</span>
@@ -166,7 +238,7 @@
                   destroyed after each sample; only means and floored variances remain. Open source,
                   self-host in one command.
                 </p>
-                <span class="ck-slide-foot">MIT client · AGPL server · σ floor 8 ms</span>
+                <span class="ck-slide-foot">MIT client · AGPL server · raw events destroyed per sample</span>
               </article>
               <article class="ck-card ck-slide">
                 <span class="ck-kicker">05 · Try it</span>
@@ -197,17 +269,20 @@
           <div class="ck-panel-dark ck-origin-panel">
             <span class="ck-kicker ck-kicker--onmedia">Origin · 2007 → 2026</span>
             <h2 class="ck-origin-title">
-              Written in 2007 to tell a human from a bot. It told people apart instead.
+              First written in 2007 to tell a human from a bot. It told people apart instead.
             </h2>
             <p class="ck-body">
-              Keystroke Captcha was a telemetry script inside a custom MVC framework, listening to
-              key events to decide whether a form was being filled in by a person. It measured
-              dwell and flight — and the timings did not just separate humans from machines, they
-              separated one person from another.
+              <b>Shawn J. Stewart</b> built Keystroke Captcha as a telemetry script inside a custom
+              MVC framework, listening to key events to decide whether a form was being filled in
+              by a person. It measured dwell and flight — and the timings did not just separate
+              humans from machines, they separated one person from another. He pointed it at
+              passwords at CBSSports.com in 2010: teammates could not log in with his credentials,
+              and he could, first try.
             </p>
             <span class="ck-origin-meta">
               Shawn J. Stewart · Irietek Corporation ·
-              <a href="/technology.html">The whole story, and how it works →</a>
+              <a href="/founder.html">More about Shawn →</a> ·
+              <a href="/technology.html">How it works →</a>
             </span>
           </div>
         </div>
@@ -227,7 +302,11 @@
     </main>
 
     <footer class="ck-footer">
-      <span>CYPHERKEY © 2026 · PRIVACY AND CONSENT BY DESIGN</span>
+      <span>
+          CYPHERKEY © 2026 · BUILT BY
+          <a href="/founder.html" rel="author">SHAWN J. STEWART</a>
+          AT IRIETEK CORPORATION
+        </span>
       <div class="ck-footer-links">
         <a href="/pricing.html">PRICING</a>
         <a href="/investors.html">INVESTORS</a>
